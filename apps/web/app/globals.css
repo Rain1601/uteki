@@ -1,0 +1,175 @@
+@import "tailwindcss";
+
+/* ─── Editorial Finance Design System ──────────────────────────────────
+   暖深炭灰 + 哑光纸纹底色 · Fraunces 衬线斜体 · JetBrains Mono 数据
+   Adapted from uteki.open, recalibrated for contrast & hierarchy.
+   ──────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* Background scale — deep warm charcoal */
+  --canvas:        #14110d;
+  --surface:       #1c1814;
+  --surface-1:     #221d18;
+  --surface-2:     #2a241e;
+  --surface-hover: rgba(244, 236, 223, 0.04);
+  --surface-active:rgba(217, 119, 87, 0.10);
+
+  /* Hairlines */
+  --line:          #2e2822;
+  --line-strong:   #3a342c;
+
+  /* Ink (text) — warm off-white */
+  --ink:           #f4ecdf;
+  --ink-soft:      #c4b9aa;
+  --ink-muted:     #8a8275;
+  --ink-faint:     #635a4f;
+
+  /* Accent — terracotta */
+  --accent:        #d97757;
+  --accent-soft:   rgba(217, 119, 87, 0.16);
+  --accent-line:   rgba(217, 119, 87, 0.35);
+
+  /* Semantic */
+  --gain:          #6faf8d;  /* sage */
+  --loss:          #b0524a;  /* terracotta */
+  --warn:          #c9a97e;  /* amber */
+  --info:          #6f8db0;
+
+  /* Radii */
+  --r-sm: 4px;
+  --r:    8px;
+  --r-lg: 12px;
+  --r-xl: 16px;
+
+  /* Layout */
+  --sidebar-w-collapsed: 60px;
+  --sidebar-w-expanded:  256px;
+  --topbar-h: 56px;
+
+  /* Motion */
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@theme inline {
+  --color-canvas:        var(--canvas);
+  --color-surface:       var(--surface);
+  --color-surface-1:     var(--surface-1);
+  --color-surface-2:     var(--surface-2);
+  --color-line:          var(--line);
+  --color-line-strong:   var(--line-strong);
+  --color-ink:           var(--ink);
+  --color-ink-soft:      var(--ink-soft);
+  --color-ink-muted:     var(--ink-muted);
+  --color-ink-faint:     var(--ink-faint);
+  --color-accent:        var(--accent);
+  --color-gain:          var(--gain);
+  --color-loss:          var(--loss);
+  --color-warn:          var(--warn);
+
+  --font-display: var(--font-fraunces), Georgia, ui-serif, serif;
+  --font-body:    var(--font-newsreader), Georgia, ui-serif, serif;
+  --font-mono:    var(--font-mono), ui-monospace, SFMono-Regular, monospace;
+  --font-sans:    -apple-system, BlinkMacSystemFont, "PingFang SC",
+                  "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+}
+
+/* ─── Base ──────────────────────────────────────────────────────────── */
+
+* { box-sizing: border-box; }
+
+html, body {
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  min-height: 100vh;
+  /* Subtle warm vignette + film grain */
+  background-image:
+    radial-gradient(ellipse 80% 60% at 50% 0%,
+      rgba(217, 119, 87, 0.04) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 50% at 100% 100%,
+      rgba(111, 175, 141, 0.025) 0%, transparent 50%);
+}
+
+/* Paper grain via stacked subtle gradients (no SVG, no images) */
+.paper-grain {
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      rgba(244, 236, 223, 0.012) 0px,
+      rgba(244, 236, 223, 0.012) 1px,
+      transparent 1px,
+      transparent 3px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(244, 236, 223, 0.008) 0px,
+      rgba(244, 236, 223, 0.008) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+/* ─── Typography utilities ──────────────────────────────────────────── */
+
+.font-display { font-family: var(--font-display); font-style: italic; }
+.font-body    { font-family: var(--font-body); }
+.font-mono    { font-family: var(--font-mono); }
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.h-display {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}
+
+.numeric {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Scrollbar ─────────────────────────────────────────────────────── */
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--line-strong); }
+
+/* ─── Focus ─────────────────────────────────────────────────────────── */
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* ─── Marquee for nav labels on expand ──────────────────────────────── */
+
+@keyframes label-in {
+  from { opacity: 0; transform: translateX(-4px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
