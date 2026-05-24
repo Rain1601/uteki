@@ -1,0 +1,36 @@
+schema: spec-driven
+
+context: |
+  uteki is a watchlist-driven, schedule-fired, harness-orchestrated
+  investment-research agent platform.
+
+  Tech stack:
+    - Backend: FastAPI · Python 3.13 · uv · pydantic 2
+    - Frontend: Next.js 16 · React 19 · Tailwind v4
+    - Monorepo: pnpm workspaces
+
+  Domain primitives (do not rename casually):
+    - skill        — a named workflow (BaseAgent subclass)
+    - harness      — orchestration layer wrapping skill execution
+    - run          — one bounded execution; persisted by RunStore
+    - tool         — external capability invoked by skill, dispatched by harness
+    - trigger      — user · cron · event · eval · compare
+    - watchlist    — user-owned set of (symbol, market, kind)
+    - task         — scheduled (watchlist × skill × cron) job
+
+  Conventions:
+    - Every public function has type hints
+    - Module docstrings explain "why this exists"
+    - `from __future__ import annotations` consistently
+    - Skills live as Markdown (SKILL.md) loaded at runtime, not hardcoded Python strings
+    - Every datum that crosses a trust boundary is marked: user-input, tool-output, model-output
+
+rules:
+  proposal:
+    - State the problem first, solution second
+    - Include "Non-goals" section to bound scope
+    - Cite the existing files you're touching with paths
+  tasks:
+    - One task = one PR-sized unit (≤ 4 hours)
+    - Order tasks by dependency, top-down
+    - Mark each task as [pending] / [in-progress] / [done]
