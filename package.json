@@ -1,0 +1,21 @@
+{
+  "name": "uteki",
+  "version": "0.0.1",
+  "private": true,
+  "description": "uteki — investment research agent (web + ios + android)",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "bash scripts/dev.sh",
+    "dev:web": "pnpm --filter @uteki/web dev",
+    "dev:api": "bash -c 'cd services/api && uv run uvicorn uteki_api.main:app --reload --port 8000'",
+    "build": "pnpm -r --filter \"./apps/**\" --filter \"./packages/**\" build",
+    "lint": "pnpm -r --filter \"./apps/**\" --filter \"./packages/**\" lint",
+    "types:gen": "bash scripts/gen-types.sh"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}
