@@ -1,0 +1,9 @@
+{
+  "id": "sample-001",
+  "description": "用户问宁德时代，agent 应该至少调用一次行情或新闻工具，且最终回答覆盖 '基本面' 与 '风险' 两个关键词。",
+  "messages": [
+    {"role": "user", "content": "帮我分析一下宁德时代"}
+  ],
+  "expected_substrings": ["基本面", "风险"],
+  "expected_tools": ["market_quote"]
+}

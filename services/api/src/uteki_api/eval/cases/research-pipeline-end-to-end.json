@@ -1,0 +1,13 @@
+{
+  "id": "research-pipeline-end-to-end",
+  "description": "End-to-end run of the research_pipeline meta-skill: Planner → Research → Evaluator (with iteration if needed). Loose expected_substrings since the pipeline is the contract; finishing without error is what matters here. Should produce at least plan.md, sprint-contract.json, final-research.md, and eval-report.json.",
+  "agent": "research_pipeline",
+  "messages": [
+    {
+      "role": "user",
+      "content": "给我中国半导体设备板块的行业研究框架。涵盖：市场规模与增长、主要玩家与份额、估值水平、关键风险与催化剂。"
+    }
+  ],
+  "expected_substrings": ["半导体"],
+  "expected_tools": []
+}

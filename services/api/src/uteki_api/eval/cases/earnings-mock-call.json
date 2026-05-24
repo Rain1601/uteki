@@ -1,0 +1,12 @@
+{
+  "id": "earnings-mock-call",
+  "description": "earnings skill 基于一段 mock 电话会要点写点评：期望输出含 'variance' / '变动' 类比对、'指引' / 'guidance'，且不臆造未给出的数字。",
+  "messages": [
+    {
+      "role": "user",
+      "content": "宁德时代 (300750.SZ) 2025Q4 财报评审。\n\n核心数据（用户粘贴）：\n- Revenue: 1,234 亿（YoY +12%, consensus 1,210 亿，prior estimate 1,190 亿）\n- Gross margin: 23.1%（YoY +1.8pp, consensus 22.5%）\n- Net income: 167 亿（YoY +18%）\n- EPS: 3.79 元\n\n电话会要点（用户粘贴 transcript）：\n- 管理层强调海外储能业务环比加速，2026 全年预计储能营收 +60%\n- 美国关税敞口已通过墨西哥工厂部分对冲\n- 2026 Q1 收入指引 1,050 亿（低于 consensus 1,080 亿，主因春节扰动）\n- Q&A 中分析师反复追问固态电池 2026 量产时点，管理层回避\n\n请输出 headline read + variance table + 2026 全年看点 + 关键风险。"
+    }
+  ],
+  "expected_substrings": ["变动", "指引"],
+  "expected_tools": []
+}

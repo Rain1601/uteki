@@ -1,0 +1,12 @@
+{
+  "id": "research-sector-primer",
+  "description": "research skill 跑半导体板块 sector primer，期望输出包含 market-researcher 的 5 段框架（行业概览 / 竞争格局 / Peer / 思路 / 笔记 — 关键字 '市场' / '竞争' / '估值'）",
+  "messages": [
+    {
+      "role": "user",
+      "content": "给我中国半导体设备板块的行业研究框架。涵盖：市场规模与增长、主要玩家与份额、关键技术节点、估值水平、关键风险与催化剂。不需要具体数字（M2 阶段无工具，写明 [UNSOURCED] 即可）。"
+    }
+  ],
+  "expected_substrings": ["市场", "竞争", "估值"],
+  "expected_tools": []
+}
