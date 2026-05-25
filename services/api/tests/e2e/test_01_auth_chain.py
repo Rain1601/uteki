@@ -69,7 +69,7 @@ def test_auth_full_ladder(client: TestClient, alice: AuthedUser, reporter: Repor
     reporter.checked("logout → 204", lo.status_code == 204)
     reporter.checked(
         "logout response carries Set-Cookie clear",
-        "set-cookie" in {h.lower() for h in lo.headers.keys()},
+        "set-cookie" in {h.lower() for h in lo.headers},
     )
     post = client.cookies.get("uteki_refresh")
     reporter.checked("client cookie jar dropped the cookie", post is None)

@@ -77,9 +77,10 @@ def test_drift_monitor_reads_system_partition(
     different pass_rates — if check_drift mistakenly read alice's, the
     computed pass_rate would be 1.0 instead of 0.5.
     """
-    from uteki_api.eval.drift_monitor import check_drift
-    from uteki_api.eval.store import default_eval_history, EvalRecord
     import time
+
+    from uteki_api.eval.drift_monitor import check_drift
+    from uteki_api.eval.store import EvalRecord, default_eval_history
 
     now = time.time()
     week_ago = now - 7 * 86_400

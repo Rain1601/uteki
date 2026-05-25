@@ -112,11 +112,22 @@ def test_pipeline_artifact_chain(
     reporter.checked("eval-report has a decision/verdict/passed field", has_decision)
     assert has_decision
 
-    reporter.section("run finished in 'ok' or with a non-fatal error tag")
+    reporter.section("run finished cleanly")
     run = client.get(f"/api/runs/{run_id}", headers=alice.auth_header()).json()
     reporter.kv("status", run["status"])
     reporter.kv("tags", run.get("tags"))
-    # Pipeline can self-terminate via "approve" decision → ok. Acceptable.
-    assert run["status"] in ("ok", "error", "timeout"), run["status"]
+    reporter.kv("cost_usd", run["usage_summary"]["cost_usd"])
+    # The pipeline owns its own (wider) HarnessLimits — see
+    # ResearchPipeline.recommended_limits(). Under the platform default
+    # max_tool_calls=30 a real-LLM run with one revise iteration burned
+    # ~45 calls and tripped the budget; that observation drove the
+    # carve-out. status=='ok' is the contract we want to hold now.
+    reporter.checked("status == ok (pipeline's wider budget holds)",
+                     run["status"] == "ok",
+                     f"got '{run['status']}'")
+    assert run["status"] == "ok", (
+        f"pipeline status should be 'ok' under its widened budget, got '{run['status']}' — "
+        f"check ResearchPipeline.recommended_limits()"
+    )
 
     reporter.end()

@@ -28,7 +28,7 @@ from .conftest import AuthedUser, Reporter
 def test_run_list_and_get_isolation(
     client: TestClient, alice: AuthedUser, bob: AuthedUser, reporter: Reporter
 ) -> None:
-    from uteki_api.runs import default_run_store, Run
+    from uteki_api.runs import Run, default_run_store
     from uteki_api.schemas.events import AgentEvent
 
     reporter.section("seed one run for each user (in-proc RunStore)")
@@ -181,7 +181,7 @@ def test_memory_short_term_no_session_id_collision(reporter: Reporter) -> None:
 def test_eval_history_partition(
     client: TestClient, alice: AuthedUser, bob: AuthedUser, reporter: Reporter
 ) -> None:
-    from uteki_api.eval.store import default_eval_history, EvalRecord
+    from uteki_api.eval.store import EvalRecord, default_eval_history
 
     reporter.section("append eval records under three partitions")
 

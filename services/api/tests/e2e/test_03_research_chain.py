@@ -30,18 +30,16 @@ def _parse_sse(body: str) -> list[dict]:
 
     sse_starlette emits CRLF, but a plain text/event-stream over fetch can
     be either — be liberal in what we accept."""
+    import contextlib
     import re
     events: list[dict] = []
-    # Normalise to LF first, then split on the standard frame boundary.
     normalised = body.replace("\r\n", "\n")
     for raw in re.split(r"\n\n+", normalised):
         data_lines = [line[5:].strip() for line in raw.split("\n") if line.startswith("data:")]
         if not data_lines:
             continue
-        try:
+        with contextlib.suppress(json.JSONDecodeError):
             events.append(json.loads("".join(data_lines)))
-        except json.JSONDecodeError:
-            pass
     return events
 
 
@@ -69,11 +67,16 @@ def test_research_chain_end_to_end(
     if len(events) > 10:
         reporter.event(f"... + {len(events) - 10} more")
 
-    reporter.section("event contract")
+    reporter.section("event contract — mode-agnostic core")
+    # Only assert what's contractually guaranteed regardless of LLM mode:
+    # the harness wraps every run in run_start ... done and skills must
+    # yield at least one step_start + at least one delta. Mock-mode-only
+    # niceties (plan event) are skipped — usage roll-up is verified below
+    # against Run.usage_summary instead of the raw event stream.
     reporter.checked("first is run_start", events[0]["type"] == "run_start")
     reporter.checked("last is done", events[-1]["type"] == "done")
     types = {e["type"] for e in events}
-    for required in ("plan", "step_start", "delta", "usage", "done"):
+    for required in ("step_start", "delta", "done"):
         reporter.checked(f"saw {required}", required in types)
         assert required in types, f"missing {required}"
 

@@ -17,8 +17,8 @@ from __future__ import annotations
 
 import os
 import shutil
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 
 # Force test-mode env BEFORE any uteki import — config.py snapshots at
 # import time.
@@ -29,9 +29,8 @@ os.environ.setdefault("UTEKI_JWT_SECRET", "e2e-test-secret-min-32-chars-of-junk-
 TEST_DATA = Path(__file__).resolve().parent / "_data"
 os.environ["UTEKI_DB_URL"] = f"sqlite:///{TEST_DATA / 'e2e.db'}"
 
-import pytest
-from fastapi.testclient import TestClient
-
+import pytest  # noqa: E402  — env vars must land before any uteki import below
+from fastapi.testclient import TestClient  # noqa: E402
 
 # ─── data lifecycle ─────────────────────────────────────────────────
 
@@ -73,8 +72,7 @@ def client() -> Iterator[TestClient]:
     tests don't see each other's runs / memory / artifacts."""
     # Import here so the env knobs above take effect first.
     from uteki_api import main as app_main
-    from uteki_api.memory.in_memory import InMemoryStore
-    from uteki_api.runs.store import InMemoryRunStore
+    from uteki_api import memory as memory_pkg
 
     # Reset shared singletons. Every module that `from uteki_api.runs
     # import default_run_store` holds its OWN reference (it's a name
@@ -82,7 +80,8 @@ def client() -> Iterator[TestClient]:
     # plumbed into every importer or one of them will keep writing to
     # the old, now-orphaned, store.
     from uteki_api import runs as runs_pkg
-    from uteki_api import memory as memory_pkg
+    from uteki_api.memory.in_memory import InMemoryStore
+    from uteki_api.runs.store import InMemoryRunStore
 
     fresh_runs = InMemoryRunStore()
     fresh_mem = InMemoryStore()
@@ -92,8 +91,14 @@ def client() -> Iterator[TestClient]:
     from uteki_api.agents import harness as h
     from uteki_api.api import (
         agent as api_agent,
+    )
+    from uteki_api.api import (
         artifacts as api_arts,
+    )
+    from uteki_api.api import (
         compare as api_cmp,
+    )
+    from uteki_api.api import (
         runs as api_runs,
     )
     h.default_run_store = fresh_runs
