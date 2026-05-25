@@ -28,6 +28,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from uteki_api.agents.base import BaseAgent
+from uteki_api.agents.harness import HarnessLimits
 from uteki_api.schemas.chat import ChatMessage
 from uteki_api.schemas.events import AgentEvent
 
@@ -45,6 +46,26 @@ class ResearchPipeline(BaseAgent):
 
     def __init__(self, model: str | None = None) -> None:
         self.model = model
+
+    def recommended_limits(self) -> HarnessLimits:
+        # All sub-skills run under one harness, so calls + tokens + cost
+        # add up across Planner + Research(0..N) + Evaluator(0..N) + N
+        # judge sub-calls. Real-LLM observation across three runs of one
+        # revise iteration (DeepSeek + AiHubmix, 2026-05-25):
+        #   - tool_call events:  ~32-37  (need >30)
+        #   - input_tokens:      ~220-225K  (need >200K — every iteration
+        #                        re-sends accumulating context)
+        #   - output_tokens:     ~7-8.5K   (default 8192 trips at ~8.4K)
+        #   - cost:              ~$0.08-0.09  (default $1 is plenty)
+        # Widen the 4 constraints that bind in practice. Cost cap stays at
+        # platform default so a runaway loop still aborts.
+        return HarnessLimits(
+            max_steps=60,
+            max_tool_calls=120,
+            wall_time_seconds=600.0,
+            max_input_tokens=800_000,
+            max_output_tokens=32_768,
+        )
 
     def current_signature(self) -> dict[str, Any]:
         return {

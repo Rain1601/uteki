@@ -44,6 +44,11 @@ async def _build_harness(
     latest = await default_evolution_store.latest(skill.name)
     skill_version = latest.version if latest else None
 
+    # Skills that orchestrate sub-skills (e.g. research_pipeline) need a
+    # wider budget than the harness default. The skill declares what it
+    # needs via recommended_limits(); None falls back to the default.
+    limits = skill.recommended_limits()
+
     return AgentHarness(
         skill=skill,
         triggered_by="user",
@@ -51,6 +56,7 @@ async def _build_harness(
         run_store=default_run_store,
         skill_version=skill_version,
         user_id=user_id,
+        **({"limits": limits} if limits is not None else {}),
     )
 
 
@@ -62,7 +68,19 @@ async def chat(
     harness = await _build_harness(req.agent, req.model, req.session_id, user.id)
 
     async def event_source() -> AsyncIterator[dict]:
-        async for event in harness.run(req.messages, session_id=req.session_id):
-            yield {"event": event.type, "data": event.model_dump_json()}
+        # Hold a reference to the underlying async generator so we can
+        # aclose() it deterministically when the client disconnects (or
+        # any other GeneratorExit fires). Without this, sse_starlette
+        # closes us mid-`await` inside harness.run and we get
+        # "async generator ignored GeneratorExit" in the asyncio logs —
+        # functionally harmless but noisy and signals torn-down state
+        # the harness didn't get to clean up (final run_store.finish,
+        # usage rollup, etc).
+        agen = harness.run(req.messages, session_id=req.session_id)
+        try:
+            async for event in agen:
+                yield {"event": event.type, "data": event.model_dump_json()}
+        finally:
+            await agen.aclose()
 
     return EventSourceResponse(event_source())

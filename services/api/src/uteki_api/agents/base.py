@@ -17,6 +17,7 @@ from uteki_api.schemas.chat import ChatMessage
 from uteki_api.schemas.events import AgentEvent
 
 if TYPE_CHECKING:
+    from uteki_api.agents.harness import HarnessLimits
     from uteki_api.artifacts import RunArtifacts
     from uteki_api.llm.client import ToolExecutor
 
@@ -40,6 +41,17 @@ class BaseAgent(ABC):
     @abstractmethod
     def run(self, messages: list[ChatMessage]) -> AsyncIterator[AgentEvent]:
         """Yield AgentEvents (plan / step / thinking / tool_call / delta)."""
+
+    def recommended_limits(self) -> HarnessLimits | None:
+        """Skills that need a budget different from the harness default
+        return one here. Callers (e.g. ``api/agent.py``) pass it to
+        ``AgentHarness(limits=...)`` when the skill is the top-level
+        target. Return ``None`` to inherit the platform default.
+
+        Use sparingly — the default exists to keep run cost bounded. Only
+        widen when the workload genuinely needs it (e.g. a pipeline that
+        orchestrates several sub-skills under one harness)."""
+        return None
 
     def current_signature(self) -> dict[str, Any]:
         """Return a stable description of the skill's current behavior.
