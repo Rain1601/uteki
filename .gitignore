@@ -21,6 +21,12 @@ next-env.d.ts
 data/
 services/api/data/
 
+# --- Test scratch data (per-test SQLite DB, partitioned files) ---
+services/api/tests/e2e/_data/
+
+# --- Tool config (Claude Code worktree state) ---
+.claude/
+
 # --- Env files ---
 .env
 .env.*.local
