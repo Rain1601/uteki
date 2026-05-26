@@ -61,3 +61,29 @@ curl -N -X POST http://localhost:8000/api/agent/chat \
 - 生成前端共享类型：`make types`（api 须先启动）
 - 仅启 web：`make web` / 仅启 api：`make api`
 - 详细架构与 API：见 [`docs/architecture.md`](docs/architecture.md) 和 [`docs/api.md`](docs/api.md)
+- 设计文档（跨能力愿景、CC 互操作等）：[`design/`](design/)
+
+## Claude Code 接入（MCP）
+
+把 uteki 的 skill 注入 Claude Code 的工具集，让 CC 自然语言驱动研究流水线。
+设计说明：[`design/03-mcp-vs-local.md`](design/03-mcp-vs-local.md)。
+
+```bash
+# 1. 后端以匿名模式启动（MCP MVP 暂走 demo@local 兜底）
+cd services/api
+UTEKI_AUTH_REQUIRED=false uv run uvicorn uteki_api.main:app --port 8000 &
+
+# 2. 把 MCP server 注册到 CC（一次性）
+claude mcp add uteki -- /absolute/path/to/uteki/scripts/uteki-mcp.sh
+
+# 3. 验证
+claude mcp list                       # 应该看到 uteki
+```
+
+之后任意 CC 会话里，自然语言提问 uteki 就会被自动调用：
+
+```
+> 用 uteki 跑一份半导体设备板块的研究框架，然后帮我审一下
+```
+
+CC 会自动调用 `uteki_run_skill` → 轮询 `uteki_get_run` → 读取 artifacts → 给出评审。
