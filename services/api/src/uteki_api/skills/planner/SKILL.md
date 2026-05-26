@@ -59,13 +59,37 @@ Strict JSON (no Markdown fences, no trailing prose), conforming to:
 | `numeric_in_range` | a named figure must land in `[lo, hi]` | `{"name": "<label>", "lo": <num>, "hi": <num>}` |
 | `llm_judge_score` | **qualitative rubric — calls an independent LLM** to score the draft against a named rubric (correctness / coverage / style / cite_compliance). | `{"rubric": "<name>"}` — `min_score` is now ignored; threshold is rubric-defined |
 
-### Required criteria (always include)
+### `regex_in_text` 写法约定
 
-For any research request, the contract MUST include:
+写每条 pattern 时，对自己提两个问题：
+
+1. **这个 pattern 会在普通英文 / 中文 narration 里假阳性匹配吗？**
+   如果会（比如允许了 2-5 字母的通配大写串，会匹到 "PE" "TO" "NEED"
+   这类英文词），直接是错的——把通配收紧到只允许结构性 token（具体的
+   交易所后缀 `.SH`/`.SZ`、必须出现的固定子串、明确的分隔符等）。
+
+2. **这个 pattern 默认能 match 多行文本吗？**
+   Python `re` 默认 `.` 不匹配换行，所以 `^.{N,M}$` 这种"统计全文长度"
+   的写法在 markdown 上永远不通过——会变成假阴性。要数长度别用
+   `regex_in_text`，用 `numeric_in_range` 或者就不限。
+
+每条 pattern 心里默想 3 个匹配样本和 1 个反例。**反例如果在 deliverable
+里有合理出现的可能（特别是英文 stop word、罗马数字、缩写），就不能用
+那条 pattern**。
+
+### Required criteria (always include — all 5 are mandatory, no exceptions)
+
+For any research request, the contract MUST include **all of C1-C5 below**.
+Generating fewer than 5 criteria is a defect; the Evaluator will still
+run them but the contract becomes evidently incomplete to downstream
+review. Do not omit C4 or C5 because they "feel heavy" — they catch
+defects the deterministic regex verifiers can't.
 
 - **C1 — coverage of names + tickers**: at least 3 company names with their
-  ticker symbols. Use `regex_in_text` with pattern
-  `(\\d{6}\\.(SH|SZ)|[A-Z]{2,5})`.
+  ticker symbols. Use `regex_in_text` with pattern `\\d{6}\\.(SH|SZ)`
+  (A-share suffixes only — these are unambiguous structural tokens).
+  For US names if needed, add a separate criterion with
+  `\\b(NASDAQ|NYSE):\\s*[A-Z]{1,5}\\b`.
 - **C2 — fresh news evidence**: at least one `news_search` tool invocation.
   Use `tool_call_in_run` with `{"tool_name": "news_search"}`.
 - **C3 — valuation specifics**: the draft mentions concrete PE or PB

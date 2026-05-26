@@ -18,6 +18,7 @@ dependencies = [
     "bcrypt>=4.2",
     "pyjwt>=2.10",
     "email-validator>=2.2",
+    "mcp>=1.0",
 ]
 
 [dependency-groups]

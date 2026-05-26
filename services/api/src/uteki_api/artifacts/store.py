@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import time
@@ -32,7 +33,53 @@ from pathlib import Path
 
 from uteki_api.artifacts.models import Artifact, ArtifactKind, content_type_for
 
+logger = logging.getLogger(__name__)
+
 _NAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+
+
+def _strip_preamble(content: str) -> tuple[str, int, int]:
+    """Strip everything before the first top-level ``# `` heading.
+
+    Returns ``(new_content, dropped_lines, dropped_bytes)``. If the content
+    contains no top-level ``#`` heading at all, returns the input untouched
+    (no slicing; that's a different failure to surface).
+
+    Why this exists: see guardrails §5a + design/02 — DeepSeek and others
+    sometimes prepend 2-5 lines of meta-narration ("先拉取数据..." / "现在
+    直接写出最终交付物...") before the actual deliverable, despite explicit
+    prompt instructions not to. Pure-prompt mitigation hit diminishing
+    returns across 3 iterations on 2026-05-26; this deterministic strip is
+    the right fix at the seam.
+
+    Subtlety from run 4 (2026-05-26): the model sometimes **squashes**
+    preamble and title onto a single line with no newline between them
+    ("我来拉取数据...# 中国半导体设备板块"). Line-anchored matching misses
+    this. The regex below matches any ``# `` (space required to exclude
+    ``##`` subheaders) **not preceded by another ``#``**, regardless of
+    whether a newline precedes it.
+
+    Behavior:
+    - Content already starting with ``# ``: returned as-is (untouched).
+    - Top-level ``# `` found later (newline-anchored OR inline): strip
+      everything before it.
+    - Subheaders only (``## `` etc.) but no top-level ``# ``: untouched.
+    - No ``#`` at all: untouched (raw failure surfaces to reviewer).
+    """
+    if content.startswith("# "):
+        return content, 0, 0
+    # `[^#]# ` finds the first top-level "# " preceded by a non-# char.
+    # This excludes `##`+ subheaders (preceded by `#`) and matches whether
+    # the predecessor is a newline (line-anchored) or any other char
+    # (inline-squashed preamble).
+    match = re.search(r"[^#]# ", content)
+    if match is None:
+        return content, 0, 0
+    # match.start() is the non-# char; the `#` starts at +1.
+    hash_pos = match.start() + 1
+    dropped = content[:hash_pos]
+    kept = content[hash_pos:]
+    return kept, dropped.count("\n"), len(dropped.encode("utf-8"))
 
 
 def _validate_name(name: str) -> None:
@@ -174,6 +221,24 @@ class LocalFileArtifactStore(ArtifactStore):
     ) -> Artifact:
         path = self._artifact_path(run_id, name, user_id)
         path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Post-process markdown deliverables: strip any preamble before the
+        # first top-level `# ` heading. Empirically (DeepSeek-chat across
+        # 3 runs, 2026-05-26) the model writes ~3 lines of meta-narration
+        # before the actual deliverable even when guardrails §5a explicitly
+        # forbids it. Pure-prompt mitigation hit diminishing returns; a
+        # deterministic strip-at-the-seam is the correct fix.
+        # Skipped for non-markdown (JSON outputs are not header-anchored)
+        # and for markdown content that has no top-level # header at all
+        # (don't randomly slice; that's a different failure to surface).
+        if kind == "markdown" and isinstance(content, str):
+            stripped, dropped_lines, dropped_bytes = _strip_preamble(content)
+            if dropped_bytes > 0:
+                logger.info(
+                    "stripped %d-line / %d-byte preamble from %s in run %s",
+                    dropped_lines, dropped_bytes, name, run_id,
+                )
+                content = stripped
         body = content.encode("utf-8") if isinstance(content, str) else content
 
         # Atomic write: .tmp then replace.

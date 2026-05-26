@@ -12,6 +12,22 @@ judge_model_preference:
 Score 1-10 on whether the **numerical claims and direct quotes** in the
 draft are supported by `tool_result` content visible in the run trace.
 
+## 评分对象：整份 artifact 文件作为单一交付物
+
+把 artifact 文件作为单一交付物评分。**不要**从一堆混杂内容里挑出一
+段看起来像 draft 的部分单独打分。
+
+如果文件里包含：
+- agent 的思考过程（"Let me try...", "Hmm, let me count..."）
+- 字数估算 / 自评对照表
+- 多个 draft 版本并存（"Let me draft:" 出现两次以上）
+- 工作流叙述（"Step 1...", "Step 2..."）
+
+→ 这本身就是**结构性缺陷**（违反 guardrails §5a "交付物只装成品"），
+**评分必须 ≤ 4**。即使其中嵌着的"draft 段落"引用规范完美，整体文件
+作为交付物不合格就是不合格。在 rationale 里明确指出"file contains
+scratchpad/reasoning, not a clean deliverable"。
+
 ## Anchors
 
 - **10** — Every number cites a tool (`market_quote` / `financials` / `news_search`

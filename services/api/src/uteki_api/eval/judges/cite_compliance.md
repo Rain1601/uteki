@@ -17,6 +17,15 @@ Note: `pass_threshold = 8` here — this is a higher bar than `correctness`.
 The Generator was given an explicit rule; obeying ≥ 80% of the time is the
 minimum.
 
+## 评分对象：整份 artifact 文件
+
+把 artifact 文件作为单一交付物评分。**不要**从一堆混杂内容里挑出一段
+看起来像 draft 的部分单独打分。如果文件包含 agent 思考过程 / 多个
+draft / 字数自检 / 工作流叙述（即违反 `_shared/guardrails.md` §5a），
+评分**必须 ≤ 4**，理由要写明"file contains scratchpad/reasoning,
+not a clean deliverable"——因为即使引用格式完美，写成成稿后塞了一坨
+思考过程本身就是格式 / 纪律的破坏。
+
 ## Anchors
 
 - **10** — Every numeric / quoted claim has an inline reference to its tool

@@ -42,6 +42,7 @@ def init_db() -> None:
     """Create tables if missing. Idempotent. Imports models for side-effects."""
     # Import here so SQLModel metadata picks up every table-bearing class
     # without circular imports at module load time.
+    from uteki_api.runs.sql_models import RunRow  # noqa: F401
     from uteki_api.users.models import AuthIdentity, RefreshToken, User  # noqa: F401
 
     SQLModel.metadata.create_all(engine)

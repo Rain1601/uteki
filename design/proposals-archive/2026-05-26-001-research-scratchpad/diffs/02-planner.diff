@@ -1,0 +1,100 @@
+commit 9c8ee72a9da037cfebb937aeb071c2c82ecd7429
+Author: Rain1601 <rain97@vip.qq.com>
+Date:   Tue May 26 23:22:52 2026 +0800
+
+    fix(skills): guardrails §5a + planner verifier hygiene + judge rubric whole-file scoring
+    
+    Three prompt-level fixes that emerged from running /uteki-review on
+    a real-LLM run and applying the critique back to the system. Full
+    iteration chain documented in design/02-self-evolution-loop.md.
+    
+    1. _shared/guardrails.md §5a — "交付物只装成品，不装过程"
+       New section forbidding scratchpad / draft attempts / character-
+       counting / workflow narration in artifact files. Includes a hard
+       "first character must be # or substantive content" rule and a
+       short list of forbidden opening phrases ("我来...", "现在直接...",
+       "以下不含..."). Note: pure-prompt enforcement found insufficient
+       (see fix(artifacts) for the deterministic strip).
+    
+    2. skills/planner/SKILL.md — verifier hygiene
+       - C1 regex changed from `(\d{6}\.(SH|SZ)|[A-Z]{2,5})` to
+         `\d{6}\.(SH|SZ)`. The OR branch was matching English words
+         (literal observed: "to", "need", "start" — 1187 false matches
+         in one run). Loosens to add NASDAQ/NYSE in a separate criterion
+         when US names are needed.
+       - New "regex_in_text 写法约定" section teaching abstract failure
+         patterns WITHOUT showing the bad regex literally (negative-
+         example latch hazard — model copies bad pattern from warning).
+         Two questions to ask before shipping a regex: false-positive
+         on prose? matches multi-line by default?
+       - Reinforced "Required criteria" — explicitly says all 5 (C1-C5)
+         are mandatory after observing a run where planner dropped C4/C5.
+    
+    3. eval/judges/{correctness,cite_compliance}.md — whole-file scoring
+       Both rubrics now lead with "评分对象：整份 artifact 文件作为单一
+       交付物". If the file contains scratchpad / drafts / self-evaluation
+       tables, score MUST be ≤ 4 with rationale citing §5a violation.
+       Was: judges hallucinated a clean draft inside scratchpad-filled
+       files and graded that subset (9/10 in run 1 despite 80% of the
+       file being meta-narration).
+    
+    Plus: .claude/commands/uteki-review.md — frontmatter removed
+    because the slash-command discovery in CC 2.1.116 was rejecting it.
+    Body content unchanged.
+    
+    Iteration chain (real-LLM, deepseek+aihubmix, ~$2 total across 7 runs):
+      Run 1: 9/8 judges (graded wrong target), revise for wrong reason
+      Run 2: 3/3 (judges harshened), still scratchpad
+      Run 3: 3/1 (judges caught more violations), still scratchpad
+      Runs 4-5: api-restart bookkeeping issues
+      Run 6: strip works but planner regressed contract
+      Run 7: 9/9, approve, 5/5 criteria passed, file opens with `#` ✓
+    
+    Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+diff --git a/services/api/src/uteki_api/skills/planner/SKILL.md b/services/api/src/uteki_api/skills/planner/SKILL.md
+index 526e9e5..f41e0d9 100644
+--- a/services/api/src/uteki_api/skills/planner/SKILL.md
++++ b/services/api/src/uteki_api/skills/planner/SKILL.md
+@@ -59,13 +59,37 @@ Strict JSON (no Markdown fences, no trailing prose), conforming to:
+ | `numeric_in_range` | a named figure must land in `[lo, hi]` | `{"name": "<label>", "lo": <num>, "hi": <num>}` |
+ | `llm_judge_score` | **qualitative rubric — calls an independent LLM** to score the draft against a named rubric (correctness / coverage / style / cite_compliance). | `{"rubric": "<name>"}` — `min_score` is now ignored; threshold is rubric-defined |
+ 
+-### Required criteria (always include)
++### `regex_in_text` 写法约定
+ 
+-For any research request, the contract MUST include:
++写每条 pattern 时，对自己提两个问题：
++
++1. **这个 pattern 会在普通英文 / 中文 narration 里假阳性匹配吗？**
++   如果会（比如允许了 2-5 字母的通配大写串，会匹到 "PE" "TO" "NEED"
++   这类英文词），直接是错的——把通配收紧到只允许结构性 token（具体的
++   交易所后缀 `.SH`/`.SZ`、必须出现的固定子串、明确的分隔符等）。
++
++2. **这个 pattern 默认能 match 多行文本吗？**
++   Python `re` 默认 `.` 不匹配换行，所以 `^.{N,M}$` 这种"统计全文长度"
++   的写法在 markdown 上永远不通过——会变成假阴性。要数长度别用
++   `regex_in_text`，用 `numeric_in_range` 或者就不限。
++
++每条 pattern 心里默想 3 个匹配样本和 1 个反例。**反例如果在 deliverable
++里有合理出现的可能（特别是英文 stop word、罗马数字、缩写），就不能用
++那条 pattern**。
++
++### Required criteria (always include — all 5 are mandatory, no exceptions)
++
++For any research request, the contract MUST include **all of C1-C5 below**.
++Generating fewer than 5 criteria is a defect; the Evaluator will still
++run them but the contract becomes evidently incomplete to downstream
++review. Do not omit C4 or C5 because they "feel heavy" — they catch
++defects the deterministic regex verifiers can't.
+ 
+ - **C1 — coverage of names + tickers**: at least 3 company names with their
+-  ticker symbols. Use `regex_in_text` with pattern
+-  `(\\d{6}\\.(SH|SZ)|[A-Z]{2,5})`.
++  ticker symbols. Use `regex_in_text` with pattern `\\d{6}\\.(SH|SZ)`
++  (A-share suffixes only — these are unambiguous structural tokens).
++  For US names if needed, add a separate criterion with
++  `\\b(NASDAQ|NYSE):\\s*[A-Z]{1,5}\\b`.
+ - **C2 — fresh news evidence**: at least one `news_search` tool invocation.
+   Use `tool_call_in_run` with `{"tool_name": "news_search"}`.
+ - **C3 — valuation specifics**: the draft mentions concrete PE or PB
