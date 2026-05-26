@@ -37,13 +37,35 @@ class UtekiClient:
     async def aclose(self) -> None:
         await self._client.aclose()
 
+    def _wrap_connect_error(self, e: httpx.ConnectError) -> RuntimeError:
+        """Translate connection-refused into a human-readable error.
+
+        Observed in the wild: when the uteki API isn't running, some local
+        environments (corporate proxies, transparent caches, etc.) return
+        a misleading 5xx instead of a clean refused connection, and the
+        underlying httpx exception text isn't actionable for the calling
+        agent. This wrapper makes the diagnosis trivial: "API isn't on".
+        """
+        return RuntimeError(
+            f"uteki API not reachable at {self.base_url} — "
+            f"is it running? (start it with "
+            f"`uv run uvicorn uteki_api.main:app --port 8000` in services/api). "
+            f"underlying: {e!r}"
+        )
+
     async def _get(self, path: str, **kwargs: Any) -> Any:
-        r = await self._client.get(f"{self.base_url}{path}", **kwargs)
+        try:
+            r = await self._client.get(f"{self.base_url}{path}", **kwargs)
+        except httpx.ConnectError as e:
+            raise self._wrap_connect_error(e) from e
         r.raise_for_status()
         return r.json()
 
     async def _post(self, path: str, **kwargs: Any) -> Any:
-        r = await self._client.post(f"{self.base_url}{path}", **kwargs)
+        try:
+            r = await self._client.post(f"{self.base_url}{path}", **kwargs)
+        except httpx.ConnectError as e:
+            raise self._wrap_connect_error(e) from e
         r.raise_for_status()
         return r.json()
 
