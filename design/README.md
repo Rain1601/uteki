@@ -22,6 +22,7 @@
 | [`01-claude-code-interop.md`](./01-claude-code-interop.md) | 设计空间探索 | uteki 与 Claude Code 互操作的 3 个方向 |
 | [`02-self-evolution-loop.md`](./02-self-evolution-loop.md) | 详细提案 | 用 Claude Code 作为外部 reviewer 的 self-evolution 闭环 |
 | [`03-mcp-vs-local.md`](./03-mcp-vs-local.md) | 认知澄清 | 为什么用 MCP 而不是 script/HTTP/直读——MCP 的价值在 CC 推理层，不在传输层 |
+| [`04-mcp-real-smoke.md`](./04-mcp-real-smoke.md) | 验证手册 | MCP server 在真 claude CLI 下的 60 秒接入步骤 + 实测结果 + 已知陷阱 |
 
 ## 文档生命周期
 
