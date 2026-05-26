@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     # ── M4: auth + storage ───────────────────────────────────────────────
     # SQLite by default; flip to postgresql://... for prod.
     db_url: str = "sqlite:///data/uteki.db"
+    # RunStore backend: "memory" (process-local, faster, dies on restart) vs
+    # "sqlite" (durable, visible across processes — required for MCP server
+    # to read runs created by the HTTP server). Tests use "memory" via the
+    # conftest singleton-rebind pattern regardless of this setting.
+    run_store: str = "sqlite"
     # HS256 signing key for JWTs. Generate a 32+ char random in prod.
     jwt_secret: str = "dev-secret-change-me"
     # Lifetimes
@@ -101,6 +106,7 @@ settings = Settings(
     deepseek_api_key=os.getenv("DEEPSEEK_API_KEY") or "",
     deepseek_base_url=os.getenv("DEEPSEEK_BASE_URL") or "",
     db_url=os.getenv("UTEKI_DB_URL") or "sqlite:///data/uteki.db",
+    run_store=(os.getenv("UTEKI_RUN_STORE") or "sqlite").lower(),
     jwt_secret=os.getenv("UTEKI_JWT_SECRET") or "dev-secret-change-me",
     auth_required=_envflag("UTEKI_AUTH_REQUIRED", True),
     github_client_id=os.getenv("GITHUB_CLIENT_ID") or "",
