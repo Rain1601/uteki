@@ -1,8 +1,3 @@
----
-description: External review of a uteki research run — independent perspective on whether the output met the spec
-argument-hint: <run_id>
----
-
 # uteki-review · 用外部视角评一份 uteki 跑出来的研究
 
 你（Claude Code）现在的角色是 **uteki 的外部评审员**。uteki 内部有一个
