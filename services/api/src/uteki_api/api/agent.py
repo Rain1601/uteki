@@ -1,14 +1,23 @@
-"""POST /api/agent/chat — Server-Sent Events stream of AgentEvents.
+"""POST /api/agent/chat   — Server-Sent Events stream of AgentEvents.
+POST /api/agent/start    — fire-and-forget; returns {run_id} immediately.
 
 Resolves the requested `agent` against the skill registry (falling back to
 "research"), binds the latest evolution version, and wires the harness to
 the default RunStore. (M4) Runs are tagged with the calling user's id so
 isolation works downstream.
+
+The /chat endpoint is what the web client uses (it wants the SSE stream).
+The /start endpoint is what the MCP server uses: MCP tool calls have to
+return promptly (typically <30s), so we kick off the harness, capture the
+run_id from the first event (run_start), then keep draining the async
+generator in a background task. Callers poll /api/runs/{id} for state.
 """
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
+import logging
 from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Depends
@@ -22,7 +31,12 @@ from uteki_api.schemas.chat import ChatRequest
 from uteki_api.skills import default_skills
 from uteki_api.users.models import User
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/agent", tags=["agent"])
+
+# Holds in-flight background harness tasks so they aren't garbage-collected
+# mid-run. Tasks remove themselves on completion via the done_callback.
+_inflight_runs: set[asyncio.Task] = set()
 
 
 async def _build_harness(
@@ -84,3 +98,43 @@ async def chat(
             await agen.aclose()
 
     return EventSourceResponse(event_source())
+
+
+@router.post("/start")
+async def start(
+    req: ChatRequest,
+    user: User = Depends(current_user),
+) -> dict:
+    """Kick off a run, return ``{run_id}`` immediately; harness keeps
+    running in a background asyncio task.
+
+    Designed for the MCP server (and other non-streaming clients) — MCP
+    tool-call responses have to come back promptly, but a pipeline run
+    can take 2+ minutes. The first event the harness yields is always
+    ``run_start`` with the freshly-allocated run_id, so we can pull
+    that synchronously and hand off the rest of the stream to a task.
+    """
+    harness = await _build_harness(req.agent, req.model, req.session_id, user.id)
+    agen = harness.run(req.messages, session_id=req.session_id)
+
+    # First yield is run_start — happens after harness creates the Run
+    # row but before it awaits the skill's first event. Pulls in ~ms.
+    first = await agen.__anext__()
+    run_id = first.run_id or ""
+
+    async def _drain() -> None:
+        try:
+            async for _ev in agen:
+                pass
+        except Exception as e:  # noqa: BLE001 — log & swallow; harness
+            # already wrote an error event to the store in normal paths.
+            logger.exception("background drain failed for run %s: %s", run_id, e)
+        finally:
+            with contextlib.suppress(Exception):
+                await agen.aclose()
+
+    task = asyncio.create_task(_drain(), name=f"run-{run_id}")
+    _inflight_runs.add(task)
+    task.add_done_callback(_inflight_runs.discard)
+
+    return {"run_id": run_id, "agent": req.agent, "status": "running"}
