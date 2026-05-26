@@ -1,0 +1,134 @@
+commit 6520ddb7b97c4356a8cfbc1e7f0340692d772b1a
+Author: Rain1601 <rain97@vip.qq.com>
+Date:   Tue May 26 23:22:17 2026 +0800
+
+    fix(artifacts): strip meta-narration preamble before first # heading
+    
+    DeepSeek-chat and similar models reliably prepend 2-5 lines of
+    meta-narration to markdown deliverables ("先拉取数据..." / "现在直接
+    写出最终交付物，不含任何过程性文字") despite explicit prompt rules
+    (guardrails §5a) forbidding it. Three iterations of strengthening
+    the prompt across 2026-05-26 hit diminishing returns — the model
+    quotes the rule back while violating it in the same paragraph.
+    
+    This is the deterministic fix at the seam: LocalFileArtifactStore.
+    write() now calls _strip_preamble() on kind=markdown writes.
+    
+    Behavior:
+    - Content already starting with "# ": untouched
+    - Content with "# " heading later (newline-anchored OR inline-
+      squashed onto preamble's line — run 4 observed mode): strip
+      everything before the first "# "
+    - Subheaders only (## etc.) without a top-level #: untouched
+    - No # at all: untouched (raw failure surfaces to reviewer rather
+      than getting silently empty file)
+    
+    Match rule uses [^#]# (non-# char immediately before "# ") so
+    "##"/"###"/etc subheaders don't false-trigger. Logs stripped
+    line/byte count on every actual strip.
+    
+    Verification across runs:
+    - Run 6 (just-after-deploy): final-research.md opens with
+      "# 中国半导体设备板块" on line 1 — preamble gone
+    - Tests: 11 cases including all observed failure modes (newline-
+      anchored, inline-squashed, phantom ## + real #, edge cases)
+    
+    Caveat documented in tests: aggressive enough to false-strip if
+    a research note legitimately has "# " mid-line. Acceptable —
+    research markdown convention is heading-per-line.
+    
+    Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+diff --git a/services/api/src/uteki_api/artifacts/store.py b/services/api/src/uteki_api/artifacts/store.py
+index a0d4870..6c3dd12 100644
+--- a/services/api/src/uteki_api/artifacts/store.py
++++ b/services/api/src/uteki_api/artifacts/store.py
+@@ -24,6 +24,7 @@ from __future__ import annotations
+ 
+ import hashlib
+ import json
++import logging
+ import os
+ import re
+ import time
+@@ -32,9 +33,55 @@ from pathlib import Path
+ 
+ from uteki_api.artifacts.models import Artifact, ArtifactKind, content_type_for
+ 
++logger = logging.getLogger(__name__)
++
+ _NAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+ 
+ 
++def _strip_preamble(content: str) -> tuple[str, int, int]:
++    """Strip everything before the first top-level ``# `` heading.
++
++    Returns ``(new_content, dropped_lines, dropped_bytes)``. If the content
++    contains no top-level ``#`` heading at all, returns the input untouched
++    (no slicing; that's a different failure to surface).
++
++    Why this exists: see guardrails §5a + design/02 — DeepSeek and others
++    sometimes prepend 2-5 lines of meta-narration ("先拉取数据..." / "现在
++    直接写出最终交付物...") before the actual deliverable, despite explicit
++    prompt instructions not to. Pure-prompt mitigation hit diminishing
++    returns across 3 iterations on 2026-05-26; this deterministic strip is
++    the right fix at the seam.
++
++    Subtlety from run 4 (2026-05-26): the model sometimes **squashes**
++    preamble and title onto a single line with no newline between them
++    ("我来拉取数据...# 中国半导体设备板块"). Line-anchored matching misses
++    this. The regex below matches any ``# `` (space required to exclude
++    ``##`` subheaders) **not preceded by another ``#``**, regardless of
++    whether a newline precedes it.
++
++    Behavior:
++    - Content already starting with ``# ``: returned as-is (untouched).
++    - Top-level ``# `` found later (newline-anchored OR inline): strip
++      everything before it.
++    - Subheaders only (``## `` etc.) but no top-level ``# ``: untouched.
++    - No ``#`` at all: untouched (raw failure surfaces to reviewer).
++    """
++    if content.startswith("# "):
++        return content, 0, 0
++    # `[^#]# ` finds the first top-level "# " preceded by a non-# char.
++    # This excludes `##`+ subheaders (preceded by `#`) and matches whether
++    # the predecessor is a newline (line-anchored) or any other char
++    # (inline-squashed preamble).
++    match = re.search(r"[^#]# ", content)
++    if match is None:
++        return content, 0, 0
++    # match.start() is the non-# char; the `#` starts at +1.
++    hash_pos = match.start() + 1
++    dropped = content[:hash_pos]
++    kept = content[hash_pos:]
++    return kept, dropped.count("\n"), len(dropped.encode("utf-8"))
++
++
+ def _validate_name(name: str) -> None:
+     """Reject any name that could escape its artifact directory.
+ 
+@@ -174,6 +221,24 @@ class LocalFileArtifactStore(ArtifactStore):
+     ) -> Artifact:
+         path = self._artifact_path(run_id, name, user_id)
+         path.parent.mkdir(parents=True, exist_ok=True)
++
++        # Post-process markdown deliverables: strip any preamble before the
++        # first top-level `# ` heading. Empirically (DeepSeek-chat across
++        # 3 runs, 2026-05-26) the model writes ~3 lines of meta-narration
++        # before the actual deliverable even when guardrails §5a explicitly
++        # forbids it. Pure-prompt mitigation hit diminishing returns; a
++        # deterministic strip-at-the-seam is the correct fix.
++        # Skipped for non-markdown (JSON outputs are not header-anchored)
++        # and for markdown content that has no top-level # header at all
++        # (don't randomly slice; that's a different failure to surface).
++        if kind == "markdown" and isinstance(content, str):
++            stripped, dropped_lines, dropped_bytes = _strip_preamble(content)
++            if dropped_bytes > 0:
++                logger.info(
++                    "stripped %d-line / %d-byte preamble from %s in run %s",
++                    dropped_lines, dropped_bytes, name, run_id,
++                )
++                content = stripped
+         body = content.encode("utf-8") if isinstance(content, str) else content
+ 
+         # Atomic write: .tmp then replace.

@@ -1,0 +1,105 @@
+commit 9c8ee72a9da037cfebb937aeb071c2c82ecd7429
+Author: Rain1601 <rain97@vip.qq.com>
+Date:   Tue May 26 23:22:52 2026 +0800
+
+    fix(skills): guardrails §5a + planner verifier hygiene + judge rubric whole-file scoring
+    
+    Three prompt-level fixes that emerged from running /uteki-review on
+    a real-LLM run and applying the critique back to the system. Full
+    iteration chain documented in design/02-self-evolution-loop.md.
+    
+    1. _shared/guardrails.md §5a — "交付物只装成品，不装过程"
+       New section forbidding scratchpad / draft attempts / character-
+       counting / workflow narration in artifact files. Includes a hard
+       "first character must be # or substantive content" rule and a
+       short list of forbidden opening phrases ("我来...", "现在直接...",
+       "以下不含..."). Note: pure-prompt enforcement found insufficient
+       (see fix(artifacts) for the deterministic strip).
+    
+    2. skills/planner/SKILL.md — verifier hygiene
+       - C1 regex changed from `(\d{6}\.(SH|SZ)|[A-Z]{2,5})` to
+         `\d{6}\.(SH|SZ)`. The OR branch was matching English words
+         (literal observed: "to", "need", "start" — 1187 false matches
+         in one run). Loosens to add NASDAQ/NYSE in a separate criterion
+         when US names are needed.
+       - New "regex_in_text 写法约定" section teaching abstract failure
+         patterns WITHOUT showing the bad regex literally (negative-
+         example latch hazard — model copies bad pattern from warning).
+         Two questions to ask before shipping a regex: false-positive
+         on prose? matches multi-line by default?
+       - Reinforced "Required criteria" — explicitly says all 5 (C1-C5)
+         are mandatory after observing a run where planner dropped C4/C5.
+    
+    3. eval/judges/{correctness,cite_compliance}.md — whole-file scoring
+       Both rubrics now lead with "评分对象：整份 artifact 文件作为单一
+       交付物". If the file contains scratchpad / drafts / self-evaluation
+       tables, score MUST be ≤ 4 with rationale citing §5a violation.
+       Was: judges hallucinated a clean draft inside scratchpad-filled
+       files and graded that subset (9/10 in run 1 despite 80% of the
+       file being meta-narration).
+    
+    Plus: .claude/commands/uteki-review.md — frontmatter removed
+    because the slash-command discovery in CC 2.1.116 was rejecting it.
+    Body content unchanged.
+    
+    Iteration chain (real-LLM, deepseek+aihubmix, ~$2 total across 7 runs):
+      Run 1: 9/8 judges (graded wrong target), revise for wrong reason
+      Run 2: 3/3 (judges harshened), still scratchpad
+      Run 3: 3/1 (judges caught more violations), still scratchpad
+      Runs 4-5: api-restart bookkeeping issues
+      Run 6: strip works but planner regressed contract
+      Run 7: 9/9, approve, 5/5 criteria passed, file opens with `#` ✓
+    
+    Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+diff --git a/services/api/src/uteki_api/skills/_shared/guardrails.md b/services/api/src/uteki_api/skills/_shared/guardrails.md
+index cbb3cee..10c2645 100644
+--- a/services/api/src/uteki_api/skills/_shared/guardrails.md
++++ b/services/api/src/uteki_api/skills/_shared/guardrails.md
+@@ -88,6 +88,46 @@ step.
+ 
+ ## 5. Output format
+ 
++### 5a. 交付物只装"成品"，不装"过程"
++
++你写到 artifact 文件（`final-research.md` / `eval-report.json` / 任何
++通过 `self.artifacts.write(...)` 落盘的内容）**必须只包含读者要看的最终
++版本**——不能包含你的草稿、字数估算、自我评分对照表、"让我重写一次"
++之类的过程话。读者拿到的是交付物，不是你的工作日志。
++
++#### 硬规则：第一个字符
++
++**artifact 的第一个非空白字符必须是 `#`（markdown 标题）或正文本身**。
++不允许：
++- "我来拉取数据..." / "好的，下面是..." / "让我先..." 的前导自语
++- "数据已收集完毕，现在开始撰写..." 的过渡话
++- **"以下内容不含任何过程性文字"或任何对本规则的元宣言**——宣告自己
++  在遵守规则的话本身就是违规。直接遵守，不要宣告。
++
++#### 禁止的开头（真实失败样本，2026-05-26）
++
++```
++我来拉取数据，然后直接给出最终交付物，不含任何过程性文字。
++先并行拉取主要本土半导体设备公司的行情和财务数据...
++数据已全部收集完毕。现在直接写出最终交付物，不含任何过程性文字。
++---
++# 中国半导体设备板块 — 精简研究框架
++...
++```
++
++上面前 3 行是缺陷。**正确版本是直接以 `# 中国半导体设备板块` 开头**，
++前面什么都不要。
++
++#### 自检方法
++
++写完最终内容、按 enter 之前，看一眼最前面几行：
++- 第一行以 `#` 开头吗？✓ 不是？删
++- 第一段是研究/判断的实质内容吗？✓ 不是？删
++- 出现"让我..."/"现在..."/"以下..."/"我会..."等元话？删
++
++思考过程通过 `thinking` 事件流外溢（harness 会捕获），不是 artifact
++内容。中间过程写出来 = 缺陷，跟未引用数字同等严重。
++
+ - Final answer in Markdown.
+ - Top-level `##` headers map to the plan's named steps.
+ - Numbers belong in tables, not in narrative.
