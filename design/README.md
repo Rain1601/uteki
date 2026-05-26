@@ -23,7 +23,8 @@
 | [`02-self-evolution-loop.md`](./02-self-evolution-loop.md) | 详细提案 | 用 Claude Code 作为外部 reviewer 的 self-evolution 闭环 |
 | [`03-mcp-vs-local.md`](./03-mcp-vs-local.md) | 认知澄清 | 为什么用 MCP 而不是 script/HTTP/直读——MCP 的价值在 CC 推理层，不在传输层 |
 | [`04-mcp-real-smoke.md`](./04-mcp-real-smoke.md) | 验证手册 | MCP server 在真 claude CLI 下的 60 秒接入步骤 + 实测结果 + 已知陷阱 |
-| [`05-roadmap-to-v1.md`](./05-roadmap-to-v1.md) | **路线图（live spec）** | 现在 → v1 终态的 5 phase 排程，每个 phase 带可见的"标靶 demo"。**这是当前的工作总纲**。 |
+| [`05-roadmap-to-v1.md`](./05-roadmap-to-v1.md) | **路线图（live spec）** | 现在 → v1 终态的 5 phase 排程，每个 phase 带可见的"标靶 demo"。US-only 数据栈。**当前的工作总纲**。 |
+| [`06-agent-flow-demo.md`](./06-agent-flow-demo.md) | **运行图谱** | 端到端 agent 流程：13 节点 single run + 7 节点 self-evolution loop + 4 个跨节点不变量 + 8 个关键设计决策（"为什么 X 不 Y"） |
 | [`proposals-archive/`](./proposals-archive/) | 案例库 | self-evolution loop 的真实样本归档；自动化 proposal-store 落地前的人工演练记录 |
 
 ## 文档生命周期

@@ -135,6 +135,9 @@ Adopt?  [y/n] y
 
 ## Phase 2 · 真实工具接入（2-3 周）⚠ 需要数据决策
 
+> **2026-05-27 决策**：v1 **US-only**。放弃 A 股市场，原因：数据质量与
+> 一致性问题严重，做出来的研究质量上限低。集中火力做美股。
+
 **真实数据需要？** ✅ 这就是数据集成阶段。
 
 ### 标靶 demo
@@ -142,74 +145,97 @@ Adopt?  [y/n] y
 跑完 Phase 2，**研究的产出长这样**（不是 mock 数据，是真实数据驱动）：
 
 ```markdown
-# 中国半导体设备板块 — 精简研究框架
+# AI Infrastructure Semiconductors — Research Framework
 
-## 一、市场规模与增长（2023-2025）
+## I. Market & growth (2023-2025)
 
-中国半导体设备 2024 年市场规模 **¥1,847 亿** [^1]，YoY +27%，国产化率
-**24.3%**（2024 Q4）[^2]。SEMI 预测 2025 年全球设备市场 $123.5B [^3]，
-中国占比稳定在 30-32% 区间。
+AI accelerator market reached **$74B in 2024** [^1], up 142% YoY,
+driven by hyperscaler capex doubling [^2]. Gartner projects **$157B
+by 2027** at 28% CAGR [^3]. NVIDIA captured ~85% of data-center GPU
+revenue in CY2024 [^4]; AMD MI300 ramping ($5.1B FY24 [^5]).
 
-## 二、主要本土玩家
+## II. Main public players
 
-| 公司 | 代码 | 2024 营收 | YoY | PE-TTM | 数据日期 |
-|------|------|----------|-----|--------|---------|
-| 北方华创 | 002371.SZ | ¥221.79亿 [^4] | +33.7% | 41.2x [^4] | 2025-03-31 |
-| 中微公司 | 688012.SH | ¥62.7亿 [^4]  | +27.8% | 78.5x [^4] | 2025-03-31 |
+| Company | Ticker | FY24 Revenue | YoY | PE-TTM | Data as-of |
+|---------|--------|-------------|-----|--------|------------|
+| NVIDIA  | NVDA   | $130.5B [^6] | +114% | 48.2x [^6] | 2025-03-31 |
+| AMD     | AMD    | $25.8B [^6]  | +14%  | 31.7x [^6] | 2025-03-31 |
+| Broadcom | AVGO  | $51.6B [^6]  | +44%  | 38.4x [^6] | 2025-03-31 |
+| TSMC    | TSM    | $90.0B [^6]  | +30%  | 22.1x [^6] | 2024-12-31 |
 | ...
 
-## 数据来源
+## Sources
 
-[^1]: tushare:industry_revenue, query='半导体设备', period='2024', fetched 2026-05-27
-[^2]: 国家工信部, 2024 Q4 半导体设备国产化率报告 (web_extract:moe.gov.cn/...)
-[^3]: SEMI, 2025 World Fab Forecast (web_extract:semi.org/...)
-[^4]: tushare:financials, ticker='002371.SZ', as_of='2025-03-31'
+[^1]: SEC EDGAR — NVDA 10-K FY24 (fetched 2026-05-27)
+[^2]: web_extract: AWS/Azure/GCP Q4 earnings calls, capex commentary
+[^3]: Gartner press release 2024-Q4 (web_extract:gartner.com/...)
+[^4]: Mercury Research Q4 2024 GPU shipment data (news_search)
+[^5]: SEC EDGAR — AMD 10-K FY24, segment disclosure
+[^6]: yfinance ticker.info, fetched 2026-05-27 14:32 UTC
 ```
 
 **对比 Phase 1 阶段的 mock 数据**：
 
 | 项目 | Phase 1 (mock) | Phase 2 (real) |
 |---|---|---|
-| 北方华创 PE | 59.5x（固定字符串）| 41.2x（tushare 实时） |
-| 市场规模 | "[UNSOURCED] 亿元" | "¥1,847 亿" 带源 |
+| NVDA PE | "59.5x"（固定字符串）| 48.2x（yfinance 实时） |
+| 市场规模 | "[UNSOURCED] 亿元" | "$74B in 2024 [^1]" 带源 |
 | 数据日期 | 永远是 "2025" 字符串 | 真实 fetched_at timestamp |
-| 引用 | "tool:market_quote" 无来源 | 具体 query + as_of |
+| 引用 | "tool:market_quote" 无来源 | SEC EDGAR + yfinance + as_of |
 | **CC critique 能 review 的内容** | 仅格式 | 数据准确性 + 推理合理性 |
 
-### 🚨 必须先决定的 5 个数据问题
+### US-only 数据栈
 
-| Q | 决策 | 默认建议 |
-|---|---|---|
-| Q1 | A 股 / 港股数据：tushare pro 标准版（¥2000/年）还是 akshare（免费但不稳）？ | **tushare pro** |
-| Q2 | 全球行情：yfinance（免费）够吗？ | **够**，需代理 |
-| Q3 | 中文财经新闻：自建抓 wallstreetcn / 财联社 还是采购？ | **自建抓** |
-| Q4 | 月度数据预算上限 | **$50/月**（Tavily $30 + 其余年付摊销）|
-| Q5 | 美股深度（SEC 全文 + 10 年历史）必要？ | **暂不**，v1 中国为主 |
+放弃 A 股之后，数据源大幅简化。**4 个 provider，月成本 ~$44**：
 
-按默认选项：**总成本 ~$50/月 + ¥2000 年付**。
+| 工具组 | Provider | 覆盖 | 费用 | 备注 |
+|---|---|---|---|---|
+| **行情** (market_quote, kline) | **yfinance** | US + 全球主要市场，延迟 15min | $0 | rate-limited，但日常 retail 量够；prod 量大再换 polygon |
+| **财报数据** (financials) | **FMP basic** | US 公司 income/balance/cashflow + ratios + insider | $14/月 | 全面 + REST + 适合 LLM tool 接口 |
+| **法定文件** (report_analysis) | **SEC EDGAR** | 10-K / 10-Q / 8-K / S-1 全文 | $0 | 官方源 + 法律可信度满分 |
+| **新闻 + 搜索** (news_search, web_search) | **Tavily** | LLM-optimized search，AP/Reuters/Bloomberg 等 | $30/月 | 直接返回 markdown + 引用 |
+| **HTML 抓取** (web_extract) | 自建 (httpx + readability-lxml) | 任意 URL → clean markdown | $0 | 兜底 |
+
+**总月度 $44**（Tavily $30 + FMP $14）。年 ~$528。
+
+### 🚨 数据决策（4 个，去掉了 A 股相关的）
+
+| Q | 决策 | 默认建议 | 影响 |
+|---|---|---|---|
+| Q1 | yfinance（免费）够还是直接上 polygon ($99/月)？ | **yfinance 起步**，量大或需要 real-time 再换 polygon | 成本 vs 数据新鲜度 |
+| Q2 | FMP basic ($14/月) 还是 FMP premium ($50/月，含历史 30 年 + 全球）？ | **basic**，v1 不需要 30 年历史 | 财报深度 |
+| Q3 | 新闻：Tavily 还是 newsapi.org ($449/月 business)？ | **Tavily**，LLM-optimized 直接好用 | 新闻质量 |
+| Q4 | 月度数据预算上限 | **$50/月** | hard cap |
+
+**默认全选**：4 决策都走默认 → **$44/月 + 无年付**。是最轻的可行解。
 
 ### 任务列表
 
 | # | Task | 验收点 |
 |---|---|---|
-| 2.1 | 数据源决策（Q1-Q5）+ 测试账号 | tushare API 能拉到 002371.SZ |
-| 2.2 | `market_quote` 接 tushare + yfinance | 真实股价返回 |
-| 2.3 | `kline` 接同上 + 缓存（日线 24h，分钟线 5min） | curl 拉到当日真实 K 线 |
-| 2.4 | `financials` 接 tushare（详尽）+ yfinance（简版） | 北方华创 2024 营收 = ¥221.79亿 |
-| 2.5 | `news_search` 接 newsapi + 自建中文抓取 | 拉到 2026 年关于半导体的真实新闻 |
-| 2.6 | `report_analysis` 接巨潮 + SEC EDGAR + pypdf 解析 | 能抓 002371.SZ 2024 年报全文 |
-| 2.7 | `web_search` 接 Tavily | 真实搜索结果 + 摘要 |
-| 2.8 | `web_extract` 用 httpx + readability-lxml | URL → clean markdown |
+| 2.1 | 数据源决策（Q1-Q4）+ 测试 API key | yfinance 拉到 NVDA；FMP 拉到 AVGO income statement；Tavily 搜出近 30d 新闻 |
+| 2.2 | `market_quote` 接 yfinance | curl 返回 NVDA 当日价格 + market_cap + PE |
+| 2.3 | `kline` 接 yfinance + Redis 缓存（日线 24h，分钟线 5min） | curl 拉到 NVDA 30 日 K 线 |
+| 2.4 | `financials` 接 FMP basic（income/balance/cashflow 三表 + ratios） | NVDA FY24 revenue=$130.5B，AMD FY24=$25.8B |
+| 2.5 | `news_search` 接 Tavily | 拉到关于 "Blackwell shipping ramp" 的近 30d 新闻 |
+| 2.6 | `report_analysis` 接 SEC EDGAR + pypdf 解析 10-K | 能抓 NVDA 2024 10-K 全文 + 解析风险因素章节 |
+| 2.7 | `web_search` 接 Tavily（与 news_search 共享 API key） | 通用搜索返回 LLM-friendly markdown |
+| 2.8 | `web_extract` 用 httpx + readability-lxml | 任意 URL → clean markdown |
 | 2.9 | Tool result trust signals | `ToolResult` 新增 `{provenance, fetched_at, freshness, confidence}` |
-| 2.10 | Per-user 配额追踪 + 月度费用累积 | `/api/users/me/usage` 返回当月 cost + per-tool 调用数 |
-| 2.11 | 真实数据 + Phase 1 跑全闭环 | 3 个真实数据 case 自动 evolved → 看到 critique 提及"数据陈旧"等真实问题 |
+| 2.10 | Per-user 配额追踪 + 月度费用累积 | `/api/users/me/usage` 返回当月 cost + per-tool 调用数 + per-data-provider 调用数 |
+| 2.11 | 真实数据 + Phase 1 跑全闭环 | 3 个真实 US 数据 case 自动 evolved → critique 提及"数据陈旧"/"引用 SEC 文件却没引具体段落"等真实问题 |
 
 ### Gate
 
-**Demo 输出标准**：跑 research_pipeline("半导体设备板块研究框架") →
-final-research.md 包含至少 5 个真实数字 + 5 个 `[^N]` 形式的源引用 +
-每个引用能 click 追溯到具体工具调用 + judge score correctness ≥ 8 +
-**Phase 1 的 self-evolution loop 现在 review 的是数据质量，不是格式**。
+**Demo 输出标准**：跑 `research_pipeline("AI infrastructure semiconductors framework, focus NVDA AMD AVGO TSM, 500-800 words")` →
+- final-research.md 包含 ≥ 5 个真实数字 + ≥ 5 个 `[^N]` 形式源引用
+- 每个引用能追溯到具体 SEC filing URL / yfinance ticker + as_of timestamp
+- judge_correctness ≥ 8, judge_cite_compliance ≥ 8
+- **Phase 1 的 self-evolution loop 此时 review 的是数据准确性 + 引用规范，不再是格式**
+
+**回归测试**：把同样问题给 mock 模式跑——Phase 1 的 review 应该指出"数据
+缺失"作为最大问题（因为 mock 工具不返回真值）。这反过来验证了 evaluator
+能识别"工具拿到了什么"vs"工具应该拿到什么"。
 
 ---
 
@@ -394,7 +420,7 @@ Week 13+   Phase 5 — Ecosystem (持续)
 
 | 决策 | 截止时间 | 默认 | 影响 |
 |---|---|---|---|
-| Q1-Q5 数据源 | Phase 2 开始前（Week 4）| 默认见 Phase 2 | 月成本 + 数据质量 |
+| Q1-Q4 数据源（US-only） | Phase 2 开始前（Week 4）| yfinance + FMP basic + Tavily + 自建 web_extract → ~$44/月 | 月成本 + 数据新鲜度 |
 | Mobile 优先 iOS or Android | Phase 4 开始前（Week 9）| iOS | 仅一个端先做 |
 | Phase 5 哪一项优先 | Phase 5 开始前 | 5.1 (memory) | 长期方向 |
 
