@@ -24,10 +24,12 @@ services/api/data/
 # --- Test scratch data (per-test SQLite DB, partitioned files) ---
 services/api/tests/e2e/_data/
 
-# --- Tool config (Claude Code worktree state, but keep shared commands) ---
-.claude/
-!.claude/commands/
-!.claude/commands/**
+# --- Tool config (.claude/ — keep shared commands, ignore transient state) ---
+# Negation patterns can't re-include a file inside an ignored directory, so
+# we invert: include .claude/ generally, ignore only the transient bits.
+.claude/scheduled_tasks.lock
+.claude/sessions/
+.claude/local/
 
 # --- Env files ---
 .env
