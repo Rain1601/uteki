@@ -18,7 +18,9 @@ skill's `_mock_run` branch.
 
 from __future__ import annotations
 
+import asyncio
 import json
+import time
 
 from fastapi.testclient import TestClient
 
@@ -114,6 +116,61 @@ def test_research_chain_end_to_end(
     reporter.checked("contains done", persisted_types[-1] == "done")
     assert persisted_types[0] == "run_start"
     assert persisted_types[-1] == "done"
+
+    reporter.end()
+
+
+def test_reader_can_view_run_trace_but_cannot_operate_agent(
+    client: TestClient, bob: AuthedUser, reporter: Reporter
+) -> None:
+    """Readers can inspect persisted runs/events, but cannot start agent work."""
+    reporter.section("reader cannot POST /api/agent/chat")
+    denied = client.post(
+        "/api/agent/chat",
+        headers={**bob.auth_header(), "Accept": "text/event-stream"},
+        json={
+            "messages": [{"role": "user", "content": "reader should not run"}],
+            "agent": "research",
+        },
+    )
+    reporter.kv("status", denied.status_code)
+    assert denied.status_code == 403
+
+    reporter.section("seed a completed run owned by reader")
+    from uteki_api.runs import Run, default_run_store
+    from uteki_api.schemas.events import AgentEvent
+
+    rid = "reader-view-run"
+
+    async def seed() -> None:
+        await default_run_store.create(
+            Run(
+                id=rid,
+                user_id=bob.id,
+                skill="research",
+                triggered_by="user",
+                started_at=time.time(),
+            )
+        )
+        await default_run_store.append_event(
+            rid, AgentEvent(type="run_start", run_id=rid, data={"agent": "research"})
+        )
+        await default_run_store.append_event(
+            rid, AgentEvent(type="delta", run_id=rid, data={"text": "reader-visible result"})
+        )
+        await default_run_store.finish(rid, "ok", "reader-visible result")
+
+    asyncio.run(seed())
+
+    reporter.section("reader can read result and process")
+    run_resp = client.get(f"/api/runs/{rid}", headers=bob.auth_header())
+    events_resp = client.get(f"/api/runs/{rid}/events", headers=bob.auth_header())
+    reporter.kv("run status", run_resp.status_code)
+    reporter.kv("events status", events_resp.status_code)
+    assert run_resp.status_code == 200
+    assert events_resp.status_code == 200
+    assert run_resp.json()["summary"] == "reader-visible result"
+    assert [e["type"] for e in events_resp.json()["items"]] == ["run_start", "delta"]
 
     reporter.end()
 

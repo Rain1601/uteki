@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from uteki_api.auth.deps import current_user, optional_user
+from uteki_api.auth.deps import current_user, optional_user, require_admin
 from uteki_api.auth.jwt import (
     InvalidRefresh,
     decode_access,
@@ -18,5 +18,6 @@ __all__ = [
     "issue_access",
     "issue_refresh",
     "optional_user",
+    "require_admin",
     "rotate_refresh",
 ]

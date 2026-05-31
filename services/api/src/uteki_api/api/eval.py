@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from uteki_api.auth.deps import current_user
+from uteki_api.auth.deps import current_user, require_admin
 from uteki_api.eval import EvalRunner
 from uteki_api.eval.store import default_eval_history
 from uteki_api.users.models import User
@@ -24,7 +24,7 @@ async def list_cases() -> dict:
 
 
 @router.post("/run")
-async def run_eval(user: User = Depends(current_user)) -> dict:
+async def run_eval(user: User = Depends(require_admin)) -> dict:
     runner = EvalRunner(user_id=user.id)
     report = await runner.run_all()
     return report.model_dump() | {"pass_rate": report.pass_rate}

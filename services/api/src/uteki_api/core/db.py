@@ -12,6 +12,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from pathlib import Path
 
+from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, SQLModel, create_engine
 
@@ -46,6 +47,21 @@ def init_db() -> None:
     from uteki_api.users.models import AuthIdentity, RefreshToken, User  # noqa: F401
 
     SQLModel.metadata.create_all(engine)
+    _ensure_user_role_column(engine)
+
+
+def _ensure_user_role_column(db_engine: Engine) -> None:
+    """Lightweight schema repair until Alembic migrations are enabled."""
+    inspector = inspect(db_engine)
+    try:
+        columns = {column["name"] for column in inspector.get_columns("user")}
+    except Exception:
+        return
+    if "role" in columns:
+        return
+    with db_engine.begin() as conn:
+        conn.execute(text('ALTER TABLE "user" ADD COLUMN role VARCHAR(16) DEFAULT \'reader\''))
+        conn.execute(text('UPDATE "user" SET role = \'reader\' WHERE role IS NULL OR role = \'\''))
 
 
 def get_db() -> Iterator[Session]:

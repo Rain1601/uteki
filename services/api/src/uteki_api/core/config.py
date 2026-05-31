@@ -72,6 +72,9 @@ class Settings(BaseSettings):
     # When false: requests without a valid token are served as `demo@local`
     # (a stable dev user the app ensures exists at startup).
     auth_required: bool = True
+    admin_emails: str = ""
+    admin_github_logins: str = ""
+    admin_github_ids: str = ""
     # OAuth: blank = button disabled in UI.
     github_client_id: str = ""
     github_client_secret: str = ""
@@ -123,6 +126,22 @@ settings = Settings(
     run_store=(os.getenv("UTEKI_RUN_STORE") or "sqlite").lower(),
     jwt_secret=os.getenv("UTEKI_JWT_SECRET") or "dev-secret-change-me",
     auth_required=_envflag("UTEKI_AUTH_REQUIRED", True),
+    admin_emails=(
+        os.getenv("UTEKI_ADMIN_EMAILS")
+        or os.getenv("UTEKI_ADMIN_EMAIL")
+        or os.getenv("UTEKI_OWNER_EMAIL")
+        or ""
+    ),
+    admin_github_logins=(
+        os.getenv("UTEKI_ADMIN_GITHUB_LOGINS")
+        or os.getenv("UTEKI_ADMIN_GITHUB_LOGIN")
+        or ""
+    ),
+    admin_github_ids=(
+        os.getenv("UTEKI_ADMIN_GITHUB_IDS")
+        or os.getenv("UTEKI_ADMIN_GITHUB_ID")
+        or ""
+    ),
     github_client_id=os.getenv("GITHUB_CLIENT_ID") or "",
     github_client_secret=os.getenv("GITHUB_CLIENT_SECRET") or "",
     google_client_id=os.getenv("GOOGLE_CLIENT_ID") or "",

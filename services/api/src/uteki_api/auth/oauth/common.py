@@ -22,6 +22,7 @@ from datetime import UTC, datetime
 
 from sqlmodel import Session, select
 
+from uteki_api.auth.roles import elevate_role, role_for_identity
 from uteki_api.core.config import settings
 from uteki_api.users import default_user_store
 from uteki_api.users.models import AuthIdentity, User
@@ -38,6 +39,7 @@ class ProviderUser:
     email: str | None
     name: str
     avatar_url: str | None
+    username: str | None = None
 
 
 # ─── state token (CSRF + next-url roundtrip) ────────────────────────────
@@ -117,6 +119,12 @@ def upsert_user_from_identity(db: Session, pu: ProviderUser) -> User:
         AuthIdentity.provider_user_id == pu.provider_user_id,
     )
     existing_identity = db.exec(statement).first()
+    next_role = role_for_identity(
+        provider=pu.provider,
+        email=pu.email,
+        username=pu.username,
+        provider_user_id=pu.provider_user_id,
+    )
     if existing_identity is not None:
         user = db.get(User, existing_identity.user_id)
         if user is None:
@@ -131,6 +139,10 @@ def upsert_user_from_identity(db: Session, pu: ProviderUser) -> User:
                 changed = True
             if pu.avatar_url and user.avatar_url != pu.avatar_url:
                 user.avatar_url = pu.avatar_url
+                changed = True
+            role = elevate_role(getattr(user, "role", "reader"), next_role)
+            if user.role != role:
+                user.role = role
                 changed = True
             if changed:
                 db.add(user)
@@ -152,7 +164,15 @@ def upsert_user_from_identity(db: Session, pu: ProviderUser) -> User:
             email=email,
             display_name=pu.name or email.split("@")[0],
             avatar_url=pu.avatar_url,
+            role=next_role,
         )
+    else:
+        role = elevate_role(getattr(user, "role", "reader"), next_role)
+        if user.role != role:
+            user.role = role
+            db.add(user)
+            db.commit()
+            db.refresh(user)
 
     identity = AuthIdentity(
         id=_new_identity_id(),

@@ -38,6 +38,7 @@ from uteki_api.auth.oauth import (
     upsert_user_from_identity,
     verify_state,
 )
+from uteki_api.auth.roles import role_for_email
 from uteki_api.core.config import settings
 from uteki_api.core.db import get_db
 from uteki_api.users import (
@@ -74,6 +75,7 @@ class UserOut(BaseModel):
     avatar_url: str | None
     created_at: datetime
     status: str
+    role: str
 
 
 class AccessTokenOut(BaseModel):
@@ -111,6 +113,7 @@ def _user_out(u: User) -> UserOut:
         avatar_url=u.avatar_url,
         created_at=u.created_at,
         status=u.status,
+        role=getattr(u, "role", "reader"),
     )
 
 
@@ -139,6 +142,7 @@ async def register(
         db,
         email=email,
         display_name=body.display_name or email.split("@")[0],
+        role=role_for_email(email),
     )
     identity = AuthIdentity(
         id=_new_identity_id(),

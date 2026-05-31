@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from uteki_api.agents.harness import AgentHarness
-from uteki_api.auth.deps import current_user
+from uteki_api.auth.deps import current_user, require_admin
 from uteki_api.evolution import default_evolution_store
 from uteki_api.runs import default_run_store
 from uteki_api.schemas.chat import ChatMessage
@@ -35,7 +35,7 @@ class CompareDiffRequest(BaseModel):
 @router.post("/run")
 async def compare_run(
     req: CompareRunRequest,
-    user: User = Depends(current_user),
+    user: User = Depends(require_admin),
 ) -> dict:
     if not req.agents:
         raise HTTPException(status_code=400, detail="agents must be non-empty")

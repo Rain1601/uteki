@@ -28,6 +28,7 @@ class User(SQLModel, table=True):
     avatar_url: str | None = Field(default=None, max_length=1024)
     created_at: datetime
     status: str = Field(default="active", max_length=16)  # active | suspended | deleted
+    role: str = Field(default="reader", max_length=16)  # reader | admin
 
 
 class AuthIdentity(SQLModel, table=True):

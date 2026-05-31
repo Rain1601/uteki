@@ -86,4 +86,5 @@ async def fetch_user(access_token: str) -> ProviderUser:
         email=email,
         name=u.get("name") or u.get("login") or "",
         avatar_url=u.get("avatar_url"),
+        username=u.get("login"),
     )

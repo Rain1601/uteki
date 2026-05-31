@@ -24,7 +24,7 @@ from fastapi import APIRouter, Depends
 from sse_starlette.sse import EventSourceResponse
 
 from uteki_api.agents.harness import AgentHarness
-from uteki_api.auth.deps import current_user
+from uteki_api.auth.deps import require_admin
 from uteki_api.evolution import default_evolution_store
 from uteki_api.runs import default_run_store
 from uteki_api.schemas.chat import ChatRequest
@@ -77,7 +77,7 @@ async def _build_harness(
 @router.post("/chat")
 async def chat(
     req: ChatRequest,
-    user: User = Depends(current_user),
+    user: User = Depends(require_admin),
 ) -> EventSourceResponse:
     harness = await _build_harness(req.agent, req.model, req.session_id, user.id)
 
@@ -103,7 +103,7 @@ async def chat(
 @router.post("/start")
 async def start(
     req: ChatRequest,
-    user: User = Depends(current_user),
+    user: User = Depends(require_admin),
 ) -> dict:
     """Kick off a run, return ``{run_id}`` immediately; harness keeps
     running in a background asyncio task.

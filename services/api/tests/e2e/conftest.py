@@ -25,6 +25,7 @@ from pathlib import Path
 os.environ.setdefault("UTEKI_USE_MOCK_LLM", "true")
 os.environ.setdefault("UTEKI_AUTH_REQUIRED", "true")
 os.environ.setdefault("UTEKI_JWT_SECRET", "e2e-test-secret-min-32-chars-of-junk-1234567890")
+os.environ.setdefault("UTEKI_ADMIN_EMAILS", "alice@uteki-e2e.dev")
 # Per-session DB lives in the test data dir so the dev DB stays untouched.
 TEST_DATA = Path(__file__).resolve().parent / "_data"
 os.environ["UTEKI_DB_URL"] = f"sqlite:///{TEST_DATA / 'e2e.db'}"
@@ -134,6 +135,7 @@ class AuthedUser:
         self.password = password
         self.name = name
         self.id: str = body["user"]["id"]
+        self.role: str = body["user"]["role"]
         self.access_token: str = body["access_token"]
         self.refresh_cookie: str | None = client.cookies.get("uteki_refresh")
 

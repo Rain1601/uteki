@@ -10,18 +10,16 @@ creates a Proposal record for a Run and starts the evolution state machine.
 M1.1 phase only writes the meta.json bookkeeping; subsequent M1.x tasks
 add snapshot + CC spawn + apply + A/B eval pipeline.
 
-M4: gated behind ``current_user`` so anonymous callers can't hot-reload
-prompts. There's no role/is_admin field yet, so any authenticated user can
-call this — the real ACL gate will land alongside team workspaces. In dev
-mode (``UTEKI_AUTH_REQUIRED=false``) the demo user fallback keeps this
-endpoint reachable from ``scripts/tune-prompt.sh`` without touching tokens.
+M4+: gated behind admin role so anonymous/read-only callers can't hot-reload
+prompts or trigger self-evolution. Configure admins with UTEKI_ADMIN_EMAILS or
+GitHub allowlists.
 """
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from uteki_api.auth.deps import current_user
+from uteki_api.auth.deps import require_admin
 from uteki_api.evolution.proposals import default_proposal_store
 from uteki_api.runs import default_run_store
 from uteki_api.skills import default_skills
@@ -31,12 +29,11 @@ from uteki_api.users.models import User
 router = APIRouter(
     prefix="/api/admin",
     tags=["admin"],
-    dependencies=[Depends(current_user)],
 )
 
 
 @router.post("/reload-skills")
-async def reload_skills() -> dict:
+async def reload_skills(_user: User = Depends(require_admin)) -> dict:
     """Clear the loader cache and refresh each skill's `system_prompt`."""
     load_skill_prompt.cache_clear()
     cleared: list[str] = []
@@ -62,7 +59,7 @@ async def reload_skills() -> dict:
 async def trigger_review(
     run_id: str,
     reason: str = "manual trigger",
-    user: User = Depends(current_user),
+    user: User = Depends(require_admin),
 ) -> dict:
     """Create a self-evolution Proposal for ``run_id``.
 
@@ -71,9 +68,9 @@ async def trigger_review(
     lands in M1.2-M1.4. Returns the freshly-allocated ``proposal_id`` so
     callers can poll status later via a (future) ``GET /api/admin/proposals``.
 
-    Auth: caller must own the run (or be admin once RBAC lands). Today
-    this is enforced by ``run_store.get(run_id, user.id)`` raising KeyError
-    on cross-user access — same 404 shape as "doesn't exist".
+    Auth: caller must be admin and own the run. Ownership is enforced by
+    ``run_store.get(run_id, user.id)`` raising KeyError on cross-user access —
+    same 404 shape as "doesn't exist".
     """
     try:
         run = await default_run_store.get(run_id, user.id)

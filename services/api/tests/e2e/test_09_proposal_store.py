@@ -198,13 +198,13 @@ def test_review_cross_user_isolation(
                      r.status_code == 404)
     assert r.status_code == 404
 
-    reporter.section("bob can review his own run")
+    reporter.section("bob is reader, so he cannot review even his own run")
     r2 = client.post(
         f"/api/admin/review/{rid_b}",
         headers=bob.auth_header(),
     )
-    reporter.checked("→ 200", r2.status_code == 200)
-    assert r2.status_code == 200
+    reporter.checked("→ 403", r2.status_code == 403)
+    assert r2.status_code == 403
 
     reporter.end()
 

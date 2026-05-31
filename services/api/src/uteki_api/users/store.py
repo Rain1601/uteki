@@ -35,6 +35,7 @@ class UserStore(ABC):
         email: str,
         display_name: str = "",
         avatar_url: str | None = None,
+        role: str = "reader",
     ) -> User: ...
 
     @abstractmethod
@@ -52,6 +53,7 @@ class SqlUserStore(UserStore):
         email: str,
         display_name: str = "",
         avatar_url: str | None = None,
+        role: str = "reader",
     ) -> User:
         user = User(
             id=_new_id(),
@@ -60,6 +62,7 @@ class SqlUserStore(UserStore):
             avatar_url=avatar_url,
             created_at=_utcnow(),
             status="active",
+            role=role,
         )
         db.add(user)
         db.commit()
@@ -90,4 +93,5 @@ def ensure_demo_user(db: Session) -> User:
         db,
         email=DEMO_USER_EMAIL,
         display_name="Demo (dev)",
+        role="reader",
     )

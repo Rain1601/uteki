@@ -69,6 +69,17 @@ async def current_user(
         raise HTTPException(401, detail="user not found")
     if user.status != "active":
         raise HTTPException(403, detail=f"account status: {user.status}")
+    if not getattr(user, "role", None):
+        user.role = "reader"
+    return user
+
+
+async def require_admin(user: User = Depends(current_user)) -> User:
+    if getattr(user, "role", "reader") != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="admin role required",
+        )
     return user
 
 
