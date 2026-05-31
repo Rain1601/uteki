@@ -334,12 +334,18 @@ def _cmd_decision(
     # the same command — matches the design demo's "Applying patch...  OK"
     # line. Other decisions (reject/defer/discard) are terminal in M1.5.
     if to_status == "accepted" and not args.no_apply:
-        return _run_apply(args.proposal_id, store)
+        also_ab = not getattr(args, "no_ab", False)
+        return _run_apply(args.proposal_id, store, also_ab=also_ab)
     return 0
 
 
-def _run_apply(proposal_id: str, store: ProposalStore) -> int:
-    """Drive apply_proposal inline. Prints a short success/failure summary."""
+def _run_apply(
+    proposal_id: str, store: ProposalStore, *, also_ab: bool = True
+) -> int:
+    """Drive apply_proposal inline. Optionally chain into ab_eval.
+
+    Returns the worst exit code of (apply, ab_eval if attempted).
+    """
     # Lazy-import to avoid pulling the apply graph (and its FastAPI-adjacent
     # singletons) into 'proposals list' / 'show' invocations.
     import asyncio as _asyncio
@@ -354,15 +360,65 @@ def _run_apply(proposal_id: str, store: ProposalStore) -> int:
         return 5
 
     if not result.ok:
-        print(
-            _c("red", f"  apply failed: {result.error}"), file=sys.stderr
-        )
+        print(_c("red", f"  apply failed: {result.error}"), file=sys.stderr)
         return 6
     suffix = " (no-op — empty patch)" if result.patch_was_empty else ""
     print(
         _c("green", "  apply OK")
         + _c("dim", f"  version={result.new_version}  signature={result.applied_signature}{suffix}")
     )
+
+    if also_ab:
+        return _run_ab_eval(proposal_id, store)
+    return 0
+
+
+def _run_ab_eval(proposal_id: str, store: ProposalStore) -> int:
+    """Drive run_ab_eval inline. Prints baseline/proposed pass-rates + delta.
+
+    M1.7 demo text matches design/05 Phase 1's mockup:
+        Running A/B (mock-llm, N cases)...
+          baseline:  pass_rate=0.42
+          proposed:  pass_rate=0.78  ↑ +36.0pp
+    """
+    import asyncio as _asyncio
+
+    from uteki_api.core.config import settings as _settings
+    from uteki_api.evolution.ab_eval import run_ab_eval
+
+    mode = "mock-llm" if _settings.use_mock_llm else "real-llm"
+    print(_c("dim", f"  running A/B ({mode}, full eval suite)..."))
+    try:
+        result = _asyncio.run(run_ab_eval(proposal_id, store=store))
+    except ValueError as e:
+        # ValueError = predictable contract violation (wrong status,
+        # missing snapshot, double-run). Surface but don't crash.
+        print(_c("red", f"  A/B refused: {e}"), file=sys.stderr)
+        return 7
+    except Exception as e:  # noqa: BLE001 — surface, don't crash CLI
+        print(_c("red", f"  A/B crashed: {e}"), file=sys.stderr)
+        return 8
+
+    if not result.ok:
+        print(_c("red", f"  A/B failed: {result.error}"), file=sys.stderr)
+        return 9
+    s = result.ab_summary
+    delta_color = "green" if s["delta_pp"] >= 0 else "red"
+    arrow = "↑" if s["delta_pp"] >= 0 else "↓"
+    print(
+        _c("dim", f"  baseline:  pass_rate={s['pass_rate_baseline']:.2f}")
+    )
+    print(
+        _c("dim", f"  proposed:  pass_rate={s['pass_rate_proposed']:.2f}  ")
+        + _c(delta_color, f"{arrow} {s['delta_pp']:+.1f}pp")
+        + _c("dim", f"  ({s['cases_run']} cases)")
+    )
+    # Hint about G2 — M1.8 will plumb the operator decision verbs.
+    print(_c(
+        "dim",
+        "  next: review with 'proposals show <P-id>' then "
+        "'proposals adopt / rollback' (M1.8)"
+    ))
     return 0
 
 
@@ -428,13 +484,32 @@ def _build_parser() -> argparse.ArgumentParser:
             action="store_true",
             help="(accept only) Don't auto-apply; leave proposal at 'accepted'.",
         )
-        p_act.set_defaults(_decision_status=status, no_apply=False)
+        p_act.add_argument(
+            "--no-ab",
+            action="store_true",
+            help="(accept only) Apply but skip the auto A/B eval afterwards.",
+        )
+        p_act.set_defaults(_decision_status=status, no_apply=False, no_ab=False)
 
     p_apply = sub.add_parser(
         "apply",
         help="Apply an already-accepted proposal (e.g. after editing patch.diff).",
     )
     p_apply.add_argument("proposal_id")
+    p_apply.add_argument(
+        "--no-ab",
+        action="store_true",
+        help="Skip the auto A/B eval after apply succeeds.",
+    )
+
+    p_ab = sub.add_parser(
+        "ab-eval",
+        help=(
+            "Run A/B eval against an a_b_eval proposal (re-run after a "
+            "failed earlier attempt; refuses if ab_summary already exists)."
+        ),
+    )
+    p_ab.add_argument("proposal_id")
 
     return p
 
@@ -442,6 +517,16 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
+
+    # Ensure the SQLite tables EvalRunner needs exist. The API's lifespan
+    # normally bootstraps this, but the CLI may run when the API hasn't
+    # touched the DB yet (or against a fresh checkout). Idempotent and
+    # cheap (CREATE TABLE IF NOT EXISTS).
+    try:
+        from uteki_api.core.db import init_db
+        init_db()
+    except Exception:  # noqa: BLE001 — best-effort; ab-eval will surface real errors
+        pass
 
     # Default 'no subcommand' to 'list' so the demo invocation
     # ``proposals`` and ``proposals list`` both work.
@@ -480,7 +565,24 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 3
-        return _run_apply(args.proposal_id, store)
+        return _run_apply(args.proposal_id, store, also_ab=not args.no_ab)
+    if args.cmd == "ab-eval":
+        try:
+            proposal = store.get(args.proposal_id)
+        except KeyError:
+            print(_c("red", f"unknown proposal: {args.proposal_id}"), file=sys.stderr)
+            return 2
+        if proposal.status != "a_b_eval":
+            print(
+                _c(
+                    "red",
+                    f"refusing ab-eval: {args.proposal_id} is {proposal.status}, "
+                    "expected a_b_eval (apply must have succeeded first)",
+                ),
+                file=sys.stderr,
+            )
+            return 3
+        return _run_ab_eval(args.proposal_id, store)
     parser.print_help()
     return 1
 

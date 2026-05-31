@@ -157,7 +157,10 @@ def test_cli_accept_auto_applies(tmp_path: Path, reporter: Reporter) -> None:
     env = {**os.environ, "NO_COLOR": "1", "UTEKI_OPERATOR": "alice"}
     reporter.section(f"./proposals accept {p1} (no --no-apply)")
     proc = subprocess.run(
-        [str(cli), "--root", str(root), "accept", p1, "--reason", "auto-apply demo"],
+        # --no-ab keeps this test focused on the apply pipeline; T15 covers
+        # the apply → ab_eval chain end-to-end.
+        [str(cli), "--root", str(root), "accept", p1, "--no-ab",
+         "--reason", "auto-apply demo"],
         check=False, capture_output=True, text=True, env=env, timeout=60,
     )
     reporter.kv("exit", proc.returncode)
@@ -206,7 +209,9 @@ def test_cli_apply_subcommand_after_no_apply(tmp_path: Path, reporter: Reporter)
 
     reporter.section("apply explicitly")
     proc2 = subprocess.run(
-        [str(cli), "--root", str(root), "apply", p1],
+        # --no-ab: T14 covers apply specifically; ab_eval needs snapshot/
+        # which _seed_pending doesn't write. T15 covers the chained path.
+        [str(cli), "--root", str(root), "apply", p1, "--no-ab"],
         check=False, capture_output=True, text=True, env=env, timeout=60,
     )
     reporter.kv("exit", proc2.returncode)
