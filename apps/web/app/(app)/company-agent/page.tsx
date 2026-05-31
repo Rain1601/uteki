@@ -185,7 +185,7 @@ export default function CompanyAgentPage() {
   const [loadingRuns, setLoadingRuns] = useState(false);
   const [aborter, setAborter] = useState<AbortController | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
-  const isAdmin = canOperate(user);
+  const canRunCompanyAgent = canOperate(user, "company_research_pipeline");
 
   const refreshRuns = useCallback(async () => {
     setLoadingRuns(true);
@@ -222,14 +222,14 @@ export default function CompanyAgentPage() {
   function chooseCompany(item: CompanyWatchItem, runNow = false) {
     setSymbol(item.symbol);
     setPeers(item.peers.join(", "));
-    if (runNow && isAdmin) {
+    if (runNow && canRunCompanyAgent) {
       void startRun(item.symbol, item.peers.join(", "));
     }
   }
 
   async function startRun(targetSymbol = symbol, peerText = peers) {
     const cleanSymbol = targetSymbol.trim().toUpperCase();
-    if (!cleanSymbol || isRunning || !isAdmin) return;
+    if (!cleanSymbol || isRunning || !canRunCompanyAgent) return;
     const controller = new AbortController();
     setAborter(controller);
     setError(null);
@@ -281,7 +281,7 @@ export default function CompanyAgentPage() {
               <RefreshCw size={13} className={loadingRuns ? "animate-spin" : ""} />
               刷新
             </Button>
-            <Button variant="primary" onClick={() => startRun()} disabled={!isAdmin || isRunning || !symbol.trim()}>
+            <Button variant="primary" onClick={() => startRun()} disabled={!canRunCompanyAgent || isRunning || !symbol.trim()}>
               {isRunning ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
               起草新研究
             </Button>
@@ -294,7 +294,7 @@ export default function CompanyAgentPage() {
           <div className="flex items-center justify-between border-b border-[var(--line)] px-7 py-5">
             <div className="eyebrow">WATCHLIST</div>
             <span className="font-mono text-[10px] text-[var(--ink-faint)]">
-              {isAdmin ? "+ 添加" : "READ ONLY"}
+              {canRunCompanyAgent ? "+ 添加" : "READ ONLY"}
             </span>
           </div>
           <ul className="divide-y divide-[var(--line)]">
@@ -324,7 +324,7 @@ export default function CompanyAgentPage() {
                         )}
                       </div>
                     </div>
-                    {isAdmin && (
+                    {canRunCompanyAgent && (
                       <span
                         className="mt-9 inline-flex h-7 items-center border border-[var(--line-strong)] px-2 font-mono text-[10px] text-[var(--ink-muted)] opacity-70 transition-colors group-hover:text-[var(--ink)]"
                         onClick={(e) => {
@@ -351,7 +351,7 @@ export default function CompanyAgentPage() {
               <input
                 value={symbol}
                 onChange={(e) => setSymbol(e.target.value.toUpperCase())}
-                readOnly={!isAdmin}
+                readOnly={!canRunCompanyAgent}
                 className="h-10 w-full border border-[var(--line-strong)] bg-[var(--surface)] px-3 font-display text-[20px] italic text-[var(--ink)] outline-none focus:border-[var(--accent)]"
               />
             </label>
@@ -362,7 +362,7 @@ export default function CompanyAgentPage() {
               <input
                 value={peers}
                 onChange={(e) => setPeers(e.target.value)}
-                readOnly={!isAdmin}
+                readOnly={!canRunCompanyAgent}
                 className="h-10 w-full border border-[var(--line-strong)] bg-[var(--surface)] px-3 font-mono text-[12px] text-[var(--ink-soft)] outline-none focus:border-[var(--accent)]"
                 placeholder="META, MSFT, AMZN"
               />
@@ -373,7 +373,7 @@ export default function CompanyAgentPage() {
                   <Square size={13} /> 中止
                 </Button>
               )}
-              <Button variant="primary" onClick={() => startRun()} disabled={!isAdmin || isRunning || !symbol.trim()}>
+              <Button variant="primary" onClick={() => startRun()} disabled={!canRunCompanyAgent || isRunning || !symbol.trim()}>
                 {isRunning ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
                 运行
               </Button>
@@ -414,8 +414,8 @@ export default function CompanyAgentPage() {
               <span>ARTIFACT-FIRST</span>
               <span>NO REAL ORDER EXECUTION</span>
               {activeRunId && (
-                <Link href={`/runs/${activeRunId}`} className="ml-auto text-[var(--accent)] hover:underline">
-                  查看 run →
+                <Link href={`/company-agent/${activeRunId}`} className="ml-auto text-[var(--accent)] hover:underline">
+                  查看档案 →
                 </Link>
               )}
             </div>
@@ -426,7 +426,7 @@ export default function CompanyAgentPage() {
               {error}
             </div>
           )}
-          {!isAdmin && (
+          {!canRunCompanyAgent && (
             <div className="mt-4 border border-[var(--line)] bg-[var(--surface)] px-4 py-3 font-mono text-[11px] text-[var(--ink-muted)]">
               reader 模式：可以查看历史 run、运行过程和 artifact；起草、运行和中止仅限 admin。
             </div>
@@ -475,7 +475,7 @@ export default function CompanyAgentPage() {
             <ul className="divide-y divide-[var(--line)]">
               {runs.slice(0, 18).map((run) => (
                 <li key={run.id}>
-                  <Link href={`/runs/${run.id}`} className="block py-4 hover:bg-[var(--surface-hover)]">
+                  <Link href={`/company-agent/${run.id}`} className="block py-4 hover:bg-[var(--surface-hover)]">
                     <div className="flex items-baseline gap-3">
                       <span className="w-24 shrink-0 font-mono text-[10px] text-[var(--ink-faint)]">
                         {formatTs(run.started_at)}
@@ -509,7 +509,7 @@ export default function CompanyAgentPage() {
             </div>
             {latestRun && (
               <Link
-                href={`/runs/${latestRun.id}`}
+                href={`/company-agent/${latestRun.id}`}
                 className="mt-4 inline-flex items-center gap-2 font-mono text-[11px] tracking-[0.08em] text-[var(--accent)] hover:underline"
               >
                 <FileText size={13} /> 打开最近档案
