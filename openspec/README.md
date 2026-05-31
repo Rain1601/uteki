@@ -37,12 +37,18 @@ openspec/
 
 ## 现有 change
 
-- `001-tenant-and-auth/` — 多租户 + 用户系统
-- `002-adopt-financial-services/` — 引入 anthropics/financial-services 的 skill 内容（✅ M2 实施完）
-- `003-anthropic-sdk-integration/` — 接入真实 LLM（DeepSeek / AiHubMix Claude）（✅ M1+M3 实施完）
+- `archive/001-tenant-and-auth/` — 多租户 + 用户系统
+- `archive/002-adopt-financial-services/` — 引入 anthropics/financial-services 的 skill 内容（已落地，剩余 review/policy 拆入后续 change）
+- `archive/003-anthropic-sdk-integration/` — 接入真实 LLM + usage/cost budget（已落地；真实 key 验证是 ops checklist）
+- `archive/004-provenance-citation/` — run-scoped source catalog + citation validation（已落地）
 - `archive/005-artifact-layer/` — Artifact 持久化 + await_review checkpoint（✅ M5 实施完）
+- `archive/005-artifact-first-runs/` — run detail 以 artifacts 为主，final-report contract + backward-compatible replay（已落地）
 - `archive/006-planner-evaluator-pipeline/` — Planner / Generator / Evaluator + Sprint Contract（✅ M6 实施完）
+- `archive/006-company-research-pipeline/` — 从 uteki.open 迁移公司 7-gate 投研为 harness pipeline（已落地）
 - `archive/007-llm-judge-and-prompt-tuning/` — LLM-as-judge + prompt-tuning loop（✅ M7 实施完）
+- `archive/007-trace-diagnosis/` — 从 event trace 派生 failure/cost/tool/citation diagnosis（已落地）
+- `archive/008-tool-governance/` — tool risk level + high-risk await_review 真拦截（已落地）
+- `archive/009-company-deep-research-v2/` — 公司深研 peer 排序、资金管理、阶段能力 review（已落地）
 
 > 005-007 三步落实 [Anthropic harness 设计原则](https://www.anthropic.com/engineering/harness-design-long-running-apps)：
 > - **005** "文件作 agent 通信脊梁" → `services/api/src/uteki_api/artifacts/`
@@ -56,3 +62,8 @@ openspec/
 - `specs/pipeline/spec.md` — Pipeline meta-skill + Sprint Contract + 嵌套 trace
 - `specs/evaluation/spec.md` — LLM-as-judge 协议 + verifier async + EvalRecord history
 - `specs/llm-routing/spec.md` — model id 协议 + provider 路由 + UsageDelta
+- `specs/provenance/spec.md` — run-scoped SourceCatalog + `[src:N]` citation validation
+
+## 待排队后续 change
+
+目前无排队 change。

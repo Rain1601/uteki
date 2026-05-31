@@ -1,6 +1,6 @@
 # Harness — spec
 
-> 最新更新：2026-05-25 · M4 加入 user_id 注入（多租户）；tool-use loop（M3）+ artifact 注入（M5）+ 哲学段（吸收自 Anthropic）
+> 最新更新：2026-05-31 · M4 user_id；M3 tool-use；M5 artifact；004 provenance；005 artifact-first runs；007 trace diagnosis；008 tool governance
 
 ## 哲学（不可妥协的原则）
 
@@ -79,9 +79,12 @@ AgentHarness(
        ├── error event → 标记 final_status=error
        └── 双写 memory + run_store, yield 给上游
 [5] catch skill exception → emit error, status=error
-[6] emit done
-[7] 把 usage_totals 落回 Run.usage_summary
-[8] run_store.finish(status, summary)
+[6] 若有最终内容但没有主产物，写 `final-report.md` 并 emit `artifact_written`
+[7] 若 source catalog 非空，写 `source-catalog.json` 并 emit `artifact_written`
+[8] 写 `trace-diagnosis.json` 并 emit `artifact_written`
+[9] emit done
+[10] 把 usage_totals 落回 Run.usage_summary
+[11] run_store.finish(status, summary)
 ```
 
 ## Run 的字段
@@ -120,9 +123,58 @@ self.skill._tool_executor = self._make_tool_executor(run_id)        # M3
 self.skill.artifacts = RunArtifacts(                                 # M5
     store=default_artifact_store, run_id=run_id, written_by=self.skill.name,
 )
+self.skill.sources = RunSources(SourceCatalog(run_id=run_id))         # 004
 ```
 
-skill 自由选择是否用。两个 inject 都是 run-scoped、identity-bound——skill 不能跨 run 操作，也不能假冒别的 skill。
+skill 自由选择是否用。这些 inject 都是 run-scoped、identity-bound——skill 不能跨 run 操作，也不能假冒别的 skill。
+
+## Provenance / source catalog（004）
+
+ToolResult 可携带 source metadata：
+
+```python
+class ToolResult(BaseModel):
+    ok: bool
+    summary: str = ""
+    data: Any = None
+    error: str | None = None
+    sources: list[dict[str, Any]] = []
+```
+
+`_invoke_tool()` 执行 tool 后：
+
+1. 把 `result.sources` 注册进 `self.skill.sources`
+2. 将注册后的 ids 写进 `tool_result.data.preview._source_ids`
+3. 不因 malformed source metadata 失败 tool call
+
+run 结束前，如果 catalog 非空且尚未写 `source-catalog.json`，harness 自动写 artifact 并 emit `artifact_written`。因此前端和 evaluator 可以把来源目录当成 run 的标准产物读取。
+
+## Artifact-first runs（005-artifact-first-runs）
+
+Run detail 的阅读入口是 artifact，不是 delta 拼接。Harness 在 run 完成前执行 primary artifact fallback：
+
+1. 如果 `final-report.md` 已存在，不重复写
+2. 优先复制 `investment-memo.md`、`final-research.md`、`research.md`
+3. 若没有命名产物，则使用本次 run 累积的 delta 文本
+4. 写入 `final-report.md`，`role="primary"`，`display_name="Final report"`
+5. emit `artifact_written`
+
+这保证旧 skill、mock path 和真实 LLM path 都能被 artifact-first UI 读取，同时不破坏旧事件回放。
+
+## Trace diagnosis（007-trace-diagnosis）
+
+Harness 在 `done` 前写入 `trace-diagnosis.json`，role=`diagnosis`。它是从事件流和 run-scoped state 派生的确定性 JSON，不调用 LLM：
+
+- `event_counts`
+- `failures`
+- `warnings`
+- `tools.calls`
+- `tools.failures`
+- `usage`
+- `artifacts`
+- `citations`
+
+该 artifact 是 review/debug 的摘要入口；原始 `/events` 仍是完整审计日志。
 
 ## await_review 分支（M5）
 
@@ -160,6 +212,23 @@ skill 决策：
 - 不走（mock 路径或老 skill） → 仍 yield `tool_call` 让 harness 派发
 
 Anthropic 原生 `tool_use` 协议（cache_control + content blocks）留到 change 004。
+
+## Tool governance（008-tool-governance）
+
+每个 tool 暴露：
+
+```python
+Tool.risk_level: Literal["low", "medium", "high"] = "low"
+```
+
+Harness 是唯一允许执行真实副作用的边界：
+
+- `low` / `medium`：按原逻辑执行
+- `high`：默认不执行
+  - emit `await_review`，`checkpoint="high_risk_tool"`
+  - emit `tool_result(ok=False, error="high_risk_tool_requires_review")`
+
+Risk level 也会写入 OpenAI/Anthropic tool spec 的 description，帮助模型在计划阶段知道工具风险；但真正的拦截必须发生在 `_invoke_tool()` / harness tool-call 分支，不能依赖 prompt。
 
 ## Sub-skill delegation（M6 · pipeline meta-skill）
 
@@ -209,6 +278,10 @@ async def _delegate(self, skill_name, messages, run_events):
 5. **tool 不二次执行**：`_already_executed` 标记的 tool_call event 仅留痕，不重派
 6. **跨 iteration 的 usage 单次结算**：`stream_chat_with_tools` 内部累加所有轮次的 token，最终 yield 一个 UsageDelta
 7. **pipeline 在 harness 眼里是普通 skill**：subagent_start/end 走默认双写分支
+8. **source catalog 不破坏 run**：source metadata 解析失败不会让 tool / run 失败；失败只影响 verifier 结果
+9. **primary artifact 优先**：已完成 run 若有最终内容，必须可通过 `primary_artifact` 读取；events 仅作为诊断日志
+10. **diagnosis 不影响 run**：诊断生成失败只 emit warn log，不应让业务 run 失败
+11. **高风险工具默认不执行**：LLM 请求 high-risk tool 只能得到 review checkpoint + blocked result，不能产生副作用
 
 ## 不属于本 spec
 
@@ -218,3 +291,4 @@ async def _delegate(self, skill_name, messages, run_events):
 - Artifact 持久化机制本身 —— see `openspec/specs/artifacts/spec.md`
 - Pipeline / 多 skill 编排细节 —— see `openspec/specs/pipeline/spec.md`
 - LLM-as-judge —— change 007
+- Provenance / citation schema 细节 —— see `openspec/specs/provenance/spec.md`

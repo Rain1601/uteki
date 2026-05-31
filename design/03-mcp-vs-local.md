@@ -151,3 +151,5 @@ SQLite 持久化的必要性不来自 MCP，来自这三件事：
 > 当只是脚本化一个确定性 workflow 时，shell 脚本就够了。
 >
 > MCP 不是更好的 HTTP，是让 CC **认识** 你的能力的协议。
+
+![img.png](img.png)
