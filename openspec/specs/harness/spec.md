@@ -1,6 +1,6 @@
 # Harness — spec
 
-> 最新更新：2026-05-31 · M4 user_id；M3 tool-use；M5 artifact；004 provenance；005 artifact-first runs；007 trace diagnosis；008 tool governance
+> 最新更新：2026-05-31 · M4 user_id；M3 tool-use；M5 artifact；004 provenance；005 artifact-first runs；007 trace diagnosis；008 tool governance；M1.x as_of backtest
 
 ## 哲学（不可妥协的原则）
 
@@ -33,10 +33,11 @@ AgentHarness(
     run_store: RunStore = default_run_store,
     skill_version: str | None = None,
     user_id: str = "system",
+    as_of: date | None = None,
 )
 ```
 
-`triggered_by` / `trigger_reason` / `run_store` / `skill_version` / `user_id` 是 keyword-only。
+`triggered_by` / `trigger_reason` / `run_store` / `skill_version` / `user_id` / `as_of` 是 keyword-only。
 
 ## M4 — user_id 注入
 
@@ -49,6 +50,40 @@ AgentHarness(
 - harness 所有 `memory.append_event(...)` 调用都加 `self.user_id` 作为前置参数（M4 后 Memory ABC 的短期方法签名变为 `(user_id, session_id, ...)`）
 
 跨用户隔离的保证（API 层）：`run_store.get(run_id, user.id)` 不属于该 user 时抛 `KeyError`，路由统一映射为 404 —— 与"不存在"同形态，避免泄漏存在性。
+
+## M1.x — as_of backtest 时间窗
+
+`AgentHarness(as_of=date)` 让一次 run 进入"如果今天是 X 日"的回测模式。`None` = live mode（默认）。
+
+### 注入路径
+
+- `ChatRequest.as_of: date | None` → `/api/agent/chat` 接受可选 ISO 字符串
+- `_build_harness(..., as_of=req.as_of)` → harness 构造时拿到
+- `AgentHarness.__init__` 把 `as_of.isoformat()` 缓存为 `self._as_of_iso`
+- 三个下游同时受影响：
+  1. **SourceCatalog** —— `SourceCatalog(as_of=self._as_of_iso)`：catalog 自带的 future-`published_at` 拒绝逻辑（004）触发。
+  2. **tool kwargs** —— `_invoke_tool` 把 `as_of=ISO_DATE` 写进 `args`，**前提是 skill 没显式传** —— skill 始终有最终决定权（可能想要 tool call 跨窗口）。同样路径覆盖 `_make_tool_executor`（LLM tool-use loop）。
+  3. **skill 自身** —— `self.skill.as_of = self._as_of_iso`：skill 可在 prompt 里告诉 LLM "今天是 X"，避免模型用训练截止后的常识。
+- `Run.tags` 自动加 `as_of:YYYY-MM-DD`，方便 `/api/runs?tag=...` 查询（filter 端点未来再加；tag 先落）。
+
+### Tool 责任
+
+每个 tool 自己决定如何处理 `as_of`：
+
+| Tool 类型 | 处理 | 例子 |
+|---|---|---|
+| 历史性（fetcher 支持 end=）| 在 API 调用层切片 | `kline`：`yfinance.history(end=as_of+1d)`，把 as_of 当天含进去 |
+| 历史性（fetcher 不支持）| fetch 后客户端 filter | `financials`：post-fetch 过滤 `period_label[:10] <= as_of` |
+| 历史性（外部不可控）| fetch 后客户端 filter + 报告 dropped 数 | `news_search`：过滤 `published_at > as_of` 的 item，无 published_at 的保留 |
+| 快照性 | **拒绝**（`ok=False`），指明替代 tool | `market_quote` as_of < today → "use kline instead"。**不允许 silent fallback**——会产生看不见的 correctness bug |
+| 不可控源头 | soft inject 进 query；最终靠 catalog 把关 | `web_search`：query 末尾拼 `(information available as of X)` |
+| 无源头时间线 | 不动 | `web_extract`：已经把 `published_at` 写进 source dict，catalog 自己拒绝 |
+
+### 不变量
+
+- `as_of` 缺省 = live = 所有 tool 行为与历史一致（向后兼容；T11 + 32 个已有 E2E 验证）
+- `as_of` 设置后 catalog 里**不能**出现 `published_at > as_of` 的 DataPoint（T11 断言）
+- `Run.tags` 包含 `as_of:YYYY-MM-DD` 当且仅当 harness 收到了 `as_of` 参数
 
 ## HarnessLimits — 六个硬上限
 
