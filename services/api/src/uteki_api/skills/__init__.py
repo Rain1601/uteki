@@ -10,6 +10,7 @@ meta-skill (ResearchPipeline) that strings them together with Research.
 
 from __future__ import annotations
 
+from uteki_api.skills.company import CompanyResearchPipeline
 from uteki_api.skills.earnings import EarningsSkill
 from uteki_api.skills.evaluator import EvaluatorSkill
 from uteki_api.skills.pipelines import ResearchPipeline
@@ -95,6 +96,16 @@ default_skills.register(
     kind="pipeline",
 )
 
+_company_research_pipeline = CompanyResearchPipeline()
+default_skills.register(
+    _company_research_pipeline,
+    description="公司 7-gate 投研流水线：证据收集 → 六维分析 → 投资备忘录 + 结构化裁决。",
+    version="v1",
+    default_tools=list(CompanyResearchPipeline.DEFAULT_TOOLS),
+    default_model=CompanyResearchPipeline.DEFAULT_MODEL,
+    kind="pipeline",
+)
+
 
 __all__ = [
     "SkillRegistry",
@@ -108,4 +119,5 @@ __all__ = [
     "PlannerSkill",
     "EvaluatorSkill",
     "ResearchPipeline",
+    "CompanyResearchPipeline",
 ]
