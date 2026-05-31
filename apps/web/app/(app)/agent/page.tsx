@@ -8,6 +8,7 @@ import { PageContainer, PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { listAgents, streamChat, type AgentInfo } from "@/lib/api";
+import { canOperate, fetchMe, type AuthUser } from "@/lib/auth";
 import type { AgentEvent, ChatMessage } from "@/lib/types";
 import { Send, Square, FlaskConical } from "lucide-react";
 
@@ -33,7 +34,9 @@ export default function AgentPage() {
   const [events, setEvents] = useState<AgentEvent[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const isAdmin = canOperate(user);
 
   useEffect(() => {
     listAgents()
@@ -44,8 +47,12 @@ export default function AgentPage() {
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    fetchMe().then(setUser).catch(() => setUser(null));
+  }, []);
+
   async function handleSend() {
-    if (!input.trim() || isStreaming) return;
+    if (!input.trim() || isStreaming || !isAdmin) return;
     const userMsg: UIMessage = { role: "user", content: input.trim() };
     const next = [...messages, userMsg];
     setMessages(next);
@@ -128,7 +135,7 @@ export default function AgentPage() {
               <Square size={12} /> Abort
             </Button>
           )}
-          <Button variant="primary" onClick={handleSend} disabled={isStreaming || !input.trim()}>
+          <Button variant="primary" onClick={handleSend} disabled={!isAdmin || isStreaming || !input.trim()}>
             <Send size={12} /> {isStreaming ? "Streaming…" : "Run"}
           </Button>
         </div>
@@ -192,6 +199,11 @@ export default function AgentPage() {
                 ⚠ {error}
               </div>
             )}
+            {!isAdmin && (
+              <div className="rounded-[var(--r)] border border-[var(--line)] bg-[var(--surface)] p-2.5 font-mono text-[11px] text-[var(--ink-muted)]">
+                reader 模式：可以查看已有 run 结果和 trace；临时运行仅限 admin。
+              </div>
+            )}
           </CardBody>
         </Card>
       </div>
@@ -207,9 +219,10 @@ export default function AgentPage() {
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                handleSend();
+                if (isAdmin) handleSend();
               }
             }}
+            readOnly={!isAdmin}
             className="w-full resize-none bg-transparent font-body text-[14px] leading-relaxed text-[var(--ink)] placeholder:text-[var(--ink-faint)] focus:outline-none"
           />
         </CardBody>

@@ -12,6 +12,7 @@ import {
   Square,
 } from "lucide-react";
 import { streamChat, listRuns, type RunSummary } from "@/lib/api";
+import { canOperate, fetchMe, type AuthUser } from "@/lib/auth";
 import type { AgentEvent, ChatMessage } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -183,6 +184,8 @@ export default function CompanyAgentPage() {
   const [error, setError] = useState<string | null>(null);
   const [loadingRuns, setLoadingRuns] = useState(false);
   const [aborter, setAborter] = useState<AbortController | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const isAdmin = canOperate(user);
 
   const refreshRuns = useCallback(async () => {
     setLoadingRuns(true);
@@ -200,6 +203,10 @@ export default function CompanyAgentPage() {
     refreshRuns();
   }, [refreshRuns]);
 
+  useEffect(() => {
+    fetchMe().then(setUser).catch(() => setUser(null));
+  }, []);
+
   const latestRun = runs[0] ?? null;
   const currentStage = useMemo(() => stageFromEvents(events), [events]);
   const visibleEvents = useMemo(
@@ -215,14 +222,14 @@ export default function CompanyAgentPage() {
   function chooseCompany(item: CompanyWatchItem, runNow = false) {
     setSymbol(item.symbol);
     setPeers(item.peers.join(", "));
-    if (runNow) {
+    if (runNow && isAdmin) {
       void startRun(item.symbol, item.peers.join(", "));
     }
   }
 
   async function startRun(targetSymbol = symbol, peerText = peers) {
     const cleanSymbol = targetSymbol.trim().toUpperCase();
-    if (!cleanSymbol || isRunning) return;
+    if (!cleanSymbol || isRunning || !isAdmin) return;
     const controller = new AbortController();
     setAborter(controller);
     setError(null);
@@ -267,13 +274,14 @@ export default function CompanyAgentPage() {
           </div>
           <div className="mb-2 font-mono text-[10px] tracking-[0.18em] text-[var(--ink-faint)]">
             关注 {WATCHLIST.length} · 在跑 {isRunning ? 1 : 0} · 历史 {runs.length}
+            {user ? ` · ${user.role.toUpperCase()}` : ""}
           </div>
           <div className="ml-auto mb-1 flex items-center gap-2">
             <Button variant="ghost" onClick={refreshRuns} disabled={loadingRuns}>
               <RefreshCw size={13} className={loadingRuns ? "animate-spin" : ""} />
               刷新
             </Button>
-            <Button variant="primary" onClick={() => startRun()} disabled={isRunning || !symbol.trim()}>
+            <Button variant="primary" onClick={() => startRun()} disabled={!isAdmin || isRunning || !symbol.trim()}>
               {isRunning ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
               起草新研究
             </Button>
@@ -285,7 +293,9 @@ export default function CompanyAgentPage() {
         <aside className="border-b border-[var(--line)] lg:border-b-0 lg:border-r">
           <div className="flex items-center justify-between border-b border-[var(--line)] px-7 py-5">
             <div className="eyebrow">WATCHLIST</div>
-            <span className="font-mono text-[10px] text-[var(--ink-faint)]">+ 添加</span>
+            <span className="font-mono text-[10px] text-[var(--ink-faint)]">
+              {isAdmin ? "+ 添加" : "READ ONLY"}
+            </span>
           </div>
           <ul className="divide-y divide-[var(--line)]">
             {WATCHLIST.map((item) => (
@@ -314,15 +324,17 @@ export default function CompanyAgentPage() {
                         )}
                       </div>
                     </div>
-                    <span
-                      className="mt-9 inline-flex h-7 items-center border border-[var(--line-strong)] px-2 font-mono text-[10px] text-[var(--ink-muted)] opacity-70 transition-colors group-hover:text-[var(--ink)]"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        chooseCompany(item, true);
-                      }}
-                    >
-                      起草 <ArrowRight size={12} />
-                    </span>
+                    {isAdmin && (
+                      <span
+                        className="mt-9 inline-flex h-7 items-center border border-[var(--line-strong)] px-2 font-mono text-[10px] text-[var(--ink-muted)] opacity-70 transition-colors group-hover:text-[var(--ink)]"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          chooseCompany(item, true);
+                        }}
+                      >
+                        起草 <ArrowRight size={12} />
+                      </span>
+                    )}
                   </div>
                 </button>
               </li>
@@ -339,6 +351,7 @@ export default function CompanyAgentPage() {
               <input
                 value={symbol}
                 onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+                readOnly={!isAdmin}
                 className="h-10 w-full border border-[var(--line-strong)] bg-[var(--surface)] px-3 font-display text-[20px] italic text-[var(--ink)] outline-none focus:border-[var(--accent)]"
               />
             </label>
@@ -349,6 +362,7 @@ export default function CompanyAgentPage() {
               <input
                 value={peers}
                 onChange={(e) => setPeers(e.target.value)}
+                readOnly={!isAdmin}
                 className="h-10 w-full border border-[var(--line-strong)] bg-[var(--surface)] px-3 font-mono text-[12px] text-[var(--ink-soft)] outline-none focus:border-[var(--accent)]"
                 placeholder="META, MSFT, AMZN"
               />
@@ -359,7 +373,7 @@ export default function CompanyAgentPage() {
                   <Square size={13} /> 中止
                 </Button>
               )}
-              <Button variant="primary" onClick={() => startRun()} disabled={isRunning || !symbol.trim()}>
+              <Button variant="primary" onClick={() => startRun()} disabled={!isAdmin || isRunning || !symbol.trim()}>
                 {isRunning ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
                 运行
               </Button>
@@ -410,6 +424,11 @@ export default function CompanyAgentPage() {
           {error && (
             <div className="mt-4 border border-[color-mix(in_srgb,var(--loss)_40%,transparent)] bg-[color-mix(in_srgb,var(--loss)_8%,transparent)] px-4 py-3 font-mono text-[11px] text-[var(--loss)]">
               {error}
+            </div>
+          )}
+          {!isAdmin && (
+            <div className="mt-4 border border-[var(--line)] bg-[var(--surface)] px-4 py-3 font-mono text-[11px] text-[var(--ink-muted)]">
+              reader 模式：可以查看历史 run、运行过程和 artifact；起草、运行和中止仅限 admin。
             </div>
           )}
 

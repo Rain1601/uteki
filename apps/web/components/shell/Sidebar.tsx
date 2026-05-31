@@ -25,6 +25,7 @@ type NavItem = {
   label: string;
   icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
   badge?: string;
+  requiresAdmin?: boolean;
 };
 
 type NavSection = {
@@ -46,8 +47,8 @@ const SECTIONS: NavSection[] = [
     label: "Engine",
     items: [
       { href: "/runs", label: "Runs", icon: Activity },
-      { href: "/compare", label: "Compare", icon: GitCompareArrows },
-      { href: "/evals", label: "Evals", icon: ClipboardCheck },
+      { href: "/compare", label: "Compare", icon: GitCompareArrows, requiresAdmin: true },
+      { href: "/evals", label: "Evals", icon: ClipboardCheck, requiresAdmin: true },
     ],
   },
   {
@@ -55,7 +56,7 @@ const SECTIONS: NavSection[] = [
     items: [
       { href: "/agents", label: "Skills", icon: Boxes },
       { href: "/harness", label: "Harness", icon: Workflow },
-      { href: "/agent", label: "试运行", icon: FlaskConical },
+      { href: "/agent", label: "试运行", icon: FlaskConical, requiresAdmin: true },
     ],
   },
 ];
@@ -70,6 +71,7 @@ export function Sidebar({
   user: AuthUser;
 }) {
   const pathname = usePathname();
+  const isAdmin = user.role === "admin";
 
   return (
     <aside
@@ -120,7 +122,7 @@ export function Sidebar({
           <div key={section.label} className="mb-1.5">
             <SectionLabel label={section.label} />
             <ul className="space-y-[1px] px-2">
-              {section.items.map((item) => {
+              {section.items.filter((item) => isAdmin || !item.requiresAdmin).map((item) => {
                 const active = isActive(pathname, item.href);
                 return (
                   <li key={item.href}>

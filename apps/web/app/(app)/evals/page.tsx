@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { API_BASE } from "@/lib/api";
+import { authedFetch, canOperate, fetchMe, type AuthUser } from "@/lib/auth";
 import { Play, CheckCircle2, XCircle, Target, ArrowUpRight } from "lucide-react";
 
 interface EvalCase {
@@ -39,6 +40,8 @@ export default function EvalsPage() {
   const [cases, setCases] = useState<EvalCase[]>([]);
   const [running, setRunning] = useState(false);
   const [report, setReport] = useState<EvalReport | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const isAdmin = canOperate(user);
 
   useEffect(() => {
     fetch(`${API_BASE}/api/eval/cases`)
@@ -47,11 +50,16 @@ export default function EvalsPage() {
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    fetchMe().then(setUser).catch(() => setUser(null));
+  }, []);
+
   async function runAll() {
+    if (!isAdmin) return;
     setRunning(true);
     setReport(null);
     try {
-      const r = await fetch(`${API_BASE}/api/eval/run`, { method: "POST" });
+      const r = await authedFetch(`${API_BASE}/api/eval/run`, { method: "POST" });
       setReport(await r.json());
     } finally {
       setRunning(false);
@@ -65,11 +73,16 @@ export default function EvalsPage() {
         title="Evaluation"
         subtitle="基于 case 给 skill 的输出打分。两个轴：(a) 最终回答是否覆盖关键词，(b) 是否调对了工具。pass_rate 可作合并门禁，趋势线监控质量回归。"
         actions={
-          <Button variant="primary" onClick={runAll} disabled={running}>
+          <Button variant="primary" onClick={runAll} disabled={!isAdmin || running}>
             <Play size={14} /> {running ? "Running…" : "Run all cases"}
           </Button>
         }
       />
+      {!isAdmin && (
+        <div className="mb-6 rounded-[var(--r)] border border-[var(--line)] bg-[var(--surface)] p-3 font-mono text-[11px] text-[var(--ink-muted)]">
+          reader 模式：可以查看 case 和历史结果；运行 eval 仅限 admin。
+        </div>
+      )}
 
       {/* Methodology */}
       <Card className="mb-8 overflow-hidden">

@@ -77,7 +77,7 @@ export function UserMenu({ user }: { user: AuthUser }) {
             {user.display_name || user.email.split("@")[0]}
           </div>
           <div className="truncate font-mono text-[9px] tracking-[0.05em] text-[var(--ink-faint)]">
-            {user.email}
+            {user.role} · {user.email}
           </div>
         </div>
       </button>

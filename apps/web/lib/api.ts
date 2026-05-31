@@ -41,7 +41,8 @@ export async function* streamChat(
     credentials: "include",
   });
   if (!resp.ok || !resp.body) {
-    throw new Error(`chat stream failed: ${resp.status}`);
+    const detail = await resp.text().catch(() => "");
+    throw new Error(detail || `chat stream failed: ${resp.status}`);
   }
 
   const reader = resp.body.getReader();

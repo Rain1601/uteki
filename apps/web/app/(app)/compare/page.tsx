@@ -14,6 +14,7 @@ import {
   type AgentInfo,
   type CompareDiffEntry,
 } from "@/lib/api";
+import { canOperate, fetchMe, type AuthUser } from "@/lib/auth";
 import type { ChatMessage } from "@/lib/types";
 import { GitCompareArrows, Loader2, ArrowUpRight } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -27,11 +28,17 @@ export default function ComparePage() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState("");
   const [results, setResults] = useState<CompareDiffEntry[] | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const isAdmin = canOperate(user);
 
   useEffect(() => {
     listAgents()
       .then((r) => setAgents(r.items))
       .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetchMe().then(setUser).catch(() => setUser(null));
   }, []);
 
   function toggle(name: string) {
@@ -46,6 +53,10 @@ export default function ComparePage() {
   async function handleSubmit() {
     setError(null);
     setResults(null);
+    if (!isAdmin) {
+      setError("reader 模式不能创建对比 run");
+      return;
+    }
     if (!question.trim() || selected.size < 2) {
       setError("至少选择 2 个 skill 并输入问题");
       return;
@@ -106,6 +117,7 @@ export default function ComparePage() {
                     key={a.name}
                     type="button"
                     onClick={() => toggle(a.name)}
+                    disabled={!isAdmin}
                     className={cn(
                       "inline-flex items-center gap-2 rounded-md border px-3 py-1.5 transition-all",
                       on
@@ -134,6 +146,7 @@ export default function ComparePage() {
                 type="text"
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
+                readOnly={!isAdmin}
                 placeholder="default"
                 className="w-48 rounded-md border border-[var(--line-strong)] bg-[var(--surface)] px-2.5 py-1.5 font-mono text-[11px] text-[var(--ink-soft)] placeholder:text-[var(--ink-faint)] focus:border-[var(--accent)] transition-colors"
               />
@@ -143,13 +156,14 @@ export default function ComparePage() {
           <textarea
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
+            readOnly={!isAdmin}
             rows={3}
             placeholder="同一个问题问多个 skill…"
             className="mt-4 w-full resize-none rounded-md border border-[var(--line-strong)] bg-[var(--surface)] p-3 font-body text-[14px] leading-relaxed text-[var(--ink)] placeholder:text-[var(--ink-faint)] focus:outline-none focus:border-[var(--accent)]"
           />
 
           <div className="mt-4 flex items-center gap-3">
-            <Button variant="primary" onClick={handleSubmit} disabled={busy}>
+            <Button variant="primary" onClick={handleSubmit} disabled={!isAdmin || busy}>
               {busy ? <Loader2 size={12} className="animate-spin" /> : <GitCompareArrows size={12} />}
               {busy ? "Running…" : "Compare"}
             </Button>
@@ -163,6 +177,11 @@ export default function ComparePage() {
           {error && (
             <div className="mt-3 rounded-[var(--r)] border border-[color-mix(in_srgb,var(--loss)_40%,transparent)] bg-[color-mix(in_srgb,var(--loss)_8%,transparent)] p-2.5 text-[12px] text-[var(--loss)]">
               ⚠ {error}
+            </div>
+          )}
+          {!isAdmin && (
+            <div className="mt-3 rounded-[var(--r)] border border-[var(--line)] bg-[var(--surface)] p-2.5 font-mono text-[11px] text-[var(--ink-muted)]">
+              reader 模式：可以查看已有 run；创建对比 run 仅限 admin。
             </div>
           )}
         </CardBody>

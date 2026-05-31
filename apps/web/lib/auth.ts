@@ -124,6 +124,7 @@ export interface AuthUser {
   avatar_url: string | null;
   created_at: string;
   status: string;
+  role: "reader" | "admin" | string;
 }
 
 export interface LoginResponse {
@@ -181,4 +182,8 @@ export async function fetchMe(): Promise<AuthUser | null> {
   const r = await authedFetch(`${API_BASE}/api/auth/me`);
   if (!r.ok) return null;
   return (await r.json()) as AuthUser;
+}
+
+export function canOperate(user: AuthUser | null | undefined): boolean {
+  return user?.role === "admin";
 }
