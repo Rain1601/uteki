@@ -27,9 +27,9 @@ export function Shell({
         user={user}
       />
       <main
-        className="min-h-screen transition-[padding] duration-300"
+        className="min-h-screen transition-[margin] duration-300"
         style={{
-          paddingLeft: pinned
+          marginLeft: pinned
             ? "var(--sidebar-w-expanded)"
             : "var(--sidebar-w-collapsed)",
         }}
