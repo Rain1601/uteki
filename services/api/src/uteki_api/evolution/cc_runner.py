@@ -48,6 +48,7 @@ from typing import TYPE_CHECKING, Any
 from uteki_api.artifacts import default_artifact_store
 from uteki_api.core.config import settings
 from uteki_api.evolution.proposals import default_proposal_store
+from uteki_api.evolution.validators import ValidationReport, validate_cc_outputs
 from uteki_api.runs import default_run_store
 from uteki_api.skills.loader import compute_signature, load_skill_prompt
 
@@ -174,14 +175,22 @@ async def run_cc_review(
         pstore.transition(proposal_id, "validating", by="system:cc_runner")
         critique_path = cc_dir / "critique.md"
         patch_path = cc_dir / "patch.diff"
-        bad = _validate_outputs(critique_path, patch_path)
-        if bad:
+        report = await validate_cc_outputs(
+            critique_path=critique_path,
+            patch_path=patch_path,
+            apply_base_dir=proposal_dir,
+        )
+        # validation.json is the M1.4 acceptance artifact — write before
+        # we transition out of validating so it's discoverable even when
+        # the proposal ends up invalidated.
+        _write_validation_json(proposal_dir, report)
+        if not report.ok:
             pstore.transition(
                 proposal_id,
                 "invalidated",
                 by="system:cc_runner",
-                reason=bad,
-                extra={"invocation": invocation},
+                reason="; ".join(report.reasons)[:500],
+                extra={"invocation": invocation, "validation": report.to_dict()},
             )
             return CCRunResult(
                 proposal_id=proposal_id,
@@ -191,7 +200,7 @@ async def run_cc_review(
                 invocation=invocation,
                 duration_s=time.time() - started,
                 ok=False,
-                error=bad,
+                error="; ".join(report.reasons),
                 final_status="invalidated",
             )
 
@@ -202,8 +211,7 @@ async def run_cc_review(
             by="system:cc_runner",
             extra={
                 "invocation": invocation,
-                "critique_bytes": critique_path.stat().st_size,
-                "patch_bytes": patch_path.stat().st_size,
+                "validation": report.to_dict(),
             },
         )
         return CCRunResult(
@@ -510,11 +518,12 @@ async def _spawn_mock(
     )
     (cc_dir / "critique.md").write_text(critique, encoding="utf-8")
 
-    # Mock patch is a no-op trailing-newline diff so validation has a
-    # syntactically valid unified diff to inspect, but applying it doesn't
-    # actually change SKILL.md. M1.4 will exercise apply.
-    patch = _MOCK_PATCH_TEMPLATE.format(source_skill=source_skill)
-    (cc_dir / "patch.diff").write_text(patch, encoding="utf-8")
+    # Mock patch is intentionally empty — the brief explicitly says
+    # "Empty file is OK if no prompt change is warranted". M1.4's validator
+    # treats empty as trivially applicable, so the proposal advances to
+    # pending_review and the operator sees a critique-only proposal (a
+    # realistic outcome when the run is fine but CC has stylistic notes).
+    (cc_dir / "patch.diff").write_text("", encoding="utf-8")
 
     # Single synthetic transcript event so M1.5's review UI has something
     # to render in the "CC reasoning" panel even in mock mode.
@@ -581,32 +590,16 @@ The following artifacts were captured for review:
 Defer or discard in mock mode; the patch is deliberately content-free.
 """
 
-_MOCK_PATCH_TEMPLATE = """--- a/snapshot/skill/SKILL.md
-+++ b/snapshot/skill/SKILL.md
-@@ -1,1 +1,1 @@
--# {source_skill} (mock)
-+# {source_skill} (mock — touched by cc_runner)
-"""
 
 
 # ──────────────────────────────────────────────────────────────────────
-# Validation
+# Validation report sidecar
 
 
-def _validate_outputs(critique_path: Path, patch_path: Path) -> str | None:
-    """Return a reason string if CC's output looks unusable; ``None`` if OK.
-
-    Mock-mode output always passes; real-mode CC can produce garbage when
-    the run is degenerate or the CLI errors out, so the checks below are
-    minimal "is there a file at all" guards. M1.4 layers diff/markdown
-    semantic validation on top.
-    """
-    if not critique_path.exists():
-        return "critique.md missing"
-    if critique_path.stat().st_size == 0:
-        return "critique.md empty"
-    if not patch_path.exists():
-        return "patch.diff missing"
-    # Empty patch is allowed (CC may decide no change is warranted) —
-    # only block on the missing-file case.
-    return None
+def _write_validation_json(proposal_dir: Path, report: ValidationReport) -> None:
+    """Persist the validators' report next to meta.json so M1.5's UI can
+    surface validation diagnostics without recomputing them."""
+    (proposal_dir / "validation.json").write_text(
+        json.dumps(report.to_dict(), indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )

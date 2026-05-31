@@ -229,6 +229,23 @@ def test_cc_review_pipeline_end_to_end(
     assert final.get("snapshot_skill_signature"), \
         "expected snapshot_skill_signature to be set after snapshotting"
 
+    reporter.section("validation.json — M1.4 acceptance artifact")
+    validation_path = pdir / "validation.json"
+    reporter.checked("validation.json exists", validation_path.exists())
+    assert validation_path.exists()
+    validation = _json.loads(validation_path.read_text())
+    reporter.kv("ok", validation["ok"])
+    reporter.kv("reasons", validation["reasons"])
+    reporter.kv("stats.patch_applies", validation["stats"].get("patch_applies"))
+    reporter.kv("stats.critique_finding_count",
+                validation["stats"].get("critique_finding_count"))
+    assert validation["ok"] is True
+    assert validation["reasons"] == []
+    # Mock mode: empty patch → trivially applies. Critique has at least one finding.
+    assert validation["stats"]["patch_applies"] is True
+    assert validation["stats"]["patch_lines_total"] == 0
+    assert validation["stats"]["critique_finding_count"] >= 1
+
     reporter.section("idempotency: re-running cc on pending_review → 409")
     r3 = client.post(
         f"/api/admin/proposals/{p_id}/run-cc",
