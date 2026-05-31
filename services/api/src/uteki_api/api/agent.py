@@ -20,11 +20,12 @@ import contextlib
 import logging
 from collections.abc import AsyncIterator
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sse_starlette.sse import EventSourceResponse
 
 from uteki_api.agents.harness import AgentHarness
-from uteki_api.auth.deps import require_admin
+from uteki_api.auth.deps import current_user
+from uteki_api.auth.roles import can_run_agent, required_permission_for_agent
 from uteki_api.evolution import default_evolution_store
 from uteki_api.runs import default_run_store
 from uteki_api.schemas.chat import ChatRequest
@@ -77,8 +78,13 @@ async def _build_harness(
 @router.post("/chat")
 async def chat(
     req: ChatRequest,
-    user: User = Depends(require_admin),
+    user: User = Depends(current_user),
 ) -> EventSourceResponse:
+    if not can_run_agent(user, req.agent):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"permission required: {required_permission_for_agent(req.agent)}",
+        )
     harness = await _build_harness(req.agent, req.model, req.session_id, user.id)
 
     async def event_source() -> AsyncIterator[dict]:
@@ -103,7 +109,7 @@ async def chat(
 @router.post("/start")
 async def start(
     req: ChatRequest,
-    user: User = Depends(require_admin),
+    user: User = Depends(current_user),
 ) -> dict:
     """Kick off a run, return ``{run_id}`` immediately; harness keeps
     running in a background asyncio task.
@@ -114,6 +120,11 @@ async def start(
     ``run_start`` with the freshly-allocated run_id, so we can pull
     that synchronously and hand off the rest of the stream to a task.
     """
+    if not can_run_agent(user, req.agent):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"permission required: {required_permission_for_agent(req.agent)}",
+        )
     harness = await _build_harness(req.agent, req.model, req.session_id, user.id)
     agen = harness.run(req.messages, session_id=req.session_id)
 

@@ -113,6 +113,49 @@ async def current_user(request, db) -> User:
 
 `ensure_demo_user(db)` 是幂等的：第一次 boot 时创建 `demo@local`（status=active，无 password_hash），之后每次 fast path lookup。
 
+## Reader / Admin / Local Full Access
+
+当前权限分成两层：
+
+- `role`：持久身份标签，当前只使用 `reader | admin`。
+- `permissions`：本次请求实际可做的动作，由后端输出给前端。
+
+`reader` 默认拥有：
+
+- `results:view`
+- `trace:view`
+
+`admin` 默认拥有：
+
+- `results:view`
+- `trace:view`
+- `agent:operate`
+- `agent:company_research`
+- `admin:*`
+
+`UTEKI_LOCAL_ALL_PERMISSIONS=true` 会让当前调用者获得完整 `permissions`，但不改写持久化 `role`。这只用于本地开发；生产环境应保持 `false`，并用 `UTEKI_ADMIN_EMAILS` / `UTEKI_ADMIN_GITHUB_LOGINS` / `UTEKI_ADMIN_GITHUB_IDS` 显式授予 admin。
+
+当 `UTEKI_AUTH_REQUIRED=false` 且未显式配置 `UTEKI_LOCAL_ALL_PERMISSIONS` 时，本地默认启用完整 permissions，方便调试 agent 运行。
+
+后续订阅功能不应把订阅用户提升为 `admin`。订阅应作为独立 entitlement / tier 扩展 read scope，例如扩大可查看 run、artifact、历史范围、source detail 或高阶报告章节；操作 agent 和 admin 工具仍由 `agent:operate` / `admin:*` 控制。
+
+### Agent Permission Map
+
+API 层通过 `AGENT_PERMISSION_MAP` 做 agent 级授权。默认规则：
+
+- 大多数 skill 使用通用 `agent:operate`。
+- 当某个 skill 同时满足以下任一条件时，可以拆出专用 permission：
+  - 运行成本显著高于普通 agent，或会消耗更高预算配额。
+  - 输出是产品化 / tier-gated 报告，需要独立售卖或限额。
+  - 涉及更高监管、投资决策、数据供应商许可或审计要求。
+  - 前端需要把入口、历史记录、artifact 访问与普通 agent 分开授权。
+- 专用 permission 必须只在后端 `AGENT_PERMISSION_MAP` 中作为权威判定；前端只能用 `/api/auth/me.permissions` 隐藏或禁用入口，不能作为安全边界。
+
+`company_research_pipeline -> agent:company_research` 是第一条专用映射：
+它会生成完整公司研究档案、调用多数据源并产出可审计 artifact，天然适合作为
+后续订阅 / tier gating 的独立能力。`research_pipeline` 继续走
+`agent:operate`，因为它仍属于通用研究链路。
+
 ## 安全要点
 
 - bcrypt cost = 12（`bcrypt.gensalt(rounds=12)`）
@@ -124,5 +167,5 @@ async def current_user(request, db) -> User:
 ## 不在本 spec
 
 - 密码找回邮件 / MFA / 邮箱验证（明确 non-goal，见 change 001 proposal）
-- RBAC / 团队 workspace / 邀请（M4 后续 change）
+- 团队 workspace / 邀请（M4 后续 change）
 - SAML / 企业 SSO

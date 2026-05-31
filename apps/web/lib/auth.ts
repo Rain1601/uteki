@@ -125,6 +125,7 @@ export interface AuthUser {
   created_at: string;
   status: string;
   role: "reader" | "admin" | string;
+  permissions?: string[];
 }
 
 export interface LoginResponse {
@@ -184,6 +185,11 @@ export async function fetchMe(): Promise<AuthUser | null> {
   return (await r.json()) as AuthUser;
 }
 
-export function canOperate(user: AuthUser | null | undefined): boolean {
-  return user?.role === "admin";
+export function canOperate(user: AuthUser | null | undefined, agent?: string): boolean {
+  if (!user) return false;
+  if (user.role === "admin" || user.permissions?.includes("agent:operate") === true) return true;
+  if (agent === "company_research_pipeline") {
+    return user.permissions?.includes("agent:company_research") === true;
+  }
+  return false;
 }

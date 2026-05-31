@@ -22,6 +22,7 @@ import asyncio
 import json
 import time
 
+import pytest
 from fastapi.testclient import TestClient
 
 from .conftest import AuthedUser, Reporter
@@ -135,6 +136,20 @@ def test_reader_can_view_run_trace_but_cannot_operate_agent(
     )
     reporter.kv("status", denied.status_code)
     assert denied.status_code == 403
+    assert denied.json()["detail"] == "permission required: agent:operate"
+
+    reporter.section("reader also lacks company-research operation permission")
+    denied_company = client.post(
+        "/api/agent/chat",
+        headers={**bob.auth_header(), "Accept": "text/event-stream"},
+        json={
+            "messages": [{"role": "user", "content": "reader should not run company agent"}],
+            "agent": "company_research_pipeline",
+        },
+    )
+    reporter.kv("company status", denied_company.status_code)
+    assert denied_company.status_code == 403
+    assert denied_company.json()["detail"] == "permission required: agent:company_research"
 
     reporter.section("seed a completed run owned by reader")
     from uteki_api.runs import Run, default_run_store
@@ -171,6 +186,44 @@ def test_reader_can_view_run_trace_but_cannot_operate_agent(
     assert events_resp.status_code == 200
     assert run_resp.json()["summary"] == "reader-visible result"
     assert [e["type"] for e in events_resp.json()["items"]] == ["run_start", "delta"]
+
+    reporter.end()
+
+
+def test_local_all_permissions_allows_reader_to_operate(
+    client: TestClient,
+    bob: AuthedUser,
+    reporter: Reporter,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Local dev can grant every operation permission without changing stored role."""
+    from uteki_api.core.config import settings
+
+    monkeypatch.setattr(settings, "local_all_permissions", True)
+
+    reporter.section("reader role gets local operation permission")
+    me = client.get("/api/auth/me", headers=bob.auth_header())
+    reporter.kv("role", me.json()["role"])
+    reporter.kv("permissions", me.json()["permissions"])
+    assert me.status_code == 200
+    assert me.json()["role"] == "reader"
+    assert "agent:operate" in me.json()["permissions"]
+    assert "agent:company_research" in me.json()["permissions"]
+
+    reporter.section("reader can operate when local override is enabled")
+    resp = client.post(
+        "/api/agent/chat",
+        headers={**bob.auth_header(), "Accept": "text/event-stream"},
+        json={
+            "messages": [{"role": "user", "content": "local all permissions smoke"}],
+            "agent": "research",
+        },
+    )
+    reporter.kv("HTTP status", resp.status_code)
+    assert resp.status_code == 200
+    events = _parse_sse(resp.text)
+    assert events[0]["type"] == "run_start"
+    assert events[-1]["type"] == "done"
 
     reporter.end()
 

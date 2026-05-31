@@ -17,7 +17,7 @@ import {
   PinOff,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
-import type { AuthUser } from "@/lib/auth";
+import { canOperate, type AuthUser } from "@/lib/auth";
 import { UserMenu } from "./UserMenu";
 
 type NavItem = {
@@ -71,7 +71,7 @@ export function Sidebar({
   user: AuthUser;
 }) {
   const pathname = usePathname();
-  const isAdmin = user.role === "admin";
+  const canUseOperations = canOperate(user);
 
   return (
     <aside
@@ -122,14 +122,16 @@ export function Sidebar({
           <div key={section.label} className="mb-1.5">
             <SectionLabel label={section.label} />
             <ul className="space-y-[1px] px-2">
-              {section.items.filter((item) => isAdmin || !item.requiresAdmin).map((item) => {
-                const active = isActive(pathname, item.href);
-                return (
-                  <li key={item.href}>
-                    <NavLink item={item} active={active} />
-                  </li>
-                );
-              })}
+              {section.items
+                .filter((item) => canUseOperations || !item.requiresAdmin)
+                .map((item) => {
+                  const active = isActive(pathname, item.href);
+                  return (
+                    <li key={item.href}>
+                      <NavLink item={item} active={active} />
+                    </li>
+                  );
+                })}
             </ul>
           </div>
         ))}

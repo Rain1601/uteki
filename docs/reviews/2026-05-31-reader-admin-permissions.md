@@ -13,9 +13,15 @@ Separate result/process viewing from operational control:
 
 ## Key Design
 
-- Backend is authoritative. Operation endpoints use `require_admin`; frontend
-  controls only hide or disable affordances.
+- Backend is authoritative. Agent endpoints use `can_run_agent`; admin/eval
+  endpoints use `require_admin`. Frontend controls only hide or disable
+  affordances.
 - User role is stored on `User.role`, defaulting to `reader`.
+- Effective request permissions are returned as `user.permissions`, so future
+  subscriptions can expand read scope without promoting users to admin.
+- `UTEKI_LOCAL_ALL_PERMISSIONS=true` grants local full permissions without
+  rewriting the persisted role. When `UTEKI_AUTH_REQUIRED=false`, local full
+  permissions are enabled by default unless explicitly disabled.
 - Admin assignment is allowlist-based:
   - `UTEKI_ADMIN_EMAILS`
   - `UTEKI_ADMIN_GITHUB_LOGINS`
@@ -48,3 +54,17 @@ Separate result/process viewing from operational control:
 - Reader receives 403 when attempting to start an agent or trigger admin review.
 - Admin retains operational flow in existing E2E chains.
 - Frontend now marks reader mode and disables/hides operation surfaces.
+- Local dev can grant full operation permissions through config while keeping
+  the user role as `reader`, which keeps subscription/read-scope work separate
+  from owner/admin capability.
+
+## Subscription Direction
+
+Subscription should be modeled as entitlement / tier, not as admin:
+
+- Free reader: limited result and trace visibility.
+- Subscriber: broader result/history/artifact/source visibility.
+- Admin: full operation and platform management.
+
+This keeps monetized read access separate from the ability to run agents,
+reload skills, run evals, or trigger self-evolution.

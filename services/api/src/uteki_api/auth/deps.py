@@ -19,6 +19,7 @@ from fastapi import Depends, HTTPException, Request, status
 from sqlmodel import Session
 
 from uteki_api.auth.jwt import decode_access
+from uteki_api.auth.roles import can_admin
 from uteki_api.core.config import settings
 from uteki_api.core.db import get_db
 from uteki_api.users import default_user_store, ensure_demo_user
@@ -75,10 +76,10 @@ async def current_user(
 
 
 async def require_admin(user: User = Depends(current_user)) -> User:
-    if getattr(user, "role", "reader") != "admin":
+    if not can_admin(user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="admin role required",
+            detail="permission required: admin:*",
         )
     return user
 

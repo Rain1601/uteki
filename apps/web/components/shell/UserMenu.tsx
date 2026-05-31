@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LogOut } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { logout, type AuthUser } from "@/lib/auth";
+import { canOperate, logout, type AuthUser } from "@/lib/auth";
 
 /**
  * Footer pill: avatar + email (label hidden when sidebar is collapsed).
@@ -40,6 +40,7 @@ export function UserMenu({ user }: { user: AuthUser }) {
   }
 
   const initial = (user.display_name || user.email).slice(0, 1).toUpperCase();
+  const accessLabel = canOperate(user) && user.role !== "admin" ? "local-all" : user.role;
 
   return (
     <div className="relative" ref={ref}>
@@ -77,7 +78,7 @@ export function UserMenu({ user }: { user: AuthUser }) {
             {user.display_name || user.email.split("@")[0]}
           </div>
           <div className="truncate font-mono text-[9px] tracking-[0.05em] text-[var(--ink-faint)]">
-            {user.role} · {user.email}
+            {accessLabel} · {user.email}
           </div>
         </div>
       </button>

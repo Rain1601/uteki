@@ -72,6 +72,10 @@ class Settings(BaseSettings):
     # When false: requests without a valid token are served as `demo@local`
     # (a stable dev user the app ensures exists at startup).
     auth_required: bool = True
+    # Local-only override: grant the current caller every operation permission
+    # without changing their persisted role. This keeps dev/debug friction low
+    # while leaving production RBAC explicit.
+    local_all_permissions: bool = False
     admin_emails: str = ""
     admin_github_logins: str = ""
     admin_github_ids: str = ""
@@ -126,6 +130,10 @@ settings = Settings(
     run_store=(os.getenv("UTEKI_RUN_STORE") or "sqlite").lower(),
     jwt_secret=os.getenv("UTEKI_JWT_SECRET") or "dev-secret-change-me",
     auth_required=_envflag("UTEKI_AUTH_REQUIRED", True),
+    local_all_permissions=_envflag(
+        "UTEKI_LOCAL_ALL_PERMISSIONS",
+        not _envflag("UTEKI_AUTH_REQUIRED", True),
+    ),
     admin_emails=(
         os.getenv("UTEKI_ADMIN_EMAILS")
         or os.getenv("UTEKI_ADMIN_EMAIL")

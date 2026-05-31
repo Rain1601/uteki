@@ -12,6 +12,7 @@ class User(SQLModel, table=True):
     avatar_url: str | None = None
     created_at: datetime
     status: str = "active"                   # "active" | "suspended"
+    role: str = "reader"                     # "reader" | "admin"
 
 class AuthIdentity(SQLModel, table=True):
     id: str = Field(primary_key=True)
@@ -73,8 +74,12 @@ class UserStore(ABC):
   "display_name": "Alice",
   "avatar_url": null,
   "created_at": "2026-05-24T17:39:01.344302",
-  "status": "active"
+  "status": "active",
+  "role": "reader",
+  "permissions": ["results:view", "trace:view"]
 }
 ```
 
 `password_hash` / `AuthIdentity` / `RefreshToken` 永不外露。
+
+`permissions` 是后端计算出的有效权限，不一定等于持久化 `role`。例如本地 `UTEKI_LOCAL_ALL_PERMISSIONS=true` 时，`role` 仍可能是 `reader`，但 `permissions` 会包含 `agent:operate` 和 `admin:*`。

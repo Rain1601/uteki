@@ -38,7 +38,7 @@ from uteki_api.auth.oauth import (
     upsert_user_from_identity,
     verify_state,
 )
-from uteki_api.auth.roles import role_for_email
+from uteki_api.auth.roles import permissions_for_user, role_for_email
 from uteki_api.core.config import settings
 from uteki_api.core.db import get_db
 from uteki_api.users import (
@@ -76,6 +76,7 @@ class UserOut(BaseModel):
     created_at: datetime
     status: str
     role: str
+    permissions: list[str]
 
 
 class AccessTokenOut(BaseModel):
@@ -114,6 +115,7 @@ def _user_out(u: User) -> UserOut:
         created_at=u.created_at,
         status=u.status,
         role=getattr(u, "role", "reader"),
+        permissions=permissions_for_user(u),
     )
 
 
