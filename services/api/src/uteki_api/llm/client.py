@@ -245,7 +245,7 @@ class LLMClient:
             payload["tool_choice"] = "auto"
 
         async with (
-            httpx.AsyncClient(timeout=httpx.Timeout(120.0)) as client,
+            httpx.AsyncClient(timeout=httpx.Timeout(300.0)) as client,
             client.stream("POST", url, json=payload, headers=headers) as resp,
         ):
             resp.raise_for_status()
