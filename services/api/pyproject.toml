@@ -19,6 +19,8 @@ dependencies = [
     "pyjwt>=2.10",
     "email-validator>=2.2",
     "mcp>=1.0",
+    "yfinance>=0.2.30",
+    "ddgs>=9.10.0",
 ]
 
 [dependency-groups]

@@ -1,15 +1,19 @@
-"""K 线 (OHLCV) 工具 — mock implementation.
+"""K-line (OHLCV) tool.
 
-Future: plug into akshare / Tushare / 交易所行情接口。
+Real runs use yfinance for US-style symbols, following uteki.open's provider
+approach. Mock/test runs retain deterministic generated bars.
 """
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import random
 import time
+from datetime import UTC, datetime
 from typing import Any
 
+from uteki_api.core.config import settings
 from uteki_api.tools.base import Tool, ToolResult
 
 _INTERVAL_SECONDS = {
@@ -59,6 +63,35 @@ class KLineTool(Tool):
             return ToolResult(ok=False, error=f"invalid interval: {interval}")
         limit = max(1, min(limit, 500))
 
+        if not settings.use_mock_data:
+            try:
+                bars = await _yfinance_bars(symbol.upper(), interval, limit)
+            except Exception:
+                bars = []
+            if bars:
+                return ToolResult(
+                    ok=True,
+                    summary=f"{symbol} {interval} 拉到 {len(bars)} 根真实 K 线",
+                    data={
+                        "symbol": symbol.upper(),
+                        "interval": interval,
+                        "bars": bars,
+                        "source": "yfinance",
+                        "fetched_at": datetime.now(UTC).isoformat(),
+                    },
+                    sources=[
+                        {
+                            "key": f"kline:{symbol}:{interval}:yfinance",
+                            "value": {"symbol": symbol.upper(), "interval": interval, "bars": bars[-5:]},
+                            "source_type": "market_data",
+                            "source_url": f"https://finance.yahoo.com/quote/{symbol.upper()}",
+                            "publisher": "Yahoo Finance",
+                            "confidence": "medium",
+                            "excerpt": f"{symbol.upper()} {interval} latest close={bars[-1]['c']}",
+                        }
+                    ],
+                )
+
         seed = int(hashlib.md5(f"{symbol}|{interval}".encode()).hexdigest(), 16) % (2**32)
         rng = random.Random(seed)
         step = _INTERVAL_SECONDS[interval]
@@ -79,5 +112,41 @@ class KLineTool(Tool):
         return ToolResult(
             ok=True,
             summary=f"{symbol} {interval} 拉到 {len(bars)} 根 K 线",
-            data={"symbol": symbol, "interval": interval, "bars": bars},
+            data={"symbol": symbol, "interval": interval, "bars": bars, "source": "mock-random"},
         )
+
+
+async def _yfinance_bars(symbol: str, interval: str, limit: int) -> list[dict[str, Any]]:
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, _yfinance_bars_sync, symbol, interval, limit)
+
+
+def _yfinance_bars_sync(symbol: str, interval: str, limit: int) -> list[dict[str, Any]]:
+    import yfinance as yf
+
+    yf_interval = {
+        "1m": "1m",
+        "5m": "5m",
+        "15m": "15m",
+        "1h": "1h",
+        "1d": "1d",
+        "1w": "1wk",
+    }[interval]
+    period = "7d" if interval in {"1m", "5m", "15m"} else "2y"
+    df = yf.Ticker(symbol).history(period=period, interval=yf_interval, auto_adjust=False)
+    if df is None or df.empty:
+        return []
+    rows = []
+    for idx, row in df.tail(limit).iterrows():
+        ts = int(idx.timestamp()) if hasattr(idx, "timestamp") else 0
+        rows.append(
+            {
+                "ts": ts,
+                "o": round(float(row.get("Open", 0)), 4),
+                "h": round(float(row.get("High", 0)), 4),
+                "l": round(float(row.get("Low", 0)), 4),
+                "c": round(float(row.get("Close", 0)), 4),
+                "v": int(float(row.get("Volume", 0))),
+            }
+        )
+    return rows

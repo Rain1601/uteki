@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000"
     use_mock_llm: bool = True
     default_model: str = "anthropic/claude-sonnet-4-6"
+    # Data tools default to fixtures when the app runs in mock-LLM mode, so
+    # tests stay hermetic. Local real-LLM runs default to live market data.
+    use_mock_data: bool = True
 
     # Legacy OpenAI-compat fallback for bare model ids
     llm_base_url: str = ""
@@ -49,6 +52,9 @@ class Settings(BaseSettings):
     aihubmix_base_url: str = ""
     deepseek_api_key: str = ""
     deepseek_base_url: str = ""
+    fmp_api_key: str = ""
+    google_search_api_key: str = ""
+    google_search_engine_id: str = ""
 
     # ── M4: auth + storage ───────────────────────────────────────────────
     # SQLite by default; flip to postgresql://... for prod.
@@ -93,6 +99,7 @@ def _envflag(name: str, default: bool) -> bool:
 settings = Settings(
     cors_origins=os.getenv("UTEKI_CORS_ORIGINS") or "http://localhost:3000",
     use_mock_llm=_envflag("UTEKI_USE_MOCK_LLM", True),
+    use_mock_data=_envflag("UTEKI_USE_MOCK_DATA", _envflag("UTEKI_USE_MOCK_LLM", True)),
     default_model=os.getenv("UTEKI_DEFAULT_MODEL") or "anthropic/claude-sonnet-4-6",
     llm_base_url=os.getenv("UTEKI_LLM_BASE_URL") or "",
     llm_api_key=os.getenv("UTEKI_LLM_API_KEY") or "",
@@ -105,6 +112,13 @@ settings = Settings(
     aihubmix_base_url=os.getenv("AIHUBMIX_BASE_URL") or "",
     deepseek_api_key=os.getenv("DEEPSEEK_API_KEY") or "",
     deepseek_base_url=os.getenv("DEEPSEEK_BASE_URL") or "",
+    fmp_api_key=os.getenv("FMP_API_KEY") or "",
+    google_search_api_key=(
+        os.getenv("GOOGLE_SEARCH_API_KEY") or os.getenv("GOOGLE_CUSTOM_SEARCH_API_KEY") or ""
+    ),
+    google_search_engine_id=(
+        os.getenv("GOOGLE_SEARCH_ENGINE_ID") or os.getenv("GOOGLE_CUSTOM_SEARCH_ENGINE_ID") or ""
+    ),
     db_url=os.getenv("UTEKI_DB_URL") or "sqlite:///data/uteki.db",
     run_store=(os.getenv("UTEKI_RUN_STORE") or "sqlite").lower(),
     jwt_secret=os.getenv("UTEKI_JWT_SECRET") or "dev-secret-change-me",
