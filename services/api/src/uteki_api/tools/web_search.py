@@ -47,8 +47,21 @@ class WebSearchTool(Tool):
             }
             for i in range(limit)
         ]
+        sources = [
+            {
+                "key": f"web_search:{query}:{i + 1}",
+                "value": result,
+                "source_type": "web_search",
+                "source_url": result["url"],
+                "publisher": result["source"],
+                "confidence": "low",
+                "excerpt": result["snippet"],
+            }
+            for i, result in enumerate(results)
+        ]
         return ToolResult(
             ok=True,
             summary=f"搜到 {len(results)} 条结果",
             data={"query": query, "results": results},
+            sources=sources,
         )

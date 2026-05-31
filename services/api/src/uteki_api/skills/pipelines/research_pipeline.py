@@ -236,6 +236,7 @@ class ResearchPipeline(BaseAgent):
         # earlier sub-skills wrote in this run).
         sub._tool_executor = self._tool_executor
         sub.artifacts = self.artifacts
+        sub.sources = self.sources
 
         try:
             async for ev in sub.run(messages):
@@ -279,6 +280,8 @@ class ResearchPipeline(BaseAgent):
             content=json.dumps(run_events, ensure_ascii=False, default=str),
             kind="json",
             description="Flattened event stream of sub-skill runs in this pipeline",
+            role="trace",
+            display_name="Run trace",
         )
 
     @staticmethod

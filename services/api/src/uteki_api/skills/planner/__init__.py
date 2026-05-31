@@ -83,6 +83,8 @@ class PlannerSkill(BaseAgent):
             content=plan_md,
             kind="markdown",
             description="Human-readable research spec",
+            role="plan",
+            display_name="Plan",
         )
         yield AgentEvent(
             type="artifact_written",
@@ -101,6 +103,8 @@ class PlannerSkill(BaseAgent):
             content=json.dumps(contract_json, ensure_ascii=False, indent=2),
             kind="json",
             description="Machine-readable acceptance criteria",
+            role="contract",
+            display_name="Sprint contract",
         )
         yield AgentEvent(
             type="artifact_written",

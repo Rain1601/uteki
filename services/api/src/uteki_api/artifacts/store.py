@@ -31,7 +31,7 @@ import time
 from abc import ABC, abstractmethod
 from pathlib import Path
 
-from uteki_api.artifacts.models import Artifact, ArtifactKind, content_type_for
+from uteki_api.artifacts.models import Artifact, ArtifactKind, ArtifactRole, content_type_for
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +120,9 @@ class ArtifactStore(ABC):
         written_by: str,
         description: str = "",
         user_id: str | None = None,
+        role: ArtifactRole = "auxiliary",
+        display_name: str = "",
+        source_refs: list[int] | None = None,
     ) -> Artifact: ...
 
     @abstractmethod
@@ -218,6 +221,9 @@ class LocalFileArtifactStore(ArtifactStore):
         written_by: str,
         description: str = "",
         user_id: str | None = None,
+        role: ArtifactRole = "auxiliary",
+        display_name: str = "",
+        source_refs: list[int] | None = None,
     ) -> Artifact:
         path = self._artifact_path(run_id, name, user_id)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -256,6 +262,9 @@ class LocalFileArtifactStore(ArtifactStore):
             written_by=written_by,
             description=description,
             content_type=content_type_for(kind),
+            role=role,
+            display_name=display_name,
+            source_refs=source_refs or [],
         )
         self._upsert_manifest(run_id, artifact, user_id)
         return artifact
@@ -322,6 +331,9 @@ class RunArtifacts:
         *,
         kind: ArtifactKind = "markdown",
         description: str = "",
+        role: ArtifactRole = "auxiliary",
+        display_name: str = "",
+        source_refs: list[int] | None = None,
     ) -> Artifact:
         return await self._store.write(
             self._run_id,
@@ -331,6 +343,9 @@ class RunArtifacts:
             written_by=self._written_by,
             description=description,
             user_id=self._user_id,
+            role=role,
+            display_name=display_name,
+            source_refs=source_refs,
         )
 
     async def read(self, name: str) -> bytes:

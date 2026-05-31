@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from uteki_api.agents.harness import HarnessLimits
     from uteki_api.artifacts import RunArtifacts
     from uteki_api.llm.client import ToolExecutor
+    from uteki_api.provenance import RunSources
 
 
 class BaseAgent(ABC):
@@ -37,6 +38,10 @@ class BaseAgent(ABC):
     # writing named artifacts (plan.md / draft.md / eval-report.json / etc.).
     # See ``services/api/src/uteki_api/artifacts/`` and openspec/changes/005.
     artifacts: RunArtifacts | None = None
+
+    # Injected alongside artifacts. Run-scoped source catalog facade for
+    # registering citable facts and validating `[src:N]` markers.
+    sources: RunSources | None = None
 
     @abstractmethod
     def run(self, messages: list[ChatMessage]) -> AsyncIterator[AgentEvent]:

@@ -55,4 +55,15 @@ class WebExtractTool(Tool):
             ok=True,
             summary=f"抽取 {total} 个 entity",
             data={"url": url, "title": title, "text": text, "entities": entities},
+            sources=[
+                {
+                    "key": f"web_extract:{url}",
+                    "value": {"url": url, "title": title, "entities": entities},
+                    "source_type": "web_extract",
+                    "source_url": url,
+                    "publisher": "mock-web-extract",
+                    "confidence": "low",
+                    "excerpt": text,
+                }
+            ],
         )

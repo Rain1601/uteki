@@ -147,6 +147,8 @@ class ResearchAgent(BaseAgent):
                 content=final_text,
                 kind="markdown",
                 description="Final synthesized research output",
+                role="draft",
+                display_name="Research draft",
             )
             yield AgentEvent(
                 type="artifact_written",

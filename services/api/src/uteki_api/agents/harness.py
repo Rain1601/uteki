@@ -20,13 +20,16 @@ sandboxing — and where the *observability contract* with the frontend is held.
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 import uuid
 from collections.abc import AsyncIterator
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from uteki_api.artifacts import RunArtifacts, default_artifact_store
+from uteki_api.diagnosis import build_trace_diagnosis
 from uteki_api.memory import Memory, default_memory
+from uteki_api.provenance import SOURCE_CATALOG_ARTIFACT, RunSources, SourceCatalog
 from uteki_api.runs import Run, RunStore, default_run_store
 from uteki_api.schemas.chat import ChatMessage
 from uteki_api.schemas.events import AgentEvent
@@ -204,6 +207,11 @@ class AgentHarness:
             written_by=self.skill.name,
             user_id=self.user_id,
         )
+        self.skill.sources = RunSources(
+            catalog=SourceCatalog(run_id=run_id),
+            run_id=run_id,
+            user_id=self.user_id,
+        )
 
         start_event = AgentEvent(
             type="run_start",
@@ -262,6 +270,18 @@ class AgentHarness:
                     # loop) has *already* executed, don't double-dispatch —
                     # the matching tool_result event will follow on the next
                     # iteration. Otherwise harness dispatches as before.
+                    review_event = self._tool_review_event(run_id, event)
+                    if review_event is not None:
+                        await self.memory.append_event(self.user_id, session_id, review_event)
+                        await self.run_store.append_event(run_id, review_event)
+                        yield review_event
+
+                        blocked = self._blocked_tool_result(run_id, event)
+                        await self.memory.append_event(self.user_id, session_id, blocked)
+                        await self.run_store.append_event(run_id, blocked)
+                        yield blocked
+                        continue
+
                     if not event.data.get("_already_executed"):
                         result_event = await self._invoke_tool(run_id, event)
                         await self.memory.append_event(self.user_id, session_id, result_event)
@@ -318,6 +338,24 @@ class AgentHarness:
             await self.run_store.append_event(run_id, err)
             yield err
             final_status = "error"
+
+        primary_event = await self._primary_artifact_event(run_id, delta_buffer)
+        if primary_event is not None:
+            await self.memory.append_event(self.user_id, session_id, primary_event)
+            await self.run_store.append_event(run_id, primary_event)
+            yield primary_event
+
+        source_event = await self._source_catalog_event(run_id)
+        if source_event is not None:
+            await self.memory.append_event(self.user_id, session_id, source_event)
+            await self.run_store.append_event(run_id, source_event)
+            yield source_event
+
+        diagnosis_event = await self._trace_diagnosis_event(run_id, usage_totals, delta_buffer)
+        if diagnosis_event is not None:
+            await self.memory.append_event(self.user_id, session_id, diagnosis_event)
+            await self.run_store.append_event(run_id, diagnosis_event)
+            yield diagnosis_event
 
         done = AgentEvent(type="done", run_id=run_id, data={"steps": step_count, "tools": tool_count})
         await self.memory.append_event(self.user_id, session_id, done)
@@ -413,6 +451,9 @@ class AgentHarness:
                 data={"name": name, "ok": False, "error": str(e)},
             )
 
+        if tool.risk_level == "high":
+            return self._blocked_tool_result(run_id, call)
+
         try:
             result = await asyncio.wait_for(tool.run(**args), timeout=30.0)
         except TimeoutError:
@@ -432,6 +473,14 @@ class AgentHarness:
                 data={"name": name, "ok": False, "error": str(e)},
             )
 
+        source_ids = await self._register_tool_sources(result.sources, tool_name=name)
+        preview: Any = result.data
+        if source_ids:
+            if isinstance(preview, dict):
+                preview = {**preview, "_source_ids": source_ids}
+            else:
+                preview = {"value": preview, "_source_ids": source_ids}
+
         return AgentEvent(
             type="tool_result",
             run_id=run_id,
@@ -441,7 +490,214 @@ class AgentHarness:
                 "name": name,
                 "ok": result.ok,
                 "summary": result.summary,
-                "preview": result.data,
+                "preview": preview,
                 "error": result.error,
+            },
+        )
+
+    def _tool_review_event(self, run_id: str, call: AgentEvent) -> AgentEvent | None:
+        name = call.data.get("name", "")
+        try:
+            tool = self.tools.get(name)
+        except KeyError:
+            return None
+        if tool.risk_level != "high":
+            return None
+        return AgentEvent(
+            type="await_review",
+            run_id=run_id,
+            step_id=call.step_id,
+            parent_id=call.step_id,
+            data={
+                "checkpoint": "high_risk_tool",
+                "tool_name": name,
+                "risk_level": tool.risk_level,
+                "args": call.data.get("args", {}) or {},
+                "reason": "high-risk tool requires explicit approval before execution",
+                "ready_artifacts": [],
+                "auto_approved": False,
+            },
+        )
+
+    @staticmethod
+    def _blocked_tool_result(run_id: str, call: AgentEvent) -> AgentEvent:
+        name = call.data.get("name", "")
+        tool_call_id = call.step_id or uuid.uuid4().hex[:8]
+        return AgentEvent(
+            type="tool_result",
+            run_id=run_id,
+            step_id=tool_call_id,
+            parent_id=call.step_id,
+            data={
+                "name": name,
+                "ok": False,
+                "summary": "blocked by tool governance",
+                "preview": None,
+                "error": "high_risk_tool_requires_review",
+            },
+        )
+
+    async def _register_tool_sources(
+        self,
+        sources: list[dict[str, Any]],
+        *,
+        tool_name: str,
+    ) -> list[int]:
+        """Register tool-provided source metadata into the run catalog.
+
+        Source metadata is best-effort. Malformed source entries should make
+        citation verification weaker, not break the tool call itself.
+        """
+        run_sources = getattr(self.skill, "sources", None)
+        if run_sources is None or not sources:
+            return []
+        ids: list[int] = []
+        for source in sources:
+            if not isinstance(source, dict):
+                continue
+            try:
+                dp_id = await run_sources.add(
+                    {
+                        "source_type": "tool_result",
+                        "key": f"{tool_name}_result",
+                        "value": source,
+                        **source,
+                    }
+                )
+            except Exception:
+                continue
+            if dp_id:
+                ids.append(dp_id)
+        return ids
+
+    async def _source_catalog_event(self, run_id: str) -> AgentEvent | None:
+        """Persist the run source catalog as an artifact and return its event."""
+        run_sources = getattr(self.skill, "sources", None)
+        artifacts = getattr(self.skill, "artifacts", None)
+        if run_sources is None or artifacts is None or len(run_sources) == 0:
+            return None
+        try:
+            if await artifacts.exists(SOURCE_CATALOG_ARTIFACT):
+                return None
+            art = await run_sources.write_artifact(artifacts)
+        except Exception as e:  # noqa: BLE001
+            return AgentEvent(
+                type="log",
+                run_id=run_id,
+                data={
+                    "level": "warn",
+                    "message": "failed to persist source catalog",
+                    "extra": {"error": str(e)},
+                },
+            )
+        return AgentEvent(
+            type="artifact_written",
+            run_id=run_id,
+            data={
+                "name": art.name,
+                "kind": art.kind,
+                "size_bytes": art.size_bytes,
+                "written_by": art.written_by,
+                "description": art.description,
+                "url": f"/api/runs/{art.run_id}/artifacts/{art.name}",
+                "role": art.role,
+                "display_name": art.display_name,
+            },
+        )
+
+    async def _primary_artifact_event(
+        self,
+        run_id: str,
+        delta_buffer: list[str],
+    ) -> AgentEvent | None:
+        """Ensure a completed run has a stable primary markdown artifact."""
+        artifacts = getattr(self.skill, "artifacts", None)
+        if artifacts is None or await artifacts.exists("final-report.md"):
+            return None
+
+        content = ""
+        for candidate in ("investment-memo.md", "final-research.md", "research.md"):
+            try:
+                if await artifacts.exists(candidate):
+                    content = await artifacts.read_text(candidate)
+                    break
+            except OSError:
+                continue
+        if not content:
+            content = "".join(delta_buffer).strip()
+        if not content:
+            return None
+
+        art = await artifacts.write(
+            name="final-report.md",
+            content=content,
+            kind="markdown",
+            description="Primary run deliverable",
+            role="primary",
+            display_name="Final report",
+        )
+        return AgentEvent(
+            type="artifact_written",
+            run_id=run_id,
+            data={
+                "name": art.name,
+                "kind": art.kind,
+                "size_bytes": art.size_bytes,
+                "written_by": art.written_by,
+                "description": art.description,
+                "url": f"/api/runs/{art.run_id}/artifacts/{art.name}",
+                "role": art.role,
+                "display_name": art.display_name,
+            },
+        )
+
+    async def _trace_diagnosis_event(
+        self,
+        run_id: str,
+        usage_totals: dict[str, int],
+        delta_buffer: list[str],
+    ) -> AgentEvent | None:
+        artifacts = getattr(self.skill, "artifacts", None)
+        if artifacts is None or await artifacts.exists("trace-diagnosis.json"):
+            return None
+        try:
+            run = await self.run_store.get(run_id, self.user_id)
+            run_sources = getattr(self.skill, "sources", None)
+            diagnosis = build_trace_diagnosis(
+                run.events,
+                usage_totals=usage_totals,
+                source_catalog=run_sources.catalog if run_sources is not None else None,
+                final_text="".join(delta_buffer),
+            )
+            art = await artifacts.write(
+                name="trace-diagnosis.json",
+                content=json.dumps(diagnosis, ensure_ascii=False, indent=2),
+                kind="json",
+                description="Derived run trace diagnosis",
+                role="diagnosis",
+                display_name="Trace diagnosis",
+            )
+        except Exception as e:  # noqa: BLE001
+            return AgentEvent(
+                type="log",
+                run_id=run_id,
+                data={
+                    "level": "warn",
+                    "message": "failed to persist trace diagnosis",
+                    "extra": {"error": str(e)},
+                },
+            )
+        return AgentEvent(
+            type="artifact_written",
+            run_id=run_id,
+            data={
+                "name": art.name,
+                "kind": art.kind,
+                "size_bytes": art.size_bytes,
+                "written_by": art.written_by,
+                "description": art.description,
+                "url": f"/api/runs/{art.run_id}/artifacts/{art.name}",
+                "role": art.role,
+                "display_name": art.display_name,
             },
         )

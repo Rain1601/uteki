@@ -13,9 +13,9 @@ LLM function-calling endpoints.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ToolResult(BaseModel):
@@ -23,12 +23,17 @@ class ToolResult(BaseModel):
     summary: str = ""
     data: Any = None
     error: str | None = None
+    sources: list[dict[str, Any]] = Field(default_factory=list)
+
+
+ToolRiskLevel = Literal["low", "medium", "high"]
 
 
 class Tool(ABC):
     name: str
     description: str
     parameters: dict[str, Any]
+    risk_level: ToolRiskLevel = "low"
 
     @abstractmethod
     async def run(self, **kwargs: Any) -> ToolResult: ...
@@ -39,7 +44,7 @@ class Tool(ABC):
             "type": "function",
             "function": {
                 "name": self.name,
-                "description": self.description,
+                "description": f"{self.description}\nRisk level: {self.risk_level}.",
                 "parameters": self.parameters,
             },
         }
@@ -52,7 +57,7 @@ class Tool(ABC):
         """
         return {
             "name": self.name,
-            "description": self.description,
+            "description": f"{self.description}\nRisk level: {self.risk_level}.",
             "input_schema": self.parameters,
         }
 

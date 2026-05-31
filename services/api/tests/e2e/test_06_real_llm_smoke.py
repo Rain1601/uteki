@@ -80,6 +80,15 @@ def test_real_research_run_emits_tool_calls_and_costs(
                      len(run["summary"]) > 50)
     assert run["status"] == "ok"
     assert run["usage_summary"]["cost_usd"] > 0
+
+    artifacts = client.get(
+        f"/api/runs/{run_id}/artifacts", headers=alice.auth_header()
+    ).json()["items"]
+    names = {a["name"] for a in artifacts}
+    reporter.kv("artifacts", sorted(names))
+    reporter.checked("artifact-first outputs present",
+                     {"final-report.md", "trace-diagnosis.json"}.issubset(names))
+    assert {"final-report.md", "trace-diagnosis.json"}.issubset(names)
     reporter.end()
 
 

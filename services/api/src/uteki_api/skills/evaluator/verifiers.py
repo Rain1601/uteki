@@ -16,6 +16,7 @@ import re
 from typing import Any
 
 from uteki_api.eval.judges.runner import JudgeScore, default_judge_runner
+from uteki_api.provenance import extract_citations
 
 
 async def regex_in_text(pattern: str, target: str) -> tuple[bool, str]:
@@ -118,11 +119,47 @@ async def llm_judge_score(
     return passed, notes, judge
 
 
+async def citation_ids_exist(
+    target: str,
+    source_catalog: dict[str, Any] | None,
+) -> tuple[bool, str]:
+    """Pass iff every numeric `[src:N]` marker exists in source_catalog."""
+    if not source_catalog:
+        return False, "source catalog missing"
+    raw_items = source_catalog.get("items") if isinstance(source_catalog, dict) else None
+    if not isinstance(raw_items, dict):
+        return False, "source catalog has no items"
+
+    valid_ids: set[int] = set()
+    for key in raw_items:
+        try:
+            valid_ids.add(int(key))
+        except (TypeError, ValueError):
+            continue
+
+    extraction = extract_citations(target or "", valid_ids=valid_ids)
+    marker_count = len(extraction.citations)
+    if marker_count == 0:
+        return False, "no citation markers found"
+    if extraction.orphan_ids:
+        unique = sorted(set(extraction.orphan_ids))
+        return False, f"orphan citation id(s): {unique}"
+    return (
+        True,
+        (
+            f"{marker_count} citation marker(s), "
+            f"{len(extraction.all_cited_ids())} numeric source id(s), "
+            f"{extraction.no_source_count} [src:none]"
+        ),
+    )
+
+
 # Dispatch table — name → callable. The evaluator skill walks the contract's
 # acceptance_criteria and looks up the verifier by string name.
 VERIFIERS = {
     "regex_in_text": regex_in_text,
     "tool_call_in_run": tool_call_in_run,
     "numeric_in_range": numeric_in_range,
+    "citation_ids_exist": citation_ids_exist,
     "llm_judge_score": llm_judge_score,
 }

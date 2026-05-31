@@ -19,6 +19,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from uteki_api.agents.base import BaseAgent
+from uteki_api.provenance import SOURCE_CATALOG_ARTIFACT
 from uteki_api.schemas.chat import ChatMessage
 from uteki_api.schemas.events import AgentEvent
 from uteki_api.skills.evaluator.verifiers import VERIFIERS
@@ -91,6 +92,7 @@ class EvaluatorSkill(BaseAgent):
 
         # 3. Load run trace (optional; empty list if missing).
         run_events = await self._load_run_trace()
+        source_catalog = await self._load_source_catalog()
 
         # 4. Run verifiers.
         # Detect the generator's model from the run trace so the LLM judge
@@ -113,6 +115,7 @@ class EvaluatorSkill(BaseAgent):
                 args,
                 draft_text=draft_text,
                 run_events=run_events,
+                source_catalog=source_catalog,
                 avoid_model=avoid_model,
             )
             passed = result[0]
@@ -149,6 +152,8 @@ class EvaluatorSkill(BaseAgent):
                         f"LLM judge result: {rubric_name}="
                         f"{judge_payload.score_1_to_10}/10 (by {judge_payload.judge_model})"
                     ),
+                    role="evaluation",
+                    display_name=f"Judge: {rubric_name}",
                 )
                 yield AgentEvent(
                     type="artifact_written",
@@ -187,6 +192,8 @@ class EvaluatorSkill(BaseAgent):
             content=json.dumps(report, ensure_ascii=False, indent=2),
             kind="json",
             description=f"Evaluator verdict: {decision}",
+            role="evaluation",
+            display_name="Eval report",
         )
         yield AgentEvent(
             type="artifact_written",
@@ -233,6 +240,21 @@ class EvaluatorSkill(BaseAgent):
         except (OSError, json.JSONDecodeError):
             return []
 
+    async def _load_source_catalog(self) -> dict[str, Any] | None:
+        # In a pipeline run, source-catalog.json is auto-written by the top-level
+        # harness at the end, after evaluator has run. During evaluation we use
+        # the live run-scoped catalog when available.
+        if self.sources is not None and len(self.sources) > 0:
+            return self.sources.catalog.to_dict()
+        if self.artifacts is None or not await self.artifacts.exists(SOURCE_CATALOG_ARTIFACT):
+            return None
+        try:
+            text = await self.artifacts.read_text(SOURCE_CATALOG_ARTIFACT)
+            parsed = json.loads(text)
+            return parsed if isinstance(parsed, dict) else None
+        except (OSError, json.JSONDecodeError):
+            return None
+
     # ── dispatch ────────────────────────────────────────────────────────
 
     @staticmethod
@@ -260,6 +282,7 @@ class EvaluatorSkill(BaseAgent):
         *,
         draft_text: str,
         run_events: list[dict[str, Any]],
+        source_catalog: dict[str, Any] | None = None,
         avoid_model: str | None = None,
     ) -> tuple[bool, str] | tuple[bool, str, Any]:
         """Dispatch a single verifier. Always async, never raises.
@@ -282,6 +305,8 @@ class EvaluatorSkill(BaseAgent):
                     float(args.get("hi", 0)),
                     draft_text,
                 )
+            if name == "citation_ids_exist":
+                return await fn(draft_text, source_catalog)
             if name == "llm_judge_score":
                 return await fn(
                     args.get("rubric", ""),

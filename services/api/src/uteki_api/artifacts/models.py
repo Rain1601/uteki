@@ -8,9 +8,20 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 ArtifactKind = Literal["markdown", "json", "text", "binary"]
+ArtifactRole = Literal[
+    "primary",
+    "draft",
+    "plan",
+    "contract",
+    "evaluation",
+    "trace",
+    "source_catalog",
+    "diagnosis",
+    "auxiliary",
+]
 
 
 _CONTENT_TYPES: dict[ArtifactKind, str] = {
@@ -43,3 +54,6 @@ class Artifact(BaseModel):
     written_by: str
     description: str = ""
     content_type: str = ""
+    role: ArtifactRole = "auxiliary"
+    display_name: str = ""
+    source_refs: list[int] = Field(default_factory=list)

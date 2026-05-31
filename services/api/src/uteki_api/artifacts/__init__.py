@@ -14,7 +14,7 @@ Storage is pluggable. The default is ``LocalFileArtifactStore`` rooted at
 
 from __future__ import annotations
 
-from uteki_api.artifacts.models import Artifact, ArtifactKind, content_type_for
+from uteki_api.artifacts.models import Artifact, ArtifactKind, ArtifactRole, content_type_for
 from uteki_api.artifacts.store import (
     ArtifactStore,
     LocalFileArtifactStore,
@@ -25,6 +25,7 @@ from uteki_api.artifacts.store import (
 __all__ = [
     "Artifact",
     "ArtifactKind",
+    "ArtifactRole",
     "content_type_for",
     "ArtifactStore",
     "LocalFileArtifactStore",
