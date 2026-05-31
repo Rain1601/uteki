@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Iterator
 from typing import Any
@@ -21,6 +22,7 @@ class SourceCatalog:
         self._next_id = 1
         self._url_index: dict[tuple[str, str], int] = {}
         self._computed_index: dict[tuple[str, str, str], int] = {}
+        self._value_index: dict[tuple[str, str, str], int] = {}
 
     def __len__(self) -> int:
         return len(self._items)
@@ -45,6 +47,19 @@ class SourceCatalog:
                 return cached
         elif source_type == "computed":
             cached = self._computed_index.get((str(source_type), key, str(partial.get("value"))))
+            if cached is not None:
+                return cached
+        else:
+            try:
+                value_fingerprint = json.dumps(
+                    partial.get("value"),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    default=str,
+                )
+            except TypeError:
+                value_fingerprint = str(partial.get("value"))
+            cached = self._value_index.get((str(source_type), key, value_fingerprint))
             if cached is not None:
                 return cached
 
@@ -73,6 +88,8 @@ class SourceCatalog:
             self._url_index[(str(source_url), key)] = new_id
         elif source_type == "computed":
             self._computed_index[(str(source_type), key, str(partial.get("value")))] = new_id
+        else:
+            self._value_index[(str(source_type), key, value_fingerprint)] = new_id
 
         return new_id
 

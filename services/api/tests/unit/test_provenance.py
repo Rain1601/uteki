@@ -47,6 +47,23 @@ def test_source_catalog_dedupes_url_key_and_renders_llm_block() -> None:
     assert catalog.to_dict()["items"]["1"]["key"] == "revenue_2024"
 
 
+def test_source_catalog_dedupes_key_value_without_url() -> None:
+    catalog = SourceCatalog(run_id="run1")
+    payload = {
+        "key": "mock_quote:AAPL",
+        "value": {"symbol": "AAPL", "price": 123.45},
+        "source_type": "tool_result",
+        "publisher": "mock",
+        "confidence": "low",
+    }
+
+    first = catalog.add({**payload, "fetched_at": "2026-05-31T00:00:00+00:00"})
+    second = catalog.add({**payload, "fetched_at": "2026-05-31T00:01:00+00:00"})
+
+    assert first == second
+    assert len(catalog) == 1
+
+
 def test_extract_citations_detects_orphans_and_cleans_text() -> None:
     text = "Revenue grew 12% [src:1, 99]. Margin is inferred [src:none]."
     extracted = extract_citations(text, valid_ids={1, 2})
@@ -55,6 +72,15 @@ def test_extract_citations_detects_orphans_and_cleans_text() -> None:
     assert extracted.orphan_ids == [99]
     assert extracted.no_source_count == 1
     assert extracted.cleaned({1, 2}) == "Revenue grew 12% [src:1]. Margin is inferred [src:none]."
+
+
+def test_extract_citations_accepts_bare_ledger_markers() -> None:
+    text = "Revenue grew [1][2]. Risk was stale [99]."
+    extracted = extract_citations(text, valid_ids={1, 2})
+
+    assert extracted.all_cited_ids() == {1, 2}
+    assert extracted.orphan_ids == [99]
+    assert extracted.cleaned({1, 2}) == "Revenue grew [src:1][src:2]. Risk was stale [src:none]."
 
 
 async def test_citation_ids_exist_verifier() -> None:

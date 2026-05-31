@@ -1,4 +1,10 @@
-"""Citation parser for `[src:N]` and `[src:none]` markers."""
+"""Citation parser for source markers.
+
+Canonical model-facing citations are `[src:N]` and `[src:none]`. Older
+company reports also emitted compact ledger citations such as `[24]` or
+`[24][27][31]`; parse those too so quality gates can catch orphan ids instead
+of silently treating them as plain text.
+"""
 
 from __future__ import annotations
 
@@ -9,7 +15,14 @@ from dataclasses import dataclass, field
 logger = logging.getLogger(__name__)
 
 NO_SOURCE_TOKEN = "none"
-_CITATION_RE = re.compile(r"\[src:\s*([0-9, ]+|none)\s*\]", re.IGNORECASE)
+_CITATION_RE = re.compile(
+    r"\[src:\s*([0-9,\s]+|none)\s*\]|\[([0-9]{1,6}(?:\s*,\s*[0-9]{1,6})*)\]",
+    re.IGNORECASE,
+)
+
+
+def _match_body(match: re.Match[str]) -> str:
+    return (match.group(1) or match.group(2) or "").strip().lower()
 
 
 @dataclass
@@ -45,7 +58,7 @@ class CitationExtraction:
         """Return text with invalid numeric citations neutralized."""
 
         def _replace(match: re.Match[str]) -> str:
-            body = match.group(1).strip().lower()
+            body = _match_body(match)
             if body == NO_SOURCE_TOKEN:
                 return match.group(0)
             kept: list[int] = []
@@ -73,7 +86,7 @@ def extract_citations(text: str, valid_ids: set[int] | None = None) -> CitationE
     no_source_count = 0
 
     for match in _CITATION_RE.finditer(text):
-        body = match.group(1).strip().lower()
+        body = _match_body(match)
         if body == NO_SOURCE_TOKEN:
             citations.append(
                 Citation(
