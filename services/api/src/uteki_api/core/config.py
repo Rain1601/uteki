@@ -37,6 +37,19 @@ class Settings(BaseSettings):
     # Data tools default to fixtures when the app runs in mock-LLM mode, so
     # tests stay hermetic. Local real-LLM runs default to live market data.
     use_mock_data: bool = True
+    # Self-evolution loop: when True, cc_runner synthesizes a canned critique
+    # + patch instead of spawning the `claude` CLI. Follows use_mock_llm by
+    # default so the E2E suite stays hermetic without a CC install.
+    use_mock_cc: bool = True
+    # Path to the Claude Code CLI binary (only used when use_mock_cc=False).
+    cc_cli_path: str = "claude"
+    # Model the CC subprocess uses for review.  Sonnet is the default since
+    # critique quality + cost balance; drift_monitor can override to opus for
+    # severe regressions.
+    cc_model: str = "claude-sonnet-4-6"
+    # Max wall-time for a single CC review (seconds). Keep generous because
+    # CC will Read several artifacts + reason through a critique.
+    cc_timeout_seconds: float = 600.0
 
     # Legacy OpenAI-compat fallback for bare model ids
     llm_base_url: str = ""
@@ -107,6 +120,10 @@ settings = Settings(
     cors_origins=os.getenv("UTEKI_CORS_ORIGINS") or "http://localhost:3000",
     use_mock_llm=_envflag("UTEKI_USE_MOCK_LLM", True),
     use_mock_data=_envflag("UTEKI_USE_MOCK_DATA", _envflag("UTEKI_USE_MOCK_LLM", True)),
+    use_mock_cc=_envflag("UTEKI_USE_MOCK_CC", _envflag("UTEKI_USE_MOCK_LLM", True)),
+    cc_cli_path=os.getenv("UTEKI_CC_CLI_PATH") or "claude",
+    cc_model=os.getenv("UTEKI_CC_MODEL") or "claude-sonnet-4-6",
+    cc_timeout_seconds=float(os.getenv("UTEKI_CC_TIMEOUT_SECONDS") or "600"),
     default_model=os.getenv("UTEKI_DEFAULT_MODEL") or "anthropic/claude-sonnet-4-6",
     llm_base_url=os.getenv("UTEKI_LLM_BASE_URL") or "",
     llm_api_key=os.getenv("UTEKI_LLM_API_KEY") or "",

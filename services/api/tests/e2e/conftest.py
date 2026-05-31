@@ -113,6 +113,12 @@ def client() -> Iterator[TestClient]:
     api_cmp.default_run_store = fresh_runs
     api_runs.default_run_store = fresh_runs
 
+    # cc_runner (M1.3) is launched from api_admin as a background task and
+    # holds its own by-name imports of default_run_store / default_proposal_store —
+    # rebind so the task sees the fresh per-test instances.
+    from uteki_api.evolution import cc_runner as cc_runner_mod
+    cc_runner_mod.default_run_store = fresh_runs
+
     with TestClient(app_main.app) as c:
         yield c
 
