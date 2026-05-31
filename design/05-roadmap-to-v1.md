@@ -107,8 +107,8 @@ Adopt?  [y/n] y
 
 | # | Task | 验收点（手工 demo） |
 |---|---|---|
-| 1.1 | `data/evolution/proposals/<id>/` 目录 + meta.json 状态机 | `cat meta.json` 显示 `status: triggered` |
-| 1.2 | Trigger 入口 `POST /api/admin/review/<run_id>` | curl 调用返回 P-id，目录被创建 |
+| ✅ 1.1 | `data/evolution/proposals/<id>/` 目录 + meta.json 状态机 | T9 4/4 pass; status machine 18 个状态 + 终态保护; `POST /api/admin/review/<run_id>` 端到端 + 跨用户隔离 |
+| ✅ 1.2 | Trigger 入口 `POST /api/admin/review/<run_id>` | (合并到 1.1 完成 — 不再单独算) |
 | 1.3 | Spawn CC 子进程 + 收 critique.md + patches | 一个真实 P-2026-* 目录出现 cc_run/ 完整产物 |
 | 1.4 | Validate diff 能否 apply + rubric YAML 有效 | `validation.json` 写入 `{ok: true, reasons: []}` |
 | 1.5 | G1 CLI review UI（demo 见上） | `./scripts/proposals review` 列出 pending |

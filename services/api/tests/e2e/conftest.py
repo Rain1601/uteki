@@ -90,6 +90,9 @@ def client() -> Iterator[TestClient]:
 
     from uteki_api.agents import harness as h
     from uteki_api.api import (
+        admin as api_admin,
+    )
+    from uteki_api.api import (
         agent as api_agent,
     )
     from uteki_api.api import (
@@ -103,6 +106,7 @@ def client() -> Iterator[TestClient]:
     )
     h.default_run_store = fresh_runs
     h.default_memory = fresh_mem
+    api_admin.default_run_store = fresh_runs
     api_agent.default_run_store = fresh_runs
     api_arts.default_run_store = fresh_runs
     api_cmp.default_run_store = fresh_runs

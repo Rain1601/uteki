@@ -5,6 +5,11 @@
 the prompt-tuning loop (``scripts/tune-prompt.sh``): edit a SKILL.md or a
 shared guardrail file, POST this endpoint, run eval — no API restart.
 
+``POST /api/admin/review/{run_id}`` is the M1 self-evolution loop trigger —
+creates a Proposal record for a Run and starts the evolution state machine.
+M1.1 phase only writes the meta.json bookkeeping; subsequent M1.x tasks
+add snapshot + CC spawn + apply + A/B eval pipeline.
+
 M4: gated behind ``current_user`` so anonymous callers can't hot-reload
 prompts. There's no role/is_admin field yet, so any authenticated user can
 call this — the real ACL gate will land alongside team workspaces. In dev
@@ -14,11 +19,14 @@ endpoint reachable from ``scripts/tune-prompt.sh`` without touching tokens.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from uteki_api.auth.deps import current_user
+from uteki_api.evolution.proposals import default_proposal_store
+from uteki_api.runs import default_run_store
 from uteki_api.skills import default_skills
 from uteki_api.skills.loader import load_skill_prompt
+from uteki_api.users.models import User
 
 router = APIRouter(
     prefix="/api/admin",
@@ -48,3 +56,40 @@ async def reload_skills() -> dict:
         skill.refs = new_refs
         cleared.append(name)
     return {"cleared": cleared, "skipped": skipped, "count": len(cleared)}
+
+
+@router.post("/review/{run_id}")
+async def trigger_review(
+    run_id: str,
+    reason: str = "manual trigger",
+    user: User = Depends(current_user),
+) -> dict:
+    """Create a self-evolution Proposal for ``run_id``.
+
+    M1.1: only writes bookkeeping (meta.json + decisions/001-triggered.json).
+    The actual CC-review pipeline (snapshot → spawn → critique → validate)
+    lands in M1.2-M1.4. Returns the freshly-allocated ``proposal_id`` so
+    callers can poll status later via a (future) ``GET /api/admin/proposals``.
+
+    Auth: caller must own the run (or be admin once RBAC lands). Today
+    this is enforced by ``run_store.get(run_id, user.id)`` raising KeyError
+    on cross-user access — same 404 shape as "doesn't exist".
+    """
+    try:
+        run = await default_run_store.get(run_id, user.id)
+    except KeyError as e:
+        raise HTTPException(404, detail=str(e)) from e
+
+    proposal = default_proposal_store.create(
+        source_run_id=run.id,
+        source_skill=run.skill,
+        source_user_id=run.user_id,
+        triggered_by=f"user:{user.id}",
+        trigger_reason=reason,
+    )
+    return {
+        "proposal_id": proposal.proposal_id,
+        "status": proposal.status,
+        "source_skill": proposal.source_skill,
+        "source_run_id": proposal.source_run_id,
+    }
