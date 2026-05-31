@@ -185,15 +185,19 @@ def test_accept_transitions_and_records_operator(
     root = tmp_path / "proposals"
     p1 = _seed_pending(root, pid_label="alice")
 
-    reporter.section(f"accept {p1}")
+    reporter.section(f"accept --no-apply {p1} — leaves at 'accepted'")
+    # --no-apply lets us assert the accept transition specifically;
+    # the auto-apply path is exercised in T14.
     proc = _run_cli(
-        "accept", p1, "--reason", "matches pattern from last week", root=root,
-        env_extra={"UTEKI_OPERATOR": "alice"},
+        "accept", p1, "--no-apply", "--reason", "matches pattern from last week",
+        root=root, env_extra={"UTEKI_OPERATOR": "alice"},
     )
     reporter.kv("exit", proc.returncode)
     reporter.kv("stdout", proc.stdout.strip())
     assert proc.returncode == 0, proc.stderr
     assert "pending_review" in proc.stdout and "accepted" in proc.stdout
+    # No apply means no "apply OK" line.
+    assert "apply OK" not in proc.stdout
 
     reporter.section("on-disk proposal reflects the transition")
     from uteki_api.evolution.proposals.store import ProposalStore

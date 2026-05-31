@@ -329,6 +329,40 @@ def _cmd_decision(
     if args.reason:
         print(_c("dim", f"  reason: {args.reason}"))
     print(_c("dim", f"  by:     {updated.transitions[-1].by}"))
+
+    # accept triggers apply inline so the operator sees "applied OK" in
+    # the same command — matches the design demo's "Applying patch...  OK"
+    # line. Other decisions (reject/defer/discard) are terminal in M1.5.
+    if to_status == "accepted" and not args.no_apply:
+        return _run_apply(args.proposal_id, store)
+    return 0
+
+
+def _run_apply(proposal_id: str, store: ProposalStore) -> int:
+    """Drive apply_proposal inline. Prints a short success/failure summary."""
+    # Lazy-import to avoid pulling the apply graph (and its FastAPI-adjacent
+    # singletons) into 'proposals list' / 'show' invocations.
+    import asyncio as _asyncio
+
+    from uteki_api.evolution.apply import apply_proposal
+
+    print(_c("dim", "  applying patch..."))
+    try:
+        result = _asyncio.run(apply_proposal(proposal_id, store=store))
+    except Exception as e:  # noqa: BLE001 — surface to the operator + log
+        print(_c("red", f"  apply crashed: {e}"), file=sys.stderr)
+        return 5
+
+    if not result.ok:
+        print(
+            _c("red", f"  apply failed: {result.error}"), file=sys.stderr
+        )
+        return 6
+    suffix = " (no-op — empty patch)" if result.patch_was_empty else ""
+    print(
+        _c("green", "  apply OK")
+        + _c("dim", f"  version={result.new_version}  signature={result.applied_signature}{suffix}")
+    )
     return 0
 
 
@@ -386,7 +420,21 @@ def _build_parser() -> argparse.ArgumentParser:
         p_act = sub.add_parser(verb, help=f"Transition a pending_review proposal to {status}.")
         p_act.add_argument("proposal_id")
         p_act.add_argument("--reason", "-r", default="", help="Audit-log reason text.")
-        p_act.set_defaults(_decision_status=status)
+        # accept fires apply automatically; --no-apply leaves the proposal
+        # parked at 'accepted' so the operator can hand-edit patch.diff,
+        # then run `proposals apply` (or re-run accept without the flag).
+        p_act.add_argument(
+            "--no-apply",
+            action="store_true",
+            help="(accept only) Don't auto-apply; leave proposal at 'accepted'.",
+        )
+        p_act.set_defaults(_decision_status=status, no_apply=False)
+
+    p_apply = sub.add_parser(
+        "apply",
+        help="Apply an already-accepted proposal (e.g. after editing patch.diff).",
+    )
+    p_apply.add_argument("proposal_id")
 
     return p
 
@@ -415,6 +463,24 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_show(args, store)
     if args.cmd in {"accept", "reject", "defer", "discard"}:
         return _cmd_decision(args, store, args._decision_status)  # noqa: SLF001
+    if args.cmd == "apply":
+        try:
+            proposal = store.get(args.proposal_id)
+        except KeyError:
+            print(_c("red", f"unknown proposal: {args.proposal_id}"), file=sys.stderr)
+            return 2
+        if proposal.status != "accepted":
+            print(
+                _c(
+                    "red",
+                    f"refusing apply: {args.proposal_id} is {proposal.status}, "
+                    "expected accepted (use `accept` first, or `accept --no-apply` "
+                    "then edit patch.diff and `apply`)",
+                ),
+                file=sys.stderr,
+            )
+            return 3
+        return _run_apply(args.proposal_id, store)
     parser.print_help()
     return 1
 
