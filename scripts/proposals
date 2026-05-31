@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# proposals — G1 review CLI for the self-evolution loop (M1.5).
+#
+#   ./scripts/proposals                      # list non-terminal proposals
+#   ./scripts/proposals list --status pending_review
+#   ./scripts/proposals show P-2026-001
+#   ./scripts/proposals accept P-2026-001 --reason "matches pattern from last week"
+#
+# Reads services/api/data/evolution/proposals/ directly (same on-disk
+# truth the API writes). No need for the API process to be running.
+#
+# Env knobs:
+#   UTEKI_OPERATOR=alice          # operator id for the audit trail
+#                                 # (default: $USER)
+#   NO_COLOR=1                    # disable ANSI escapes
+#
+set -euo pipefail
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# Use --project so cwd stays in the user's working directory — that way
+# `--root <relative-path>` resolves against the operator's cwd, not the
+# repo internals. The default --root (services/api/data/evolution/proposals)
+# is resolved by the CLI itself against the package location, so it works
+# regardless of where the operator invoked us from.
+exec uv run --quiet --project "$REPO_ROOT/services/api" python -m uteki_api.cli.proposals "$@"

@@ -111,7 +111,7 @@ Adopt?  [y/n] y
 | ✅ 1.2 | Trigger 入口 `POST /api/admin/review/<run_id>` | (合并到 1.1 完成 — 不再单独算) |
 | ✅ 1.3 | Spawn CC 子进程 + 收 critique.md + patches | T12 2/2 pass; `cc_runner` 走完 triggered → snapshotting → briefing → spawning → generating → validating → pending_review；snapshot/skill/SKILL.md + run_artifacts/* + brief.md + cc_run/{invocation,transcript,critique,patch} 全部落盘；`UTEKI_USE_MOCK_CC` 默认 mock，真 CLI 路径已就位；`POST /api/admin/proposals/<id>/run-cc` 后台跑 + idempotency 409 |
 | ✅ 1.4 | Validate diff 能否 apply + rubric YAML 有效 | `validation.json` 写入 `{ok, reasons, stats}`；checks = critique 非空 + 至少结构性 finding + patch 是合法 unified diff + git apply --check 通过 + patch ≤ 60 +/- 行；坏 CC 输出 → invalidated；16 个 unit 测试 (`test_validators.py`) + T12 加 validation.json 断言 |
-| 1.5 | G1 CLI review UI（demo 见上） | `./scripts/proposals review` 列出 pending |
+| ✅ 1.5 | G1 CLI review UI（demo 见上） | `./scripts/proposals` 渲染 list/show/accept/reject/defer/discard；finding 摘要 + validation 统计 + transition 链；操作员身份 `cli:$USER` 记审计；7 个 e2e (`test_13_proposals_cli.py`) 通过 subprocess 验证（含 `--root` 隔离 + 误状态 exit 3 + 未知 id exit 2） |
 | 1.6 | Apply pipeline（git diff apply + reload + EvolutionStore record） | `proposals adopt P-xxx` → EvolutionStore.list("research") 显示新 version |
 | 1.7 | A/B eval 自动跑（EvalRunner pre/post） | `decisions/006-ab_eval_done.json` 有 baseline + proposed pass_rate |
 | 1.8 | G2 决策 + Rollback | `proposals rollback P-xxx` → 前一版本恢复 |
