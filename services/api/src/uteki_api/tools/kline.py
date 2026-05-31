@@ -10,7 +10,7 @@ import asyncio
 import hashlib
 import random
 import time
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from uteki_api.core.config import settings
@@ -57,6 +57,11 @@ class KLineTool(Tool):
         symbol = kwargs.get("symbol", "")
         interval = kwargs.get("interval", "1d")
         limit = int(kwargs.get("limit", 30))
+        # Optional backtest cutoff (ISO date string). When set, fetchers slice
+        # the series to end on this date and mock bars are generated relative
+        # to it instead of "now". Tools accept it as a kwarg so the harness
+        # can inject it transparently; skills can also pass it explicitly.
+        as_of = kwargs.get("as_of")
         if not symbol:
             return ToolResult(ok=False, error="symbol is required")
         if interval not in _INTERVAL_SECONDS:
@@ -65,7 +70,7 @@ class KLineTool(Tool):
 
         if not settings.use_mock_data:
             try:
-                bars = await _yfinance_bars(symbol.upper(), interval, limit)
+                bars = await _yfinance_bars(symbol.upper(), interval, limit, end=as_of)
             except Exception:
                 bars = []
             if bars:
@@ -78,6 +83,7 @@ class KLineTool(Tool):
                         "bars": bars,
                         "source": "yfinance",
                         "fetched_at": datetime.now(UTC).isoformat(),
+                        **({"as_of": as_of} if as_of else {}),
                     },
                     sources=[
                         {
@@ -95,7 +101,16 @@ class KLineTool(Tool):
         seed = int(hashlib.md5(f"{symbol}|{interval}".encode()).hexdigest(), 16) % (2**32)
         rng = random.Random(seed)
         step = _INTERVAL_SECONDS[interval]
-        now_ts = int(time.time() // step * step)
+        # In backtest mode, anchor the mock series at end-of-as_of-day instead
+        # of "now" so deterministic fixtures don't leak future bars.
+        if as_of:
+            try:
+                anchor = datetime.combine(date.fromisoformat(as_of), datetime.min.time()).replace(tzinfo=UTC)
+                now_ts = int(anchor.timestamp() // step * step)
+            except ValueError:
+                now_ts = int(time.time() // step * step)
+        else:
+            now_ts = int(time.time() // step * step)
 
         bars: list[dict[str, Any]] = []
         price = rng.uniform(20, 300)
@@ -116,12 +131,16 @@ class KLineTool(Tool):
         )
 
 
-async def _yfinance_bars(symbol: str, interval: str, limit: int) -> list[dict[str, Any]]:
+async def _yfinance_bars(
+    symbol: str, interval: str, limit: int, end: str | None = None
+) -> list[dict[str, Any]]:
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, _yfinance_bars_sync, symbol, interval, limit)
+    return await loop.run_in_executor(None, _yfinance_bars_sync, symbol, interval, limit, end)
 
 
-def _yfinance_bars_sync(symbol: str, interval: str, limit: int) -> list[dict[str, Any]]:
+def _yfinance_bars_sync(
+    symbol: str, interval: str, limit: int, end: str | None = None
+) -> list[dict[str, Any]]:
     import yfinance as yf
 
     yf_interval = {
@@ -133,7 +152,19 @@ def _yfinance_bars_sync(symbol: str, interval: str, limit: int) -> list[dict[str
         "1w": "1wk",
     }[interval]
     period = "7d" if interval in {"1m", "5m", "15m"} else "2y"
-    df = yf.Ticker(symbol).history(period=period, interval=yf_interval, auto_adjust=False)
+    if end:
+        # yfinance interprets end exclusively, so bump one day to include the
+        # as-of date itself in the window (investors making the call that day
+        # can see that day's close).
+        try:
+            end_inclusive = (date.fromisoformat(end) + timedelta(days=1)).isoformat()
+        except ValueError:
+            end_inclusive = end
+        df = yf.Ticker(symbol).history(
+            period=period, interval=yf_interval, end=end_inclusive, auto_adjust=False
+        )
+    else:
+        df = yf.Ticker(symbol).history(period=period, interval=yf_interval, auto_adjust=False)
     if df is None or df.empty:
         return []
     rows = []

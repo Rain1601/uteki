@@ -9,7 +9,7 @@ FMP is an optional fallback when ``FMP_API_KEY`` is configured.
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 import httpx
@@ -153,6 +153,20 @@ class MarketQuoteTool(Tool):
 
     async def run(self, **kwargs: Any) -> ToolResult:
         symbol = kwargs.get("symbol", "").strip()
+        # market_quote is by definition a spot snapshot. In backtest mode
+        # (as_of in the past), there's no honest answer — silently returning
+        # today's price would be a correctness bug. Refuse and tell the skill
+        # to use the kline tool, which DOES take an end= date.
+        as_of = kwargs.get("as_of")
+        if as_of and str(as_of)[:10] < date.today().isoformat():
+            return ToolResult(
+                ok=False,
+                summary="historical spot quote not supported — use kline",
+                error=(
+                    f"market_quote returns a live snapshot; for as_of={as_of} "
+                    "use the kline tool (it accepts end= and returns OHLCV through that date)"
+                ),
+            )
         if not symbol:
             return ToolResult(ok=False, error="symbol is required")
 

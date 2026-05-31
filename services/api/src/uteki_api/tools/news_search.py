@@ -128,12 +128,20 @@ class NewsSearchTool(Tool):
     async def run(self, **kwargs: Any) -> ToolResult:
         query = kwargs.get("query", "")
         limit = int(kwargs.get("limit", 5))
+        # Backtest cutoff (ISO date). Items with published_at > as_of get
+        # filtered out. Items with no published_at are kept — Google CSE / DDGS
+        # don't always populate it, and dropping them silently hurts recall;
+        # the SourceCatalog will still reject any with an explicit future date
+        # when they're registered as sources.
+        as_of = kwargs.get("as_of")
         if not query:
             return ToolResult(ok=False, error="query is required")
         limit = max(1, min(limit, 20))
 
         if settings.use_mock_data:
-            return self._items_result(query, _mock_items(query, limit), confidence="low")
+            return self._items_result(
+                query, _mock_items(query, limit), confidence="low", as_of=as_of
+            )
 
         errors: list[str] = []
         for searcher in (_google_cse_search, _ddgs_search):
@@ -143,15 +151,34 @@ class NewsSearchTool(Tool):
                 errors.append(f"{searcher.__name__}: {e}")
                 continue
             if items:
-                return self._items_result(query, items)
+                return self._items_result(query, items, as_of=as_of)
 
-        fallback = self._items_result(query, _mock_items(query, limit), confidence="low")
+        fallback = self._items_result(
+            query, _mock_items(query, limit), confidence="low", as_of=as_of
+        )
         fallback.summary += " · live providers unavailable; fixture fallback"
         fallback.data["provider_errors"] = errors
         return fallback
 
     @staticmethod
-    def _items_result(query: str, items: list[dict[str, Any]], confidence: str = "medium") -> ToolResult:
+    def _items_result(
+        query: str,
+        items: list[dict[str, Any]],
+        confidence: str = "medium",
+        as_of: str | None = None,
+    ) -> ToolResult:
+        dropped = 0
+        if as_of:
+            cutoff = as_of[:10]
+            kept: list[dict[str, Any]] = []
+            for item in items:
+                pub = item.get("published_at")
+                # Keep when published_at is absent (unknown date) or ≤ cutoff.
+                if pub is None or str(pub)[:10] <= cutoff:
+                    kept.append(item)
+                else:
+                    dropped += 1
+            items = kept
         fetched_at = datetime.now(UTC).isoformat()
         sources = [
             {
@@ -167,9 +194,11 @@ class NewsSearchTool(Tool):
             }
             for i, item in enumerate(items)
         ]
-        return ToolResult(
-            ok=True,
-            summary=f"找到 {len(items)} 条与「{query}」相关的新闻",
-            data={"items": items},
-            sources=sources,
-        )
+        data: dict[str, Any] = {"items": items}
+        if as_of:
+            data["as_of"] = as_of
+            data["dropped_post_as_of"] = dropped
+        summary = f"找到 {len(items)} 条与「{query}」相关的新闻"
+        if dropped:
+            summary += f"（过滤掉 {dropped} 条 as_of 之后的）"
+        return ToolResult(ok=True, summary=summary, data=data, sources=sources)

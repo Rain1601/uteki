@@ -188,6 +188,10 @@ class FinancialsTool(Tool):
         symbol = kwargs.get("symbol", "").strip()
         period = kwargs.get("period", "annual")
         years = int(kwargs.get("years", 3))
+        # Backtest cutoff (ISO date). Reports whose period_label is later than
+        # this date get filtered out post-fetch. (FMP / yfinance APIs don't
+        # take an upper bound, so client-side filter is the honest path.)
+        as_of = kwargs.get("as_of")
         if not symbol:
             return ToolResult(ok=False, error="symbol is required")
         if period not in ("annual", "quarterly"):
@@ -195,7 +199,7 @@ class FinancialsTool(Tool):
         years = max(1, min(years, 10))
 
         if settings.use_mock_data:
-            return self._fixture_result(symbol, period, years)
+            return self._fixture_result(symbol, period, years, as_of=as_of)
 
         try:
             data = await _yfinance_financials(symbol.upper(), period, years)
@@ -206,19 +210,44 @@ class FinancialsTool(Tool):
             provider_error = ""
 
         if data and data.get("rows"):
+            if as_of:
+                data = self._slice_by_as_of(data, as_of)
             return self._financials_result(data)
 
-        fallback = self._fixture_result(symbol, period, years)
+        fallback = self._fixture_result(symbol, period, years, as_of=as_of)
         fallback.summary += " · live provider unavailable; fixture fallback"
         if isinstance(fallback.data, dict):
             fallback.data["provider_error"] = provider_error
         return fallback
 
     @staticmethod
-    def _fixture_result(symbol: str, period: str, years: int) -> ToolResult:
+    def _slice_by_as_of(data: dict[str, Any], as_of: str) -> dict[str, Any]:
+        """Drop rows whose period_label is later than as_of.
+
+        period_label can be a year ("2023") or an ISO date ("2024-09-30").
+        Both compare correctly against an ISO ``as_of`` prefix-wise (years
+        stay below "YYYY-12-31"), so a single lexicographic check suffices.
+        """
+        cutoff = as_of[:10]
+        rows = [
+            row for row in data.get("rows", [])
+            if str(row.get("period_label", ""))[:10] <= cutoff
+        ]
+        return {**data, "rows": rows, "as_of": as_of}
+
+    @staticmethod
+    def _fixture_result(
+        symbol: str, period: str, years: int, *, as_of: str | None = None
+    ) -> ToolResult:
         rows = financials_for(symbol, period, years)
+        if as_of:
+            cutoff = as_of[:10]
+            rows = [r for r in rows if str(r.get("period_label", ""))[:10] <= cutoff]
+        data: dict[str, Any] = {"symbol": symbol, "period": period, "rows": rows, "source": "mock-fixture"}
+        if as_of:
+            data["as_of"] = as_of
         return FinancialsTool._financials_result(
-            {"symbol": symbol, "period": period, "rows": rows, "source": "mock-fixture"},
+            data,
             confidence="medium" if all(row.get("source") != "mock-random" for row in rows) else "low",
         )
 
