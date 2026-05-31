@@ -19,6 +19,7 @@ import asyncio
 import contextlib
 import logging
 from collections.abc import AsyncIterator
+from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sse_starlette.sse import EventSourceResponse
@@ -45,6 +46,7 @@ async def _build_harness(
     model: str | None,
     session_id: str | None,
     user_id: str,
+    as_of: date | None = None,
 ) -> AgentHarness:
     try:
         skill = default_skills.get(agent_name)
@@ -71,6 +73,7 @@ async def _build_harness(
         run_store=default_run_store,
         skill_version=skill_version,
         user_id=user_id,
+        as_of=as_of,
         **({"limits": limits} if limits is not None else {}),
     )
 
@@ -85,7 +88,7 @@ async def chat(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"permission required: {required_permission_for_agent(req.agent)}",
         )
-    harness = await _build_harness(req.agent, req.model, req.session_id, user.id)
+    harness = await _build_harness(req.agent, req.model, req.session_id, user.id, req.as_of)
 
     async def event_source() -> AsyncIterator[dict]:
         # Hold a reference to the underlying async generator so we can
@@ -125,7 +128,7 @@ async def start(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"permission required: {required_permission_for_agent(req.agent)}",
         )
-    harness = await _build_harness(req.agent, req.model, req.session_id, user.id)
+    harness = await _build_harness(req.agent, req.model, req.session_id, user.id, req.as_of)
     agen = harness.run(req.messages, session_id=req.session_id)
 
     # First yield is run_start — happens after harness creates the Run

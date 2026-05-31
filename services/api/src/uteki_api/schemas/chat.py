@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -35,3 +36,8 @@ class ChatRequest(BaseModel):
     session_id: str | None = None
     agent: str = "research"
     model: str | None = None  # override model router default
+    # Backtest / "as-of-date" mode. When set, the harness threads this date
+    # into tool kwargs so fetchers slice at the source (yfinance history end,
+    # news/financials filtering) instead of pulling current data only to have
+    # the SourceCatalog reject future-dated points after the fact.
+    as_of: date | None = None

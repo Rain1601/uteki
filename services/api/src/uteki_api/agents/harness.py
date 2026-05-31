@@ -24,6 +24,7 @@ import json
 import time
 import uuid
 from collections.abc import AsyncIterator
+from datetime import date
 from typing import TYPE_CHECKING, Any
 
 from uteki_api.artifacts import RunArtifacts, default_artifact_store
@@ -133,6 +134,14 @@ class AgentHarness:
         # to ``"system"`` so internal callers (eval / drift_monitor / tests)
         # don't have to plumb a user through.
         user_id: str = "system",
+        # M1.x: backtest / as-of mode. When set, the harness:
+        # - constructs SourceCatalog with as_of (catalog rejects future-dated
+        #   DataPoints — already existed),
+        # - injects as_of=ISO into every tool call's kwargs so fetchers can
+        #   slice at the source (yfinance end=, news filter, etc.),
+        # - tags the run with ``as_of:YYYY-MM-DD`` for later querying.
+        # ``None`` = live mode (no time-travel constraint).
+        as_of: date | None = None,
     ) -> None:
         self.skill = skill
         self.memory = memory or default_memory
@@ -143,6 +152,9 @@ class AgentHarness:
         self.run_store = run_store if run_store is not None else default_run_store
         self.skill_version = skill_version
         self.user_id = user_id or "system"
+        self.as_of = as_of
+        # Pre-render the ISO string once — used in tool kwargs + catalog + tag.
+        self._as_of_iso: str | None = as_of.isoformat() if as_of else None
 
     async def run(
         self,
@@ -189,6 +201,7 @@ class AgentHarness:
             trigger_reason=self.trigger_reason,
             started_at=time.time(),
             user_input=user_input,
+            tags=[f"as_of:{self._as_of_iso}"] if self._as_of_iso else [],
         )
         await self.run_store.create(run_record)
 
@@ -208,10 +221,13 @@ class AgentHarness:
             user_id=self.user_id,
         )
         self.skill.sources = RunSources(
-            catalog=SourceCatalog(run_id=run_id),
+            catalog=SourceCatalog(run_id=run_id, as_of=self._as_of_iso),
             run_id=run_id,
             user_id=self.user_id,
         )
+        # Skills can read this to tell the LLM "today is X" in their prompt;
+        # also lets a skill explicitly bypass tool-kwarg injection per-call.
+        self.skill.as_of = self._as_of_iso
 
         start_event = AgentEvent(
             type="run_start",
@@ -437,7 +453,11 @@ class AgentHarness:
 
     async def _invoke_tool(self, run_id: str, call: AgentEvent) -> AgentEvent:
         name = call.data.get("name", "")
-        args = call.data.get("args", {}) or {}
+        args = dict(call.data.get("args", {}) or {})
+        # Inject as_of unless the skill explicitly passed one (skills get
+        # final say — they may want a tool call outside the run-level window).
+        if self._as_of_iso is not None and "as_of" not in args:
+            args["as_of"] = self._as_of_iso
         tool_call_id = call.step_id or uuid.uuid4().hex[:8]
 
         try:
