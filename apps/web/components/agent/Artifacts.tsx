@@ -43,12 +43,17 @@ export function Artifacts({
             <div className="min-w-0 flex-1">
               <div className="flex items-baseline gap-2">
                 <span className="font-mono text-[12px] text-[var(--ink)]">
-                  {a.name}
+                  {a.display_name || a.name}
                 </span>
                 <span className="font-mono text-[10px] text-[var(--ink-faint)]">
-                  · {a.written_by} · {formatBytes(a.size_bytes)}
+                  · {a.role || "artifact"} · {a.written_by} · {formatBytes(a.size_bytes)}
                 </span>
               </div>
+              {a.display_name && a.display_name !== a.name ? (
+                <div className="mt-0.5 font-mono text-[10px] text-[var(--ink-faint)]">
+                  {a.name}
+                </div>
+              ) : null}
               {a.description ? (
                 <div className="mt-0.5 text-[11px] text-[var(--ink-muted)]">
                   {a.description}

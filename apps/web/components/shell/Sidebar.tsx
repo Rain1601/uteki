@@ -12,6 +12,7 @@ import {
   Boxes,
   Workflow,
   FlaskConical,
+  Building2,
   Pin,
   PinOff,
 } from "lucide-react";
@@ -36,6 +37,7 @@ const SECTIONS: NavSection[] = [
     label: "Workspace",
     items: [
       { href: "/", label: "Overview", icon: LayoutDashboard },
+      { href: "/company-agent", label: "研究台", icon: Building2 },
       { href: "/watchlist", label: "关注列表", icon: Eye, badge: "DEMO" },
       { href: "/tasks", label: "调度任务", icon: CalendarClock, badge: "DEMO" },
     ],

@@ -159,10 +159,14 @@ export interface RunSummary {
   user_input?: string;
   summary?: string;
   tags?: string[];
+  artifact_count?: number;
+  primary_artifact?: ArtifactRef | null;
 }
 
 export interface RunDetail extends RunSummary {
   events: AgentEvent[];
+  artifacts?: ArtifactRef[];
+  events_summary?: Record<string, number>;
 }
 
 export interface AgentInfo {
@@ -224,6 +228,9 @@ export interface ArtifactRef {
   written_by: string;
   description?: string;
   url: string;
+  role?: string;
+  display_name?: string;
+  source_refs?: number[];
 }
 
 export async function listArtifacts(
