@@ -1,14 +1,20 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageContainer, PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Empty } from "@/components/ui/Empty";
-import { listRuns, type RunSummary } from "@/lib/api";
-import { RefreshCw, ArrowUpRight } from "lucide-react";
+import {
+  listAgents,
+  listRuns,
+  type AgentInfo,
+  type RunSummary,
+} from "@/lib/api";
+import { ArrowUpRight, RefreshCw } from "lucide-react";
 
 function formatTs(ts: number | undefined | null): string {
   if (!ts) return "—";
@@ -29,11 +35,31 @@ function statusTone(s: string): "gain" | "loss" | "warn" | "neutral" {
 }
 
 export default function RunsPage() {
-  const [skill, setSkill] = useState("");
-  const [triggeredBy, setTriggeredBy] = useState("");
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const skillFromUrl = searchParams.get("skill") ?? "";
+  const triggeredFromUrl = searchParams.get("triggered_by") ?? "";
+
+  const [skill, setSkill] = useState(skillFromUrl);
+  const [triggeredBy, setTriggeredBy] = useState(triggeredFromUrl);
   const [runs, setRuns] = useState<RunSummary[]>([]);
+  const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Sync local filter state when URL changes (back/forward, deep link).
+  useEffect(() => {
+    setSkill(skillFromUrl);
+    setTriggeredBy(triggeredFromUrl);
+  }, [skillFromUrl, triggeredFromUrl]);
+
+  // Pull the canonical skill list from the registry so the dropdown shows
+  // every skill, not just ones the current user happens to have runs for.
+  useEffect(() => {
+    listAgents()
+      .then((r) => setAgents(r.items))
+      .catch(() => setAgents([]));
+  }, []);
 
   const fetchRuns = useCallback(async () => {
     setLoading(true);
@@ -56,9 +82,21 @@ export default function RunsPage() {
     fetchRuns();
   }, [fetchRuns]);
 
+  // Push filter changes into the URL so refresh / deep-link / share works.
+  const setFilter = useCallback(
+    (key: "skill" | "triggered_by", value: string) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (value) params.set(key, value);
+      else params.delete(key);
+      const qs = params.toString();
+      router.replace(qs ? `/runs?${qs}` : "/runs");
+    },
+    [router, searchParams],
+  );
+
   const skillOptions = useMemo(
-    () => Array.from(new Set(runs.map((r) => r.skill))).sort(),
-    [runs],
+    () => agents.map((a) => a.name).sort(),
+    [agents],
   );
   const triggerOptions = useMemo(
     () => Array.from(new Set(runs.map((r) => r.triggered_by))).sort(),
@@ -83,14 +121,17 @@ export default function RunsPage() {
         <FilterField label="SKILL">
           <FilterSelect
             value={skill}
-            onChange={setSkill}
-            options={[{ value: "", label: "all" }, ...skillOptions.map((s) => ({ value: s, label: s }))]}
+            onChange={(v) => setFilter("skill", v)}
+            options={[
+              { value: "", label: "all" },
+              ...skillOptions.map((s) => ({ value: s, label: s })),
+            ]}
           />
         </FilterField>
         <FilterField label="TRIGGER">
           <FilterSelect
             value={triggeredBy}
-            onChange={setTriggeredBy}
+            onChange={(v) => setFilter("triggered_by", v)}
             options={[
               { value: "", label: "all" },
               ...triggerOptions.map((s) => ({ value: s, label: s })),
@@ -110,14 +151,22 @@ export default function RunsPage() {
 
       {runs.length === 0 && !loading ? (
         <Empty
-          title="Nothing here yet"
-          hint="跑一次试运行 (Catalog · 试运行)，或让任务到点触发一次，run 就会出现在这里。"
+          title={
+            skill
+              ? `没有 ${skill} 的 run`
+              : "Nothing here yet"
+          }
+          hint={
+            skill
+              ? "这个 skill 还没被触发过，或者你筛选了其他 trigger 类型。"
+              : "去关注列表 / 研究台触发一次，run 会出现在这里。"
+          }
           action={
             <Link
-              href="/agent"
+              href={skill ? `/agents/${encodeURIComponent(skill)}` : "/agents"}
               className="inline-flex items-center gap-2 font-mono text-[11px] tracking-[0.08em] uppercase text-[var(--accent)] hover:underline"
             >
-              Go to 试运行 <ArrowUpRight size={14} />
+              {skill ? "View skill" : "Browse skills"} <ArrowUpRight size={14} />
             </Link>
           }
         />
