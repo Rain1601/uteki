@@ -169,6 +169,57 @@ interface HistoryDiff {
   rankNow?: number | null;
 }
 
+// Phase A.2: company_final_verdict.v1 — the structured Gate 7 output.
+// Optional fields throughout so mock/legacy runs don't crash the renderer.
+interface FisherQuestion {
+  id: string;
+  question: string;
+  answer: string;
+  score?: number;
+  data_confidence?: string;
+}
+
+interface FinalVerdict {
+  schema_version?: string;
+  symbol?: string;
+  verdict?: {
+    action?: string;
+    conviction?: number;
+    quality_verdict?: string;
+    position_size_pct?: number;
+    hold_horizon?: string;
+    one_sentence?: string;
+  };
+  fisher_qa?: {
+    questions?: FisherQuestion[];
+    total_score?: number;
+    growth_verdict?: string;
+    radar_data?: Record<string, number>;
+    green_flags?: string[];
+    red_flags?: string[];
+  };
+  moat?: {
+    types?: { type?: string; strength?: string; evidence?: string }[];
+    width?: string;
+    trend?: string;
+    durability_years?: number;
+    competitive_position?: string;
+    threats?: string[];
+  };
+  management?: Record<string, unknown>;
+  reverse_test?: {
+    destruction_scenarios?: { scenario?: string; probability?: number; impact?: number; timeline?: string }[];
+    red_flags?: { flag?: string; triggered?: boolean; detail?: string }[];
+    resilience_score?: number;
+    cognitive_biases?: string[];
+    worst_case_narrative?: string;
+  };
+  valuation?: Record<string, unknown>;
+  philosophy_scores?: { buffett?: number; fisher?: number; munger?: number };
+  master_comments?: { buffett?: string; fisher?: string; munger?: string };
+  triggers?: { add?: string[]; sell?: string[] };
+}
+
 const GATE_TITLES: Record<string, string> = {
   business_analysis: "生意分析",
   fisher_qa: "成长质量",
@@ -489,6 +540,10 @@ export function CompanyDossierView({ run }: { run: RunDetail }) {
     () => parseJson<CompanyRunDiagnosis>(artifactText["company-run-diagnosis.json"]),
     [artifactText],
   );
+  const verdict = useMemo(
+    () => parseJson<FinalVerdict>(artifactText["final-verdict.json"]),
+    [artifactText],
+  );
   const catalog = useMemo(() => {
     const parsed = parseJson<SourceCatalogArtifact>(artifactText["source-catalog.json"]);
     return parsed?.items ?? {};
@@ -743,6 +798,8 @@ export function CompanyDossierView({ run }: { run: RunDetail }) {
             )}
           </aside>
         </section>
+
+        {verdict && <VerdictPanel verdict={verdict} catalog={catalog} />}
 
         <section className="mb-10">
           <div className="mb-5 flex items-baseline gap-3 border-b border-[var(--line-strong)] pb-3">
@@ -1222,4 +1279,567 @@ function SourceLedger({ entries }: { entries: SourcePoint[] }) {
       ))}
     </div>
   );
+}
+
+// ─── Phase A.2 → A.4 — final-verdict.json renderer ───────────────────────
+// The structured Gate 7 output drives:
+//   - master commentary panel (Buffett / Fisher / Munger quotes)
+//   - philosophy score bars
+//   - 5-axis radar from fisher_qa.radar_data
+//   - Fisher 15Q table (collapsible)
+//   - green / red flag lists
+//   - moat type chips
+//   - add / sell triggers
+// All sub-blocks are defensive — missing fields just render nothing,
+// so legacy runs without final-verdict.json don't show empty scaffolding.
+
+function VerdictPanel({
+  verdict,
+  catalog,
+}: {
+  verdict: FinalVerdict;
+  catalog: Record<string, SourcePoint>;
+}) {
+  return (
+    <section className="mb-10">
+      <div className="mb-5 flex items-baseline gap-3 border-b border-[var(--line-strong)] pb-3">
+        <h2 className="font-display text-[30px] italic tracking-normal text-[var(--ink)]">
+          投研裁决
+        </h2>
+        <span className="font-display text-[14px] italic tracking-normal text-[var(--ink-muted)]">
+          final verdict · {verdict.schema_version ?? "v1"}
+        </span>
+      </div>
+
+      <MasterCommentsRow comments={verdict.master_comments} catalog={catalog} />
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(240px,0.95fr)]">
+        <PhilosophyAndFlagsBlock verdict={verdict} catalog={catalog} />
+        <RadarBlock radar={verdict.fisher_qa?.radar_data} />
+      </div>
+
+      <MoatBlock moat={verdict.moat} catalog={catalog} />
+      <ReverseBlock reverse={verdict.reverse_test} catalog={catalog} />
+      <TriggersBlock triggers={verdict.triggers} catalog={catalog} />
+      <FisherQABlock fisher={verdict.fisher_qa} catalog={catalog} />
+    </section>
+  );
+}
+
+function MasterCommentsRow({
+  comments,
+  catalog,
+}: {
+  comments?: { buffett?: string; fisher?: string; munger?: string };
+  catalog: Record<string, SourcePoint>;
+}) {
+  if (!comments || (!comments.buffett && !comments.fisher && !comments.munger)) return null;
+  const entries: { name: string; text?: string }[] = [
+    { name: "BUFFETT", text: comments.buffett },
+    { name: "FISHER", text: comments.fisher },
+    { name: "MUNGER", text: comments.munger },
+  ];
+  return (
+    <div className="grid gap-4 md:grid-cols-3">
+      {entries.map(({ name, text }) =>
+        !text ? null : (
+          <div
+            key={name}
+            className="border-l-[3px] border-[var(--accent)] bg-[var(--surface-1)] px-4 py-3"
+          >
+            <div className="eyebrow mb-2">{name}</div>
+            <CitedText
+              text={text}
+              catalog={catalog}
+              className="font-display italic text-[14px] leading-relaxed text-[var(--ink)]"
+            />
+          </div>
+        ),
+      )}
+    </div>
+  );
+}
+
+function PhilosophyAndFlagsBlock({
+  verdict,
+  catalog,
+}: {
+  verdict: FinalVerdict;
+  catalog: Record<string, SourcePoint>;
+}) {
+  const scores = verdict.philosophy_scores ?? {};
+  const fisher = verdict.fisher_qa;
+  return (
+    <div>
+      {(scores.buffett !== undefined || scores.fisher !== undefined || scores.munger !== undefined) && (
+        <div className="mb-6">
+          <div className="eyebrow mb-3">philosophy match</div>
+          <div className="space-y-2.5">
+            <ScoreBar label="Buffett" score={scores.buffett} />
+            <ScoreBar label="Fisher" score={scores.fisher} />
+            <ScoreBar label="Munger" score={scores.munger} />
+          </div>
+        </div>
+      )}
+
+      {fisher?.green_flags && fisher.green_flags.length > 0 && (
+        <FlagList title="green flags · 积极信号" items={fisher.green_flags} tone="gain" catalog={catalog} />
+      )}
+      {fisher?.red_flags && fisher.red_flags.length > 0 && (
+        <FlagList title="red flags · 警示信号" items={fisher.red_flags} tone="loss" catalog={catalog} />
+      )}
+    </div>
+  );
+}
+
+function ScoreBar({ label, score }: { label: string; score?: number }) {
+  if (score === undefined || score === null) return null;
+  const pct = Math.max(0, Math.min(100, (score / 10) * 100));
+  return (
+    <div>
+      <div className="mb-1 flex items-baseline justify-between">
+        <span className="font-mono text-[10px] tracking-[0.14em] text-[var(--ink-muted)]">{label}</span>
+        <span className="numeric text-[11px] text-[var(--ink-soft)]">{score.toFixed(1)} / 10</span>
+      </div>
+      <div className="h-[3px] w-full bg-[var(--line)]">
+        <div
+          className="h-full bg-[var(--accent)]"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function FlagList({
+  title,
+  items,
+  tone,
+  catalog,
+}: {
+  title: string;
+  items: string[];
+  tone: "gain" | "loss";
+  catalog: Record<string, SourcePoint>;
+}) {
+  const color = tone === "gain" ? "var(--gain)" : "var(--loss)";
+  return (
+    <div className="mt-4">
+      <div className="eyebrow mb-2" style={{ color }}>
+        {title}
+      </div>
+      <ul className="space-y-1.5">
+        {items.map((item, i) => (
+          <li key={i} className="flex gap-2 text-[12px] leading-relaxed text-[var(--ink-soft)]">
+            <span style={{ color }} className="shrink-0">
+              ▸
+            </span>
+            <CitedText text={item} catalog={catalog} className="" />
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function RadarBlock({ radar }: { radar?: Record<string, number> }) {
+  if (!radar) return null;
+  const axes = [
+    { key: "market_potential", label: "市场" },
+    { key: "innovation", label: "创新" },
+    { key: "profitability", label: "盈利" },
+    { key: "management", label: "管理" },
+    { key: "competitive_edge", label: "护城河" },
+  ];
+  const cx = 110;
+  const cy = 110;
+  const radius = 78;
+  // Generate pentagon points + data polygon points
+  const angle = (i: number) => (-Math.PI / 2) + (i * 2 * Math.PI) / axes.length;
+  const ring = axes
+    .map((_, i) => {
+      const a = angle(i);
+      return `${cx + radius * Math.cos(a)},${cy + radius * Math.sin(a)}`;
+    })
+    .join(" ");
+  const dataPts = axes
+    .map((ax, i) => {
+      const v = Math.max(0, Math.min(10, radar[ax.key] ?? 0));
+      const r = (v / 10) * radius;
+      const a = angle(i);
+      return `${cx + r * Math.cos(a)},${cy + r * Math.sin(a)}`;
+    })
+    .join(" ");
+
+  return (
+    <div className="border border-[var(--line)] bg-[var(--surface-1)] p-4">
+      <div className="eyebrow mb-2">fisher radar</div>
+      <svg viewBox="0 0 220 220" className="mx-auto block w-full max-w-[260px]">
+        {/* 4 concentric rings */}
+        {[0.25, 0.5, 0.75, 1].map((scale, i) => (
+          <polygon
+            key={i}
+            points={axes
+              .map((_, j) => {
+                const a = angle(j);
+                return `${cx + radius * scale * Math.cos(a)},${cy + radius * scale * Math.sin(a)}`;
+              })
+              .join(" ")}
+            fill="none"
+            stroke="var(--line)"
+            strokeWidth="1"
+          />
+        ))}
+        {/* Axis lines */}
+        {axes.map((_, i) => {
+          const a = angle(i);
+          return (
+            <line
+              key={i}
+              x1={cx}
+              y1={cy}
+              x2={cx + radius * Math.cos(a)}
+              y2={cy + radius * Math.sin(a)}
+              stroke="var(--line)"
+              strokeWidth="1"
+            />
+          );
+        })}
+        {/* Pentagon outer outline */}
+        <polygon points={ring} fill="none" stroke="var(--ink-faint)" strokeWidth="1.5" />
+        {/* Data polygon */}
+        <polygon
+          points={dataPts}
+          fill="color-mix(in srgb, var(--accent) 25%, transparent)"
+          stroke="var(--accent)"
+          strokeWidth="2"
+          strokeLinejoin="round"
+        />
+        {/* Axis labels */}
+        {axes.map((ax, i) => {
+          const a = angle(i);
+          const lx = cx + (radius + 16) * Math.cos(a);
+          const ly = cy + (radius + 16) * Math.sin(a) + 4;
+          return (
+            <text
+              key={ax.key}
+              x={lx}
+              y={ly}
+              textAnchor="middle"
+              className="fill-[var(--ink-muted)]"
+              style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 10, letterSpacing: "0.08em" }}
+            >
+              {ax.label} {Math.round(radar[ax.key] ?? 0)}
+            </text>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+function MoatBlock({
+  moat,
+  catalog,
+}: {
+  moat?: FinalVerdict["moat"];
+  catalog: Record<string, SourcePoint>;
+}) {
+  if (!moat || !moat.types || moat.types.length === 0) return null;
+  const strengthColor: Record<string, string> = {
+    strong: "var(--gain)",
+    moderate: "var(--accent)",
+    weak: "var(--loss)",
+  };
+  return (
+    <div className="mt-6 border-t border-[var(--line)] pt-5">
+      <div className="mb-3 flex flex-wrap items-baseline gap-3">
+        <div className="eyebrow">moat</div>
+        {moat.width && (
+          <span className="font-mono text-[11px] tracking-[0.12em] text-[var(--ink-soft)]">
+            width: {moat.width}
+          </span>
+        )}
+        {moat.trend && (
+          <span className="font-mono text-[11px] tracking-[0.12em] text-[var(--ink-soft)]">
+            trend: {moat.trend}
+          </span>
+        )}
+        {moat.durability_years !== undefined && moat.durability_years !== null && (
+          <span className="font-mono text-[11px] tracking-[0.12em] text-[var(--ink-soft)]">
+            durability: {moat.durability_years}y
+          </span>
+        )}
+      </div>
+      <div className="grid gap-2 md:grid-cols-3">
+        {moat.types.map((t, i) => (
+          <div
+            key={i}
+            className="border border-[var(--line)] bg-[var(--surface-1)] px-3 py-2"
+          >
+            <div className="mb-1 flex items-baseline justify-between">
+              <span className="font-mono text-[10px] font-semibold tracking-[0.16em] text-[var(--accent)]">
+                {t.type}
+              </span>
+              <span
+                className="font-mono text-[9px] tracking-[0.14em]"
+                style={{ color: strengthColor[t.strength ?? ""] ?? "var(--ink-muted)" }}
+              >
+                {t.strength}
+              </span>
+            </div>
+            {t.evidence && (
+              <CitedText
+                text={t.evidence}
+                catalog={catalog}
+                className="text-[11px] leading-relaxed text-[var(--ink-soft)]"
+              />
+            )}
+          </div>
+        ))}
+      </div>
+      {moat.competitive_position && (
+        <div className="mt-3 border-l-2 border-[var(--line)] pl-3">
+          <CitedText
+            text={moat.competitive_position}
+            catalog={catalog}
+            className="text-[12px] italic text-[var(--ink-muted)]"
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReverseBlock({
+  reverse,
+  catalog,
+}: {
+  reverse?: FinalVerdict["reverse_test"];
+  catalog: Record<string, SourcePoint>;
+}) {
+  if (!reverse) return null;
+  const scenarios = reverse.destruction_scenarios ?? [];
+  const flags = reverse.red_flags ?? [];
+  const triggeredFlags = flags.filter((f) => f.triggered);
+  if (scenarios.length === 0 && triggeredFlags.length === 0 && !reverse.worst_case_narrative) {
+    return null;
+  }
+  return (
+    <div className="mt-6 border-t border-[var(--line)] pt-5">
+      <div className="mb-3 flex items-baseline gap-3">
+        <div className="eyebrow">reverse test · munger</div>
+        {reverse.resilience_score !== undefined && (
+          <span className="font-mono text-[11px] tracking-[0.12em] text-[var(--ink-soft)]">
+            resilience: {reverse.resilience_score.toFixed(1)} / 10
+          </span>
+        )}
+      </div>
+      {scenarios.length > 0 && (
+        <div className="mb-3 grid gap-2 md:grid-cols-3">
+          {scenarios.slice(0, 3).map((s, i) => (
+            <div key={i} className="border border-[var(--line)] bg-[var(--surface-1)] px-3 py-2">
+              <div className="mb-1 flex items-baseline justify-between font-mono text-[10px] text-[var(--ink-muted)]">
+                <span>P {((s.probability ?? 0) * 100).toFixed(0)}%</span>
+                <span>I {(s.impact ?? 0).toFixed(0)}/10</span>
+                {s.timeline && <span>{s.timeline}</span>}
+              </div>
+              {s.scenario && (
+                <div className="text-[12px] leading-relaxed text-[var(--ink-soft)]">{s.scenario}</div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {triggeredFlags.length > 0 && (
+        <div className="mb-3">
+          <div className="eyebrow mb-2" style={{ color: "var(--loss)" }}>
+            triggered red flags
+          </div>
+          <ul className="space-y-1.5">
+            {triggeredFlags.map((f, i) => (
+              <li key={i} className="text-[12px] leading-relaxed text-[var(--ink-soft)]">
+                <span style={{ color: "var(--loss)" }} className="mr-2">▸</span>
+                <strong className="font-medium text-[var(--ink)]">{f.flag}</strong>
+                {f.detail && (
+                  <>
+                    {" — "}
+                    <CitedText text={f.detail} catalog={catalog} className="text-[var(--ink-muted)]" />
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {reverse.worst_case_narrative && (
+        <div className="border-l-2 border-[var(--loss)] pl-3">
+          <CitedText
+            text={reverse.worst_case_narrative}
+            catalog={catalog}
+            className="text-[12px] italic leading-relaxed text-[var(--ink-soft)]"
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TriggersBlock({
+  triggers,
+  catalog,
+}: {
+  triggers?: FinalVerdict["triggers"];
+  catalog: Record<string, SourcePoint>;
+}) {
+  const adds = triggers?.add ?? [];
+  const sells = triggers?.sell ?? [];
+  if (adds.length === 0 && sells.length === 0) return null;
+  return (
+    <div className="mt-6 grid gap-4 border-t border-[var(--line)] pt-5 md:grid-cols-2">
+      {adds.length > 0 && (
+        <FlagList title="add triggers · 加仓信号" items={adds} tone="gain" catalog={catalog} />
+      )}
+      {sells.length > 0 && (
+        <FlagList title="sell triggers · 止损 / 卖出" items={sells} tone="loss" catalog={catalog} />
+      )}
+    </div>
+  );
+}
+
+function FisherQABlock({
+  fisher,
+  catalog,
+}: {
+  fisher?: FinalVerdict["fisher_qa"];
+  catalog: Record<string, SourcePoint>;
+}) {
+  const [open, setOpen] = useState(false);
+  if (!fisher || !fisher.questions || fisher.questions.length === 0) return null;
+  const total = fisher.total_score;
+  const verdict = fisher.growth_verdict;
+  const verdictLabel: Record<string, string> = {
+    compounder: "复利机器",
+    cyclical: "周期成长",
+    declining: "增长衰退",
+    turnaround: "困境反转",
+  };
+
+  return (
+    <div className="mt-6 border-t border-[var(--line)] pt-5">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-baseline gap-3 text-left"
+      >
+        {open ? (
+          <ChevronDown size={14} className="text-[var(--ink-muted)]" />
+        ) : (
+          <ChevronRight size={14} className="text-[var(--ink-muted)]" />
+        )}
+        <div className="eyebrow">fisher 15 Q</div>
+        {total !== undefined && (
+          <span className="font-mono text-[11px] tracking-[0.12em] text-[var(--ink-soft)]">
+            total: {total} / 150
+          </span>
+        )}
+        {verdict && (
+          <span className="font-display text-[14px] italic text-[var(--accent)]">
+            {verdictLabel[verdict] ?? verdict}
+          </span>
+        )}
+        <span className="ml-auto font-mono text-[10px] text-[var(--ink-faint)]">
+          {fisher.questions.length} 题
+        </span>
+      </button>
+      {open && (
+        <ol className="mt-4 space-y-3">
+          {fisher.questions.map((q) => (
+            <li key={q.id} className="grid gap-2 border-l-2 border-[var(--line)] pl-3 md:grid-cols-[60px_1fr_80px]">
+              <div>
+                <span className="font-mono text-[11px] font-semibold text-[var(--accent)]">{q.id}</span>
+              </div>
+              <div>
+                <div className="font-display text-[13px] italic text-[var(--ink)]">{q.question}</div>
+                {q.answer && (
+                  <div className="mt-1">
+                    <CitedText
+                      text={q.answer}
+                      catalog={catalog}
+                      className="text-[12px] leading-relaxed text-[var(--ink-soft)]"
+                    />
+                  </div>
+                )}
+              </div>
+              <div className="flex flex-col items-end gap-0.5 text-right">
+                <span className="numeric text-[14px] text-[var(--ink)]">
+                  {q.score !== undefined ? q.score.toFixed(1) : "—"}
+                </span>
+                {q.data_confidence && (
+                  <span className="font-mono text-[8px] tracking-[0.16em] uppercase text-[var(--ink-faint)]">
+                    {q.data_confidence}
+                  </span>
+                )}
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+
+// ─── Client-side fetch wrapper ───────────────────────────────────────────
+// page.tsx (server component) can't read the user's access token (lives in
+// sessionStorage) and was silently 404-ing into a demo@local run shell for
+// any cross-user dossier. This wrapper does the fetch on the client, after
+// sessionStorage is available, so the user sees their real run.
+
+export function CompanyDossierClient({ runId }: { runId: string }) {
+  const [run, setRun] = useState<RunDetail | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setError(null);
+    setRun(null);
+    getRun(runId)
+      .then((r) => {
+        if (!cancelled) setRun(r);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [runId]);
+
+  if (error) {
+    return (
+      <div className="mx-auto max-w-[1280px] px-6 py-8">
+        <Link
+          href="/company-agent"
+          className="font-mono text-[11px] tracking-[0.08em] uppercase text-[var(--ink-muted)] hover:text-[var(--ink)]"
+        >
+          ← back to company agent
+        </Link>
+        <Card className="mt-4 border-[color-mix(in_srgb,var(--loss)_40%,transparent)] p-4 text-[12px] text-[var(--loss)]">
+          加载公司档案失败：{error}
+        </Card>
+      </div>
+    );
+  }
+
+  if (!run) {
+    return (
+      <div className="mx-auto max-w-[1280px] px-6 py-12">
+        <div className="font-mono text-[11px] tracking-[0.08em] uppercase text-[var(--ink-faint)]">
+          loading dossier…
+        </div>
+      </div>
+    );
+  }
+
+  return <CompanyDossierView run={run} />;
 }
