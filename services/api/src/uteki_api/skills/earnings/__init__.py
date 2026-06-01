@@ -23,7 +23,7 @@ from uteki_api.llm.router import default_router
 from uteki_api.llm.usage import ToolCallFulfilled, ToolCallRequested, UsageDelta
 from uteki_api.schemas.chat import ChatMessage
 from uteki_api.schemas.events import AgentEvent
-from uteki_api.skills.loader import compute_signature, load_skill_prompt
+from uteki_api.skills.loader import load_skill_prompt
 from uteki_api.tools import default_registry
 
 
@@ -39,7 +39,7 @@ class EarningsSkill(BaseAgent):
 
     def current_signature(self) -> dict[str, Any]:
         return {
-            "prompt": compute_signature(self.system_prompt),
+            "prompt": self.system_prompt,
             "tool_names": list(self.DEFAULT_TOOLS),
             "model": self.model or self.DEFAULT_MODEL,
             "params": {"references": list(self.refs)},

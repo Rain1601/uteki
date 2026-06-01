@@ -36,6 +36,7 @@ from uteki_api.llm.router import default_router
 from uteki_api.llm.usage import ToolCallFulfilled, ToolCallRequested, UsageDelta
 from uteki_api.schemas.chat import ChatMessage
 from uteki_api.schemas.events import AgentEvent
+from uteki_api.skills.loader import load_skill_prompt
 from uteki_api.tools import default_registry
 
 Intent = Literal[
@@ -68,12 +69,9 @@ class UtekiRouter(BaseAgent):
     DEFAULT_TOOLS = ["market_quote", "news_search", "web_search"]
     DEFAULT_MODEL = "deepseek/deepseek-chat"
 
-    # Lazily set by `loader.py` via the standard skill-prompt composer.
-    system_prompt: str = ""
-    refs: tuple[str, ...] = ()
-
     def __init__(self, model: str | None = None) -> None:
         self.model = model
+        self.system_prompt, self.refs = load_skill_prompt("uteki")
 
     def recommended_limits(self) -> HarnessLimits:
         # Generous limits: the router itself is cheap, but a delegated
@@ -90,7 +88,9 @@ class UtekiRouter(BaseAgent):
 
     def current_signature(self) -> dict[str, Any]:
         return {
-            "prompt": "uteki-router:v2",
+            # Full composed SKILL.md text — any edit auto-bumps version
+            # AND the version-history UI can render it verbatim.
+            "prompt": self.system_prompt,
             "tool_names": list(self.DEFAULT_TOOLS),
             "model": self.model or self.DEFAULT_MODEL,
             "params": {"subskills": sorted(SUBSKILL_MAP.values())},

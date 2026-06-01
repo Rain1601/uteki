@@ -69,9 +69,11 @@ class ResearchPipeline(BaseAgent):
 
     def current_signature(self) -> dict[str, Any]:
         return {
-            # Empty prompt hash — pipeline behaviour lives in this Python file,
-            # not in markdown. Signature still has to be stable.
-            "prompt": "pipeline:research_v1",
+            # No SKILL.md — pipeline behavior lives in this Python file,
+            # not in markdown. Version-history UI skips rendering when
+            # prompt is empty; auto-bump fires on `params` changes
+            # (e.g. max_iterations).
+            "prompt": "",
             "tool_names": list(self.DEFAULT_TOOLS),
             "model": self.model or self.DEFAULT_MODEL,
             "params": {"max_iterations": self.DEFAULT_MAX_ITERATIONS},

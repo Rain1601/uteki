@@ -356,7 +356,11 @@ class CompanyResearchPipeline(BaseAgent):
 
     def current_signature(self) -> dict[str, Any]:
         return {
-            "prompt": "company-research-7gate-peer-capital-claim-audit:v3",
+            # No single SKILL.md — gate prompts are dynamically composed
+            # via `_gate_prompt()` per gate. Version-history UI skips
+            # rendering when prompt is empty; auto-bump still fires on
+            # `params` changes (gate set, peer count, capital plan).
+            "prompt": "",
             "tool_names": list(self.DEFAULT_TOOLS),
             "model": self.model or self.DEFAULT_MODEL,
             "params": {
