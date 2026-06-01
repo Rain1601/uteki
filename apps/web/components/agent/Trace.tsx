@@ -17,6 +17,7 @@ import {
   FileText,
   ChevronDown,
   ChevronUp,
+  Brain,
 } from "lucide-react";
 
 export function Trace({ events }: { events: AgentEvent[] }) {
@@ -65,7 +66,7 @@ const dotConfig: Record<string, { color: string; size?: "sm" | "md" }> = {
   plan:        { color: "var(--accent)" },
   step_start:  { color: "var(--info)" },
   step_end:    { color: "var(--ink-muted)", size: "sm" },
-  thinking:    { color: "var(--ink-faint)", size: "sm" },
+  thinking:    { color: "var(--accent)" },
   tool_call:   { color: "var(--warn)" },
   tool_result: { color: "var(--gain)" },
   delta:       { color: "var(--ink-faint)", size: "sm" },
@@ -153,11 +154,31 @@ function TraceEvent({ ev }: { ev: AgentEvent }) {
       );
 
     case "thinking":
+      // Agent's internal voice — the *reasoning* behind whatever happens
+      // next (tool call selection, section claim, key judgment). Per the
+      // M1.x guardrails §6, skills should yield one of these before every
+      // tool_call. Renders as a load-bearing quote, not as log noise.
       return (
-        <div className="rounded-r-[var(--r)] border-l-2 border-[var(--line-strong)] bg-[var(--surface)]/60 py-1 pl-3 pr-2">
-          <span className="font-display italic text-[13px] leading-relaxed text-[var(--ink-muted)]">
+        <div
+          className={cn(
+            "rounded-[var(--r)] border-l-[3px] border-[var(--accent)]",
+            "bg-[color-mix(in_srgb,var(--accent)_4%,transparent)]",
+            "py-2 pl-3 pr-3",
+          )}
+        >
+          <div className="mb-1 flex items-center gap-2">
+            <Brain
+              size={12}
+              className="shrink-0 text-[var(--accent)]"
+              strokeWidth={1.75}
+            />
+            <span className="font-mono text-[9px] tracking-[0.18em] uppercase text-[var(--accent)]">
+              thinking
+            </span>
+          </div>
+          <div className="font-display italic text-[13px] leading-relaxed text-[var(--ink)]">
             {String(ev.data.text ?? "")}
-          </span>
+          </div>
         </div>
       );
 
