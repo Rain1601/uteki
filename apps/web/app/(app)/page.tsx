@@ -34,10 +34,10 @@ export default async function Home() {
         subtitle="uteki 把投研流程拆成四个固定环节：你维护关注列表，按时间触发任务，harness 编排 skill 调度工具，每次执行落成一条可回放、可评测、可对比的 run。"
         actions={
           <Link
-            href="/harness"
+            href="/runs"
             className="inline-flex items-center gap-2 rounded-md border border-[var(--accent-line)] bg-[var(--accent-soft)] px-4 py-2 font-mono text-[11px] tracking-[0.08em] uppercase text-[var(--accent)] hover:brightness-110 transition"
           >
-            View Harness <ArrowUpRight size={14} />
+            View Runs <ArrowUpRight size={14} />
           </Link>
         }
       />
@@ -64,7 +64,7 @@ export default async function Home() {
           n="02"
           title="Harness"
           body="orchestrates · enforces limits · binds version"
-          href="/harness"
+          href="/runs"
           icon={Workflow}
           accent
         />

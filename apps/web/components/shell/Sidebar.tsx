@@ -10,7 +10,6 @@ import {
   GitCompareArrows,
   ClipboardCheck,
   Boxes,
-  Workflow,
   FlaskConical,
   Building2,
   Pin,
@@ -55,7 +54,6 @@ const SECTIONS: NavSection[] = [
     label: "Catalog",
     items: [
       { href: "/agents", label: "Skills", icon: Boxes },
-      { href: "/harness", label: "Harness", icon: Workflow },
       { href: "/agent", label: "试运行", icon: FlaskConical, requiresAdmin: true },
     ],
   },
