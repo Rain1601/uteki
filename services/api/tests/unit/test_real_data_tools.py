@@ -122,6 +122,77 @@ def test_financials_enrichment_helpers_handle_empty_yfinance() -> None:
 
 
 @pytest.mark.asyncio
+async def test_web_search_uses_live_providers_when_mock_data_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Phase C.3 — web_search migrated from mock to Google CSE + DDGS.
+    Google CSE empty → falls through to DDGS → returns real results."""
+    from uteki_api.tools import web_search as mod
+    from uteki_api.tools.web_search import WebSearchTool
+
+    monkeypatch.setattr(settings, "use_mock_data", False)
+
+    async def fake_google_empty(_q: str, _l: int) -> list[dict]:
+        return []  # simulate missing CSE key
+
+    async def fake_ddgs(query: str, _l: int) -> list[dict]:
+        return [
+            {
+                "title": f"{query} doc",
+                "snippet": "real snippet body",
+                "source": "example.com",
+                "url": "https://example.com/doc",
+                "provider": "ddgs",
+            }
+        ]
+
+    monkeypatch.setattr(mod, "_google_cse_general", fake_google_empty)
+    monkeypatch.setattr(mod, "_ddgs_general", fake_ddgs)
+
+    result = await WebSearchTool().run(query="NVDA datacenter", limit=1)
+    assert result.ok
+    assert result.data["results"][0]["provider"] == "ddgs"
+    assert result.sources[0]["source_type"] == "web_search"
+
+
+@pytest.mark.asyncio
+async def test_web_search_prefers_google_when_available(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Google CSE returns results → DDGS not called (priority order)."""
+    from uteki_api.tools import web_search as mod
+    from uteki_api.tools.web_search import WebSearchTool
+
+    monkeypatch.setattr(settings, "use_mock_data", False)
+
+    async def fake_google_ok(query: str, _l: int) -> list[dict]:
+        return [
+            {
+                "title": f"{query} from google",
+                "snippet": "cse body",
+                "source": "docs.example.com",
+                "url": "https://docs.example.com/x",
+                "provider": "google_cse",
+            }
+        ]
+
+    ddgs_called = False
+
+    async def fake_ddgs_unused(_q: str, _l: int) -> list[dict]:
+        nonlocal ddgs_called
+        ddgs_called = True
+        return [{"title": "should not be reached"}]
+
+    monkeypatch.setattr(mod, "_google_cse_general", fake_google_ok)
+    monkeypatch.setattr(mod, "_ddgs_general", fake_ddgs_unused)
+
+    result = await WebSearchTool().run(query="NVDA cuda", limit=1)
+    assert result.ok
+    assert result.data["results"][0]["provider"] == "google_cse"
+    assert ddgs_called is False, "DDGS must not be called when Google CSE returns hits"
+
+
+@pytest.mark.asyncio
 async def test_news_search_uses_live_provider_when_mock_data_disabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
