@@ -90,7 +90,7 @@ class UtekiRouter(BaseAgent):
 
     def current_signature(self) -> dict[str, Any]:
         return {
-            "prompt": "uteki-router:v1",
+            "prompt": "uteki-router:v2",
             "tool_names": list(self.DEFAULT_TOOLS),
             "model": self.model or self.DEFAULT_MODEL,
             "params": {"subskills": sorted(SUBSKILL_MAP.values())},
@@ -162,21 +162,39 @@ class UtekiRouter(BaseAgent):
         return parsed or heuristic
 
     def _classify_prompt(self, user_text: str) -> str:
-        return f"""你是 uteki 的意图分类器。读用户消息，决定路由方向。
+        return f"""你是 uteki 的意图分类器。读用户消息，决定该把它路由到哪个 sub-skill。
+
+【intent 定义】
+- "direct"             用户问的是概念 / 行情快查 / 闲聊。在 router 里直接回。
+- "research"           行业 / 主题 / 板块研究，或多 ticker 对比。**默认的"研究"档**。
+- "company"            消息里**有且仅有一个**美股 ticker，且明显要做投资判断 / 估值 / 怎么看。
+- "earnings"           消息里**已经包含**电话会 transcript 或具体财务数字（Revenue / 毛利 / 净利等），要点评季度业绩。
+- "research_pipeline"  用户**明确**说要"完整 pipeline"、"高质量"、"反复迭代"。比 research 重，要谨慎。
+
+【关键消歧规则】
+1. 单 ticker + 投研动词 → company（不要再 fallback 到 research）
+2. 两个或更多 ticker（不论有没有"对比"） → research，不是 company
+3. earnings **必须**消息里已经有 transcript / 财务数字；只是"AAPL 财报怎么看"还没粘数据 → company
+4. research_pipeline 是 research 的"高规格版"。**用户没明确点名 pipeline / 高质量 / 迭代 就不要选它**——它贵。
+5. 概念题（"什么是 X"）、市场快查（"今天大盘"）、闲聊 → direct
+
+【few-shot 示例】
+- "什么是 PE-TTM？" → {{"intent":"direct","reasoning":"概念题"}}
+- "上证今天怎么样" → {{"intent":"direct","reasoning":"行情快查"}}
+- "分析 NVDA" → {{"intent":"company","reasoning":"单 ticker + 投研动词"}}
+- "TSLA 怎么看" → {{"intent":"company","reasoning":"单 ticker + 怎么看"}}
+- "对比 NVDA 和 AMD" → {{"intent":"research","reasoning":"两个 ticker，多公司对比走 research"}}
+- "半导体设备板块研究框架" → {{"intent":"research","reasoning":"板块主题"}}
+- "我想要一份完整 pipeline 的板块研报" → {{"intent":"research_pipeline","reasoning":"明确点名 pipeline"}}
+- "NVDA Q3：Revenue $35.1B，毛利 75%，点评一下" → {{"intent":"earnings","reasoning":"消息里有具体财务数字"}}
+- "AAPL 财报怎么看" → {{"intent":"company","reasoning":"没粘 transcript，先走公司深研"}}
 
 【用户消息】
 {user_text}
 
-【intent 选项】
-- "direct"             简短问答、概念解释、市场行情快查 → 在 router 里直接回
-- "research"           行业 / 主题 / 板块研究框架（无特定 ticker 或多 ticker 概览）
-- "company"            单家公司深度调研（消息里有明确 ticker，要投资判断）
-- "earnings"           财报点评（消息里已包含电话会 transcript / 财务数据）
-- "research_pipeline"  明确要求高质量、完整 planner→research→evaluator 链
-
 【严格输出规则】
 1. 只输出一个合法 JSON，禁止 markdown / 代码块 / 解释
-2. 直接以 {{ 开始，以 }} 结束
+2. 以 {{ 开始，以 }} 结束，无前导空白
 
 【JSON 结构】
 {{"intent": "direct|research|company|earnings|research_pipeline", "reasoning": "1-2 句为什么选这个"}}
@@ -202,56 +220,88 @@ class UtekiRouter(BaseAgent):
             return None
         return {"intent": intent, "reasoning": str(obj.get("reasoning") or "")}
 
+    # Common English/financial acronyms that look like tickers but aren't.
+    _BAD_TICKERS = frozenset({
+        "PE", "PB", "PS", "ROE", "ROA", "FCF", "TAM", "SAM", "AI", "AR", "VR",
+        "EV", "ETF", "IPO", "GAAP", "EPS", "PEG", "PEGY", "DCF", "WACC",
+        "EBIT", "EBITDA", "CAGR", "YOY", "QOQ", "CFO", "CEO", "COO", "CTO",
+        "USD", "CNY", "EUR", "GBP", "OK", "FAQ",
+    })
+
+    @staticmethod
+    def _extract_tickers(text: str) -> list[str]:
+        """Pull 2-5 letter all-caps tokens, filtering common acronyms."""
+        candidates = re.findall(r"\b[A-Z]{2,5}\b", text)
+        return [t for t in candidates if t not in UtekiRouter._BAD_TICKERS]
+
     @staticmethod
     def _heuristic_classify(user_text: str) -> dict[str, Any]:
         """Keyword + regex heuristic. Used in mock-mode and as a parse-
         failure fallback in real-mode.
 
         Priority order:
-        1. earnings (explicit financial-report keywords)
-        2. research_pipeline (operator asked for high quality / pipeline)
-        3. company (single US ticker pattern + analysis verb)
-        4. research (sector / industry / theme cues)
-        5. direct (short question, no signal)
+        1. earnings — pasted transcript or specific financial numbers
+        2. research_pipeline — explicit ask for high quality / iteration
+        3. company — exactly one US ticker + investor-research verb
+        4. research — multi-ticker comparison OR sector / theme cues
+        5. direct — concept question / market quick-check / no signal
         """
         text = user_text.strip()
         lower = text.lower()
+        real_tickers = UtekiRouter._extract_tickers(text)
 
-        # 1. earnings — pasted transcript / financial Q announcement
-        if any(
-            kw in text for kw in ("电话会", "财报", "earnings call", "transcript")
-        ) and (
-            len(text) > 200 or any(kw in text for kw in ("Revenue", "毛利", "净利"))
+        # 1. earnings — must have BOTH a report keyword AND concrete signal
+        #    (either real length suggesting a transcript paste, OR specific
+        #    financial-number keywords). A bare "AAPL 财报怎么看" — no
+        #    pasted data — should fall through to company, not earnings.
+        earnings_kw = any(
+            kw in text for kw in ("电话会", "earnings call", "transcript", "财报电话会")
+        ) or ("财报" in text and any(kw in text for kw in ("Revenue", "毛利", "净利", "营收", "EPS", "$")))
+        if earnings_kw and (
+            len(text) > 150 or any(kw in text for kw in ("Revenue", "毛利率", "净利率", "$"))
         ):
-            return {"intent": "earnings", "reasoning": "包含财报关键词且消息较长，疑似 transcript / 关键数据"}
+            return {
+                "intent": "earnings",
+                "reasoning": "消息包含财报关键词 + 具体财务数字，疑似已粘 transcript",
+            }
 
-        # 2. research_pipeline — explicit ask for "pipeline" / "high quality"
-        if any(kw in lower for kw in ("research_pipeline", "research pipeline", "完整 pipeline")):
-            return {"intent": "research_pipeline", "reasoning": "用户明确点名完整 pipeline 模式"}
-
-        # 3. company — single US ticker (2-5 letters all caps) + analysis verb
-        tickers = re.findall(r"\b[A-Z]{2,5}\b", text)
-        # Filter common English words that look like tickers
-        bad_tickers = {"PE", "PB", "PS", "ROE", "ROA", "FCF", "TAM", "AI", "AR", "EV", "ETF", "IPO"}
-        real_tickers = [t for t in tickers if t not in bad_tickers]
-        if real_tickers and len(real_tickers) == 1 and any(
-            kw in text for kw in ("分析", "估值", "投资", "怎么看", "评估", "research", "review")
+        # 2. research_pipeline — explicit ask for "pipeline" / "high quality" / iteration
+        pipeline_signals = (
+            "research_pipeline", "research pipeline", "完整 pipeline",
+            "完整的 pipeline", "完整 planner",
+        )
+        quality_signals = ("高质量研报", "反复迭代", "iterate", "严谨的研究", "深入研究 pipeline")
+        if any(kw in lower for kw in pipeline_signals) or any(
+            kw in text for kw in quality_signals
         ):
+            return {
+                "intent": "research_pipeline",
+                "reasoning": "用户明确点名完整 pipeline / 高质量 / 反复迭代",
+            }
+
+        # 3. company — exactly one US ticker + investor-research verb.
+        #    Multiple tickers fall through to step 4 (research).
+        verbs = (
+            "分析", "估值", "投资", "怎么看", "评估", "深研", "深度", "看法",
+            "research", "review", "valuation",
+        )
+        if len(real_tickers) == 1 and any(kw in text for kw in verbs):
             return {
                 "intent": "company",
                 "reasoning": f"消息含单一 ticker {real_tickers[0]} 和投研动词",
             }
 
-        # 4. research — sector / industry / theme cues
-        if any(kw in text for kw in ("板块", "行业", "赛道", "sector", "industry")) or len(
-            real_tickers
-        ) >= 2:
-            return {
-                "intent": "research",
-                "reasoning": "消息涉及板块 / 行业，或多个 ticker 概览",
-            }
+        # 4. research — multi-ticker comparison OR sector / industry / theme cues
+        compare_signals = ("对比", "比较", "vs ", " vs", "compare", "差异")
+        sector_signals = ("板块", "行业", "赛道", "主题", "sector", "industry", "theme")
+        if len(real_tickers) >= 2 or any(kw in text for kw in compare_signals + sector_signals):
+            if len(real_tickers) >= 2:
+                reasoning = f"消息含多个 ticker ({', '.join(real_tickers[:3])})，多公司对比走 research"
+            else:
+                reasoning = "消息涉及板块 / 行业 / 主题"
+            return {"intent": "research", "reasoning": reasoning}
 
-        # 5. direct — short / no signal
+        # 5. direct — concept question / market quick-check / no signal
         return {
             "intent": "direct",
             "reasoning": "消息简短或无明显研究信号，直接回答",

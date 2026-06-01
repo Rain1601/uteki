@@ -87,10 +87,28 @@ def test_uteki_router_direct_answers_short_question(
 @pytest.mark.parametrize(
     "message,expected_intent,expected_subskill",
     [
+        # B.1 — original coverage
         ("分析 NVDA 当前估值", "company", "company_research_pipeline"),
         ("中国半导体设备板块研究框架", "research", "research"),
+        # B.4 — extended coverage for refined router (B.3 prompt updates)
+        # "怎么看" must reach company even without "分析" verb
+        ("NVDA 怎么看", "company", "company_research_pipeline"),
+        # Two tickers must go to research, NOT company, regardless of verb
+        ("对比 NVDA 和 AMD 的估值", "research", "research"),
+        # Explicit pipeline ask
+        (
+            "我想要一份完整 pipeline 的板块研报",
+            "research_pipeline",
+            "research_pipeline",
+        ),
     ],
-    ids=["company-NVDA", "research-sector"],
+    ids=[
+        "company-NVDA-estimation",
+        "research-sector",
+        "company-zenmeyikan",
+        "research-multi-ticker-compare",
+        "pipeline-explicit",
+    ],
 )
 def test_uteki_router_dispatches_to_subskill(
     client: TestClient, alice: AuthedUser, reporter: Reporter,
@@ -131,32 +149,98 @@ def test_uteki_router_dispatches_to_subskill(
 
 def test_uteki_router_heuristic_classifier_unit() -> None:
     """Direct unit coverage of the heuristic classifier so the parametric
-    test above isn't the only regression net."""
+    test above isn't the only regression net.
+
+    B.3 — extended with edge-case rows that the refined classifier must
+    handle: multi-ticker comparison, "怎么看" without "分析", bare
+    "AAPL 财报" without a pasted transcript (still company, not earnings).
+    """
     from uteki_api.skills.uteki import UtekiRouter
 
     cases = [
+        # ── concept / market quick-check ──
         ("什么是 ROE？", "direct"),
         ("市场今天怎么样？", "direct"),
+        ("PE 和 PB 哪个更适合估值？", "direct"),   # acronym filter — no real ticker
+        ("上证今天怎么样", "direct"),
+        # ── single ticker → company ──
         ("分析 NVDA", "company"),
         ("评估 AAPL 估值", "company"),
+        ("NVDA 怎么看", "company"),              # B.3 — "怎么看" alone now a verb
+        ("TSLA 投资价值", "company"),
+        # B.3 — bare "AAPL 财报怎么看" has no pasted transcript →
+        # must go to company, NOT earnings.
+        ("AAPL 财报怎么看", "company"),
+        # ── sector / multi-ticker → research ──
         ("半导体设备板块研究框架", "research"),
         ("AI 基建赛道", "research"),
+        ("对比 NVDA 和 AMD", "research"),         # B.3 — multi-ticker → research
+        ("NVDA vs AMD 谁的护城河更深", "research"),  # vs disambiguator
+        # ── explicit pipeline ask → research_pipeline ──
         ("请用 research_pipeline 出一份完整 pipeline 研报", "research_pipeline"),
-        # earnings — requires both a keyword AND a long body / financial terms
+        ("我想要一份完整 pipeline 的板块研报", "research_pipeline"),
+        # ── earnings: keyword + concrete financial signal ──
         (
             "NVDA Q3 财报电话会要点：Revenue $35.1B 毛利率 75%，"
             "管理层指引 Q4 强劲，CFO 提到 Blackwell 产能爬坡顺利。"
             "请帮我点评关键变化和潜在影响。",
             "earnings",
         ),
-        # PE / ROE etc. should NOT trigger company intent (ticker pattern)
-        ("PE 和 PB 哪个更适合估值？", "direct"),
     ]
     for msg, expected in cases:
         got = UtekiRouter._heuristic_classify(msg)
         assert got["intent"] == expected, (
             f"classify({msg!r}) → {got['intent']!r}, expected {expected!r}"
         )
+        # Reasoning must be a non-empty string (operators read it in the trace)
+        assert got["reasoning"], f"classify({msg!r}) returned empty reasoning"
+
+
+def test_uteki_router_company_dispatch_produces_deliverable(
+    client: TestClient, alice: AuthedUser, reporter: Reporter
+) -> None:
+    """B.4 — full loop check: 'NVDA 怎么看' → company pipeline must not
+    only emit subagent_start/_end, but also actually run far enough to
+    produce delta content AND a usage/done signal. Catches the silent
+    failure where dispatch fires but the sub-skill bails immediately.
+    """
+    reporter.section("POST /api/agent/chat — 'NVDA 怎么看' end-to-end")
+    events = _post_uteki(client, alice, "NVDA 怎么看")
+    types = [e["type"] for e in events]
+    counts = {t: types.count(t) for t in set(types)}
+    reporter.kv("event counts", counts)
+
+    plan = next((e for e in events if e["type"] == "plan"), None)
+    assert plan is not None
+    assert plan["data"]["intent"] == "company", plan["data"]
+    reporter.kv("plan.intent", "company")
+
+    # Envelope present
+    starts = [e for e in events if e["type"] == "subagent_start"]
+    ends = [e for e in events if e["type"] == "subagent_end"]
+    assert starts and starts[0]["data"]["name"] == "company_research_pipeline"
+    assert ends, "subagent_end must close the envelope"
+
+    # Sub-skill actually emitted deltas between start and end (i.e. it
+    # ran past its prelude — not an immediate bail).
+    start_idx = events.index(starts[0])
+    end_idx = events.index(ends[-1])
+    deltas_inside = [
+        e for e in events[start_idx + 1 : end_idx] if e["type"] == "delta"
+    ]
+    reporter.kv("deltas inside subagent", len(deltas_inside))
+    assert deltas_inside, "company pipeline must yield at least one delta"
+
+    # Concatenated delta text must be non-trivial (not just whitespace)
+    body = "".join(str(e["data"].get("text") or "") for e in deltas_inside)
+    reporter.kv("body length", len(body))
+    assert len(body.strip()) > 20, f"sub-skill output too short: {body!r}"
+
+    # The full run must terminate with a `done` event (harness contract)
+    assert any(e["type"] == "done" for e in events), (
+        "harness must emit a final done event"
+    )
+    reporter.end()
 
 
 def test_uteki_router_in_skill_registry(client: TestClient, alice: AuthedUser) -> None:
