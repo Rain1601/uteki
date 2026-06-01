@@ -40,6 +40,26 @@ COMPANY_GATES: tuple[CompanyGate, ...] = (
 COMPANY_SCHEMA_VERSION = "company_research_pipeline.v1"
 CLAIM_SCHEMA_VERSION = "company_claim_audit.v1"
 SOURCE_QUALITY_SCHEMA_VERSION = "company_source_quality.v1"
+FINAL_VERDICT_SCHEMA_VERSION = "company_final_verdict.v1"
+
+# Mock-mode fallback uses these to fill the 15 Fisher Q records.
+_MOCK_FISHER_QUESTIONS = (
+    "未来几年是否仍有足够大的市场空间来实现可观的营收增长？",
+    "管理层是否有决心继续开发新产品或新工艺？",
+    "与公司规模相比，研发投入的效果如何？",
+    "公司是否拥有高于平均水平的销售组织？",
+    "公司的利润率是否足够高、值得投资？",
+    "公司正在做什么来维持或改善利润率？",
+    "公司的劳资关系和员工关系如何？",
+    "公司的高管关系如何？团队是否真正协作？",
+    "公司的管理层梯队是否有深度？",
+    "公司的成本分析和会计控制做得好不好？",
+    "是否有行业特有的竞争优势方面值得关注？",
+    "公司对短期和长期盈利的展望如何？",
+    "未来的成长是否需要大量融资从而稀释现有股东？",
+    "管理层是否在一切顺利时才侃侃而谈，出了问题就三缄其口？",
+    "管理层的诚信是否毫无疑问？",
+)
 
 
 # ── Per-gate persona-driven system instructions ────────────────────────
@@ -197,6 +217,102 @@ Q15 管理层的诚信是否毫无疑问？
 - **市场情绪**：fear / neutral / greed / euphoria
 - **购买信心度**（0-10）""",
 }
+
+
+# ── Gate 7 final-verdict structured JSON ───────────────────────────────
+# Ported from uteki.open Gate 7. Unlocks rich frontend rendering
+# (fisher_qa 15Q+score, philosophy_scores, radar_data, master comments).
+# Stored as artifact ``final-verdict.json`` separate from the markdown
+# memo so each can evolve independently (the JSON shape becomes the
+# contract the dossier UI binds to).
+
+_VERDICT_JSON_RULES = """【严格输出规则】
+1. 你的回复必须且仅包含一个合法的 JSON 对象
+2. 禁止使用 markdown、代码块、反引号
+3. 禁止在 JSON 前后添加任何解释文字
+4. 直接以 { 开始，以 } 结束
+5. 所有字段都必须填值，不得遗漏（缺数据时填合理 default：分数 0、字符串 "未知"、列表 []）
+6. answer / detail 字段限 1-2 句，summary 限 1 句
+7. 字符串值用中文（symbol / type 等英文枚举除外）"""
+
+_VERDICT_JSON_SCHEMA = """【JSON 结构】（必须完整覆盖以下字段）
+
+{
+  "schema_version": "company_final_verdict.v1",
+  "symbol": "<目标公司 ticker>",
+  "verdict": {
+    "action": "BUY | WATCH | AVOID",
+    "conviction": <0-1 之间小数>,
+    "quality_verdict": "EXCELLENT | GOOD | MEDIOCRE | POOR",
+    "position_size_pct": <数字，BUY 时 3-10，WATCH/AVOID 时 0>,
+    "hold_horizon": "<如 '5-8yr' / '2-3yr' / 'n/a'>",
+    "one_sentence": "<一句话总结，末尾 [src:N,M]>"
+  },
+  "fisher_qa": {
+    "questions": [
+      {"id": "Q1", "question": "<费雪 Q1 题目>", "answer": "<2-3 句答案 [src:N]>", "score": <0-10>, "data_confidence": "high | medium | low"},
+      ...必须包含完整 15 个 Q1-Q15...
+    ],
+    "total_score": <0-150 总分>,
+    "growth_verdict": "compounder | cyclical | declining | turnaround",
+    "radar_data": {
+      "market_potential": <0-10>, "innovation": <0-10>, "profitability": <0-10>,
+      "management": <0-10>, "competitive_edge": <0-10>
+    },
+    "green_flags": ["<积极信号 [src:N]>", ...],
+    "red_flags": ["<警示信号 [src:N]>", ...]
+  },
+  "moat": {
+    "types": [
+      {"type": "BRAND | NETWORK | SWITCHING | COST | SCALE | IP", "strength": "strong | moderate | weak", "evidence": "<证据 [src:N]>"}
+    ],
+    "width": "wide | narrow | none",
+    "trend": "strengthening | stable | eroding",
+    "durability_years": <整数>,
+    "competitive_position": "<一句话 [src:N]>",
+    "threats": ["<威胁>", ...]
+  },
+  "management": {
+    "integrity_score": <0-10>,
+    "capital_allocation_score": <0-10>,
+    "shareholder_orientation_score": <0-10>,
+    "succession_risk": "low | medium | high",
+    "insider_signal": "<近期内部人交易信号 [src:N]>",
+    "management_score": <0-10>,
+    "summary": "<一句话 [src:N]>"
+  },
+  "reverse_test": {
+    "destruction_scenarios": [
+      {"scenario": "<场景描述>", "probability": <0-1>, "impact": <0-10>, "timeline": "<时间跨度>"}
+    ],
+    "red_flags": [
+      {"flag": "<红旗名>", "triggered": <true | false>, "detail": "<细节 [src:N]>"}
+    ],
+    "resilience_score": <0-10>,
+    "cognitive_biases": ["<可能的认知偏差>", ...],
+    "worst_case_narrative": "<最悲观情景一段话 [src:N]>"
+  },
+  "valuation": {
+    "price_assessment": "cheap | fair | expensive | bubble",
+    "safety_margin": "large | moderate | thin | negative",
+    "market_sentiment": "fear | neutral | greed | euphoria",
+    "buy_confidence": <0-10>,
+    "price_reasoning": "<3-5 句价格逻辑 [src:N]>",
+    "comparable_assessment": "<同业对比 [src:N]>"
+  },
+  "philosophy_scores": {
+    "buffett": <0-10>, "fisher": <0-10>, "munger": <0-10>
+  },
+  "master_comments": {
+    "buffett": "<巴菲特视角一句话 [src:N]>",
+    "fisher": "<费雪视角一句话 [src:N]>",
+    "munger": "<芒格视角一句话 [src:N]>"
+  },
+  "triggers": {
+    "add": ["<加仓信号 [src:N]>", ...],
+    "sell": ["<止损/卖出信号 [src:N]>", ...]
+  }
+}"""
 
 CORE_FINAL_SECTIONS = {"Verdict", "Capital Plan", "Key Risks"}
 REQUIRED_GATE_SECTIONS = ("Key findings", "Analysis", "Gate conclusion")
@@ -378,6 +494,13 @@ class CompanyResearchPipeline(BaseAgent):
         memo, decision = await self._synthesize(
             symbol, question, evidence, gate_outputs, ranking, capital_plan
         )
+        # A.2: Structured Gate 7 JSON — produces the rich verdict artifact
+        # the frontend dossier uses (fisher_qa 15Q+score, philosophy_scores,
+        # radar_data, master_comments, etc). Always lands an artifact; mock
+        # mode generates a synthetic but well-shaped JSON.
+        final_verdict = await self._synthesize_verdict_json(
+            symbol, question, evidence, gate_outputs, memo, ranking, capital_plan
+        )
         source_quality = self._build_source_quality()
         claim_audit = self._build_claim_audit(
             symbol=symbol,
@@ -391,10 +514,11 @@ class CompanyResearchPipeline(BaseAgent):
             artifacts=[
                 "final-report.md",
                 "decision.json",
+                "final-verdict.json",
                 "company-claims.json",
                 "company-source-quality.json",
             ],
-            notes="Synthesized final memo and audited claim/source quality.",
+            notes="Synthesized final memo, structured verdict, and audited claim/source quality.",
             source_ids=self._source_ids(evidence),
         )
         if review_art is not None:
@@ -420,6 +544,16 @@ class CompanyResearchPipeline(BaseAgent):
                 source_refs=self._source_ids(evidence),
             )
             yield self._artifact_event(decision_art)
+            verdict_art = await self.artifacts.write(
+                name="final-verdict.json",
+                content=json.dumps(final_verdict, ensure_ascii=False, indent=2, default=str),
+                kind="json",
+                description="Structured final verdict (Fisher 15Q + philosophy + master comments)",
+                role="primary",
+                display_name="Final verdict",
+                source_refs=self._source_ids(evidence),
+            )
+            yield self._artifact_event(verdict_art)
             claims_art = await self.artifacts.write(
                 name="company-claims.json",
                 content=json.dumps(claim_audit, ensure_ascii=False, indent=2, default=str),
@@ -688,6 +822,220 @@ class CompanyResearchPipeline(BaseAgent):
 【前序 gate 摘要】
 {prior or "无"}
 """
+
+    # ── Gate 7 structured JSON (final-verdict.json) ────────────────────
+
+    async def _synthesize_verdict_json(
+        self,
+        symbol: str,
+        question: str,
+        evidence: dict[str, Any],
+        gate_outputs: list[dict[str, str]],
+        memo: str,
+        ranking: dict[str, Any],
+        capital_plan: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Run the structured Gate 7 LLM call, return the verdict dict.
+
+        Falls back to ``_mock_verdict`` when mock-LLM mode is on, when no
+        provider is configured, or when JSON parsing fails. Either way
+        the artifact always lands so the frontend can render.
+        """
+        if settings.use_mock_llm:
+            return self._mock_verdict(symbol, gate_outputs, ranking, capital_plan)
+        llm = default_router.resolve(self.model)
+        if not llm.configured:
+            return self._mock_verdict(symbol, gate_outputs, ranking, capital_plan)
+
+        prompt = self._verdict_json_prompt(
+            symbol, question, evidence, gate_outputs, memo, ranking, capital_plan
+        )
+        chunks: list[str] = []
+        async for chunk in llm.stream_chat([ChatMessage(role="user", content=prompt)]):
+            if isinstance(chunk, UsageDelta):
+                continue
+            chunks.append(chunk)
+        raw = "".join(chunks).strip()
+        try:
+            return self._parse_verdict_json(raw, symbol)
+        except (json.JSONDecodeError, ValueError):
+            # LLM returned malformed JSON — fall back to mock so the
+            # frontend still has a renderable artifact. The raw text is
+            # preserved on the run trace via the delta events.
+            return self._mock_verdict(symbol, gate_outputs, ranking, capital_plan)
+
+    def _verdict_json_prompt(
+        self,
+        symbol: str,
+        question: str,
+        evidence: dict[str, Any],
+        gate_outputs: list[dict[str, str]],
+        memo: str,
+        ranking: dict[str, Any],
+        capital_plan: dict[str, Any],
+    ) -> str:
+        source_block = self.sources.catalog.to_llm_block() if self.sources is not None else ""
+        gates = "\n\n".join(
+            f"## {g['display_name']}\n{g['text'][:1200]}" for g in gate_outputs
+        )
+        return f"""你是综合巴菲特、费雪、芒格框架的公司投研裁决者。
+
+你已经看到 6 个 gate 的分析输出和最终投资备忘录。任务：把所有结论提取并
+结构化为一个 JSON 对象。**从已有分析中提取，不要编造新内容。**
+
+【目标公司】{symbol}
+【用户问题】{question}
+
+{_VERDICT_JSON_RULES}
+
+{_VERDICT_JSON_SCHEMA}
+
+【引用规则】
+- 所有 [src:N] 编号必须出现在下面的数据来源目录里，禁止编造
+- 纯推理的判断用 [src:none] 并简要说明
+
+【数据来源目录】
+{source_block or "[src:none] 无可引用来源"}
+
+【六个 gate 输出】
+{gates}
+
+【最终备忘录】
+{memo[:2500]}
+
+【同行排序】
+{json.dumps(ranking, ensure_ascii=False, default=str)[:1500]}
+
+【资金管理计划】
+{json.dumps(capital_plan, ensure_ascii=False, default=str)[:1200]}
+
+记住：直接以 {{ 开始你的回复，以 }} 结束。
+"""
+
+    def _parse_verdict_json(self, raw: str, symbol: str) -> dict[str, Any]:
+        """Parse the LLM's JSON, tolerant of common malformations:
+        - leading/trailing markdown fences
+        - leading 'json' label
+        - extra text wrapping the object
+
+        Raises ValueError on irrecoverable garbage; caller falls back to mock.
+        """
+        text = raw.strip()
+        # Strip ```json fences if present
+        if text.startswith("```"):
+            lines = text.splitlines()
+            # Drop first + last fence lines
+            text = "\n".join(lines[1:-1] if lines[-1].startswith("```") else lines[1:])
+        # Locate the outermost { ... }
+        first = text.find("{")
+        last = text.rfind("}")
+        if first < 0 or last <= first:
+            raise ValueError("no JSON object found")
+        obj = json.loads(text[first : last + 1])
+        if not isinstance(obj, dict):
+            raise ValueError(f"top-level JSON is {type(obj).__name__}, expected dict")
+        # Stamp schema version + symbol so callers can rely on them.
+        obj.setdefault("schema_version", FINAL_VERDICT_SCHEMA_VERSION)
+        obj.setdefault("symbol", symbol)
+        return obj
+
+    def _mock_verdict(
+        self,
+        symbol: str,
+        gate_outputs: list[dict[str, str]],
+        ranking: dict[str, Any],
+        capital_plan: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Deterministic synthetic verdict for mock-LLM mode + fallback path.
+
+        Shape matches the real LLM contract so the frontend can render
+        without branching on data origin.
+        """
+        action = (capital_plan.get("action") or ranking.get("action") or "WATCH").upper()
+        # Pick a stable position size + conviction off the mock signals.
+        position = float(capital_plan.get("max_position_pct") or 5.0)
+        conviction = 0.7 if action == "BUY" else 0.4 if action == "WATCH" else 0.2
+        fisher_questions = [
+            {
+                "id": f"Q{i + 1}",
+                "question": q,
+                "answer": "[mock] 基于 mock-LLM 跑出的占位答案，真模式将由 LLM 填充。",
+                "score": 6,
+                "data_confidence": "low",
+            }
+            for i, q in enumerate(_MOCK_FISHER_QUESTIONS)
+        ]
+        return {
+            "schema_version": FINAL_VERDICT_SCHEMA_VERSION,
+            "symbol": symbol,
+            "verdict": {
+                "action": action,
+                "conviction": conviction,
+                "quality_verdict": "GOOD" if action == "BUY" else "MEDIOCRE",
+                "position_size_pct": position if action == "BUY" else 0,
+                "hold_horizon": "5-8yr" if action == "BUY" else "n/a",
+                "one_sentence": f"[mock] {symbol} 综合裁决 {action}，仓位 {position}%。[src:none]",
+            },
+            "fisher_qa": {
+                "questions": fisher_questions,
+                "total_score": 90,
+                "growth_verdict": "compounder" if action == "BUY" else "cyclical",
+                "radar_data": {
+                    "market_potential": 6, "innovation": 6, "profitability": 6,
+                    "management": 6, "competitive_edge": 6,
+                },
+                "green_flags": ["[mock] 增长动力清晰 [src:none]"],
+                "red_flags": ["[mock] 真模式将列出具体警示信号 [src:none]"],
+            },
+            "moat": {
+                "types": [
+                    {"type": "SWITCHING", "strength": "moderate", "evidence": "[mock] 切换成本中等 [src:none]"},
+                ],
+                "width": "narrow",
+                "trend": "stable",
+                "durability_years": 7,
+                "competitive_position": f"[mock] {symbol} 行业内中等竞争位置。[src:none]",
+                "threats": ["[mock] 真模式将给出具体威胁"],
+            },
+            "management": {
+                "integrity_score": 7,
+                "capital_allocation_score": 6,
+                "shareholder_orientation_score": 6,
+                "succession_risk": "medium",
+                "insider_signal": "[mock] 无明显信号 [src:none]",
+                "management_score": 6,
+                "summary": "[mock] 管理层评分中等。[src:none]",
+            },
+            "reverse_test": {
+                "destruction_scenarios": [
+                    {"scenario": "[mock] 行业景气度下行", "probability": 0.3, "impact": 6, "timeline": "2-3yr"},
+                ],
+                "red_flags": [
+                    {"flag": "依赖单一客户 / 市场 > 30%", "triggered": False, "detail": "[mock] 未触发 [src:none]"},
+                ],
+                "resilience_score": 6,
+                "cognitive_biases": ["[mock] 真模式将列出具体偏差"],
+                "worst_case_narrative": f"[mock] {symbol} 最悲观情景：业务承压但不至于归零。[src:none]",
+            },
+            "valuation": {
+                "price_assessment": "fair",
+                "safety_margin": "moderate",
+                "market_sentiment": "neutral",
+                "buy_confidence": 5,
+                "price_reasoning": "[mock] 估值处于合理区间，缺乏明显折扣。[src:none]",
+                "comparable_assessment": "[mock] 同业可比公司估值相近。[src:none]",
+            },
+            "philosophy_scores": {"buffett": 6, "fisher": 6, "munger": 6},
+            "master_comments": {
+                "buffett": f"[mock] {symbol} 是一家中等质量的生意，价格合理但缺乏明显吸引力。[src:none]",
+                "fisher": "[mock] 成长动力存在但缺乏复利级别的护城河支撑。[src:none]",
+                "munger": "[mock] 反转思维下风险可控，但回报也有限。[src:none]",
+            },
+            "triggers": {
+                "add": ["[mock] 股价回调 20% 以上"],
+                "sell": ["[mock] 基本面恶化迹象出现"],
+            },
+        }
 
     def _synthesis_prompt(
         self,

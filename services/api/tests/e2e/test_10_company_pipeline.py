@@ -52,12 +52,41 @@ def test_company_research_pipeline_artifacts(
         "agent-capability-review.json",
         "final-report.md",
         "decision.json",
+        "final-verdict.json",
         "company-claims.json",
         "company-source-quality.json",
         "company-run-diagnosis.json",
     }
     reporter.checked("all company artifacts written", expected.issubset(names))
     assert expected.issubset(names)
+
+    # A.2: assert the structured final-verdict.json shape.
+    verdict_resp = client.get(
+        f"/api/runs/{run_id}/artifacts/final-verdict.json",
+        headers=alice.auth_header(),
+    )
+    reporter.checked("final-verdict.json → 200", verdict_resp.status_code == 200)
+    verdict = json.loads(verdict_resp.text)
+    assert verdict["schema_version"] == "company_final_verdict.v1"
+    assert verdict["symbol"] == "AAPL"
+    assert verdict["verdict"]["action"] in {"BUY", "WATCH", "AVOID"}
+    assert 0 <= verdict["verdict"]["conviction"] <= 1
+    assert len(verdict["fisher_qa"]["questions"]) == 15, (
+        "Gate 7 must produce all 15 Fisher questions; "
+        f"got {len(verdict['fisher_qa']['questions'])}"
+    )
+    assert verdict["fisher_qa"]["growth_verdict"] in {
+        "compounder", "cyclical", "declining", "turnaround"
+    }
+    radar = verdict["fisher_qa"]["radar_data"]
+    for axis in ("market_potential", "innovation", "profitability",
+                 "management", "competitive_edge"):
+        assert axis in radar, f"radar_data missing {axis}"
+    assert "buffett" in verdict["philosophy_scores"]
+    assert "buffett" in verdict["master_comments"]
+    reporter.event("verdict shape", f"action={verdict['verdict']['action']}, "
+                                     f"fisher_q={len(verdict['fisher_qa']['questions'])}, "
+                                     f"philosophy={verdict['philosophy_scores']}")
 
     run = client.get(f"/api/runs/{run_id}", headers=alice.auth_header()).json()
     reporter.kv("primary_artifact", run.get("primary_artifact"))
