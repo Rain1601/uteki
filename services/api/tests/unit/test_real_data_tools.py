@@ -63,6 +63,12 @@ async def test_financials_prefers_yfinance_when_mock_data_disabled(monkeypatch: 
                     "source": "yfinance",
                 }
             ][:years],
+            # Phase C.1 — the enriched shape passes through unmodified
+            "derived": {"owner_earnings_per_share": 5.25, "free_cashflow": 95_000_000_000.0},
+            "insider": [{"insider": "JANE DOE", "transaction": "Buy", "shares": 1000.0, "value": 100000.0}],
+            "ownership": {"institutional_pct": 0.62, "insider_pct": 0.018, "top_holders": []},
+            "rd_data": {"rd_pct_revenue": 24.5, "rd_history": []},
+            "analyst": {"target_mean": 250.0, "number_of_analysts": 35, "recommendations": []},
         }
 
     monkeypatch.setattr(mod, "_yfinance_financials", fake_financials)
@@ -73,6 +79,46 @@ async def test_financials_prefers_yfinance_when_mock_data_disabled(monkeypatch: 
     assert result.data["source"] == "yfinance"
     assert result.data["rows"][0]["revenue_b"] == 100.0
     assert result.sources[0]["source_type"] == "financials"
+    # Phase C.1 — enriched fields make it through to the tool result.
+    assert result.data["derived"]["owner_earnings_per_share"] == 5.25
+    assert result.data["insider"][0]["transaction"] == "Buy"
+    assert result.data["ownership"]["institutional_pct"] == 0.62
+    assert result.data["rd_data"]["rd_pct_revenue"] == 24.5
+    assert result.data["analyst"]["target_mean"] == 250.0
+
+
+def test_financials_enrichment_helpers_handle_empty_yfinance() -> None:
+    """yfinance occasionally returns None / empty DataFrames for newly-IPO'd
+    or low-coverage tickers. The enrichment helpers must degrade to empty
+    defaults instead of raising."""
+    from uteki_api.tools.financials import (
+        _yfinance_analyst,
+        _yfinance_insider_transactions,
+        _yfinance_ownership,
+        _yfinance_rd,
+    )
+
+    class _StubTicker:
+        """yfinance.Ticker-shaped stub that returns nothing for every
+        endpoint the helpers probe."""
+        insider_transactions = None
+        institutional_holders = None
+        financials = None
+        recommendations = None
+
+    stub = _StubTicker()
+    info: dict = {}
+
+    assert _yfinance_insider_transactions(stub) == []
+    ownership = _yfinance_ownership(stub, info)
+    assert ownership["top_holders"] == []
+    assert ownership["insider_pct"] is None
+    rd = _yfinance_rd(stub)
+    assert rd["rd_history"] == []
+    assert rd["rd_pct_revenue"] is None
+    analyst = _yfinance_analyst(stub, info)
+    assert analyst["recommendations"] == []
+    assert analyst["target_mean"] is None
 
 
 @pytest.mark.asyncio
@@ -113,7 +159,10 @@ async def test_kline_uses_yfinance_when_mock_data_disabled(monkeypatch: pytest.M
 
     monkeypatch.setattr(settings, "use_mock_data", False)
 
-    async def fake_bars(_symbol: str, _interval: str, _limit: int) -> list[dict]:
+    async def fake_bars(
+        _symbol: str, _interval: str, _limit: int, end: str | None = None,
+    ) -> list[dict]:
+        # signature matches the M1.x as_of-aware `_yfinance_bars`
         return [{"ts": 1, "o": 10.0, "h": 11.0, "l": 9.0, "c": 10.5, "v": 100}]
 
     monkeypatch.setattr(mod, "_yfinance_bars", fake_bars)

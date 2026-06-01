@@ -125,7 +125,19 @@ def _yfinance_financials_sync(symbol: str, period: str, years: int) -> dict[str,
         "industry": info.get("industry"),
         "country": info.get("country"),
         "website": info.get("website"),
+        # Phase C.1 — enrich profile with employees + business description
+        # (needed by company_research_pipeline business_analysis gate).
+        "employees": info.get("fullTimeEmployees"),
+        "description": (info.get("longBusinessSummary") or "")[:1000],
     }
+    # Phase C.1 — owner earnings per share = FCF / shares outstanding.
+    # The moat gate uses this as a quality-of-earnings signal; matches
+    # uteki.open's `derived.owner_earnings_per_share`.
+    fcf = _num(info.get("freeCashflow"))
+    shares = _num(info.get("sharesOutstanding"))
+    owner_earnings_ps = (
+        round(fcf / shares, 4) if fcf and shares and shares > 0 else None
+    )
     return {
         "symbol": symbol,
         "period": period,
@@ -148,9 +160,159 @@ def _yfinance_financials_sync(symbol: str, period: str, years: int) -> dict[str,
             "revenue_growth_yoy": _num(info.get("revenueGrowth")),
             "earnings_growth_yoy": _num(info.get("earningsGrowth")),
         },
+        # Phase C.1 — derived metrics not directly in info
+        "derived": {
+            "owner_earnings_per_share": owner_earnings_ps,
+            "free_cashflow": fcf,
+            "shares_outstanding": shares,
+            "market_cap": _num(info.get("marketCap")),
+        },
+        "insider": _yfinance_insider_transactions(ticker),
+        "ownership": _yfinance_ownership(ticker, info),
+        "rd_data": _yfinance_rd(ticker),
+        "analyst": _yfinance_analyst(ticker, info),
         "source": "yfinance",
         "fetched_at": fetched_at,
     }
+
+
+# ── Phase C.1 enrichment helpers (yfinance-only, no new deps) ─────────
+# Ported from uteki.open's domains/company/financials.py — same yfinance
+# columns, adapted to our return-dict shape. All defensive: any yfinance
+# exception or missing column degrades to an empty list/dict so the tool
+# never propagates a provider hiccup into the agent run.
+
+
+def _yfinance_insider_transactions(ticker: Any) -> list[dict[str, Any]]:
+    """Recent insider buys/sells. yfinance returns a DataFrame; column
+    casing varies by yfinance version so probe both."""
+    try:
+        df = ticker.insider_transactions
+    except Exception:
+        return []
+    if df is None or getattr(df, "empty", True):
+        return []
+    rows: list[dict[str, Any]] = []
+    try:
+        for _, row in df.head(15).iterrows():
+            rows.append({
+                "insider": str(row.get("Insider", row.get("insider", ""))),
+                "relation": str(row.get("Relation", row.get("relation", ""))),
+                "date": str(row.get("Start Date", row.get("startDate", row.get("date", "")))),
+                "transaction": str(row.get("Transaction", row.get("transaction", ""))),
+                "shares": _num(row.get("Shares", row.get("shares"))),
+                "value": _num(row.get("Value", row.get("value"))),
+            })
+    except Exception:
+        return []
+    return rows
+
+
+def _yfinance_ownership(ticker: Any, info: dict[str, Any]) -> dict[str, Any]:
+    """Institutional + insider ownership %. Combines info-level
+    aggregates with the institutional-holders detail list."""
+    result: dict[str, Any] = {
+        "insider_pct": _num(info.get("heldPercentInsiders")),
+        "institutional_pct": _num(info.get("heldPercentInstitutions")),
+        "top_holders": [],
+    }
+    try:
+        holders = ticker.institutional_holders
+        if holders is not None and not getattr(holders, "empty", True):
+            top_holders: list[dict[str, Any]] = []
+            for _, row in holders.head(10).iterrows():
+                top_holders.append({
+                    "holder": str(row.get("Holder", row.get("holder", ""))),
+                    "shares": _num(row.get("Shares", row.get("shares"))),
+                    "pct_out": _num(
+                        row.get("pctHeld", row.get("% Out", row.get("pct_out")))
+                    ),
+                    "value": _num(row.get("Value", row.get("value"))),
+                })
+            result["top_holders"] = top_holders
+    except Exception:
+        pass
+    return result
+
+
+def _yfinance_rd(ticker: Any) -> dict[str, Any]:
+    """R&D expense + R&D-as-% revenue per year. Reads the same financials
+    DataFrame the income table already came from; cheap second pass."""
+    result: dict[str, Any] = {"rd_history": [], "rd_pct_revenue": None}
+    try:
+        fin = ticker.financials
+    except Exception:
+        return result
+    if fin is None or getattr(fin, "empty", True):
+        return result
+    try:
+        for col in fin.columns[:4]:
+            rd: float | None = None
+            for key in ("Research Development", "Research And Development"):
+                if key in fin.index:
+                    try:
+                        rd = float(fin.loc[key, col])
+                        break
+                    except Exception:
+                        continue
+            revenue: float | None = None
+            if "Total Revenue" in fin.index:
+                try:
+                    revenue = float(fin.loc["Total Revenue", col])
+                except Exception:
+                    revenue = None
+            pct = (
+                round(rd / revenue * 100, 2)
+                if rd and revenue and revenue > 0
+                else None
+            )
+            year = col.year if hasattr(col, "year") else str(col)
+            result["rd_history"].append({
+                "year": year,
+                "rd_expense": rd,
+                "revenue": revenue,
+                "rd_pct_revenue": pct,
+            })
+        # The most recent year's R&D% is the headline number.
+        if result["rd_history"] and result["rd_history"][0].get("rd_pct_revenue"):
+            result["rd_pct_revenue"] = result["rd_history"][0]["rd_pct_revenue"]
+    except Exception:
+        pass
+    return result
+
+
+def _yfinance_analyst(ticker: Any, info: dict[str, Any]) -> dict[str, Any]:
+    """Analyst target prices + most recent recommendations. The valuation
+    gate uses these as anchors (and the management gate flags large
+    revisions)."""
+    result: dict[str, Any] = {
+        "target_high": _num(info.get("targetHighPrice")),
+        "target_low": _num(info.get("targetLowPrice")),
+        "target_mean": _num(info.get("targetMeanPrice")),
+        "target_median": _num(info.get("targetMedianPrice")),
+        "recommendation_key": info.get("recommendationKey"),
+        "number_of_analysts": info.get("numberOfAnalystOpinions"),
+        "recommendations": [],
+    }
+    try:
+        recs = ticker.recommendations
+        if recs is not None and not getattr(recs, "empty", True):
+            recent_rows: list[dict[str, Any]] = []
+            for _, row in recs.tail(5).iterrows():
+                entry: dict[str, Any] = {}
+                for c in recs.columns:
+                    val = row.get(c)
+                    if val is None:
+                        entry[str(c)] = None
+                    elif isinstance(val, (int, float)):
+                        entry[str(c)] = _num(val)
+                    else:
+                        entry[str(c)] = str(val)
+                recent_rows.append(entry)
+            result["recommendations"] = recent_rows
+    except Exception:
+        pass
+    return result
 
 
 class FinancialsTool(Tool):
