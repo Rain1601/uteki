@@ -21,6 +21,11 @@ dependencies = [
     "mcp>=1.0",
     "yfinance>=0.2.30",
     "ddgs>=9.10.0",
+    # Phase C.3b — web_extract uses BeautifulSoup + lxml for article
+    # extraction. Already pulled transitively (via yfinance), pinned
+    # here so a transitive parent bump can't silently drop them.
+    "beautifulsoup4>=4.12",
+    "lxml>=5.0",
 ]
 
 [dependency-groups]

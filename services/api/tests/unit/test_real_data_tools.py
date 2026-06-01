@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from uteki_api.core.config import settings
@@ -119,6 +121,110 @@ def test_financials_enrichment_helpers_handle_empty_yfinance() -> None:
     analyst = _yfinance_analyst(stub, info)
     assert analyst["recommendations"] == []
     assert analyst["target_mean"] is None
+
+
+@pytest.mark.asyncio
+async def test_web_extract_parses_real_html(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Phase C.3b — _fetch_and_parse processes article-style HTML, lifts
+    title + body + published_at, normalises whitespace, attaches meta."""
+    from uteki_api.tools import web_extract as mod
+
+    sample_html = """
+    <html>
+      <head>
+        <title>NVDA Q3 FY25 review</title>
+        <meta property="og:title" content="NVDA Q3 FY25 results review">
+        <meta property="article:published_time" content="2025-11-21T14:00:00Z">
+      </head>
+      <body>
+        <nav>menu</nav>
+        <article>
+          <h1>NVDA crushes Q3</h1>
+          <p>Revenue hit $35.1B, up 94% YoY.</p>
+          <p>Margins expanded to 75%.</p>
+          <ul>
+            <li>Blackwell ramp tracking ahead</li>
+            <li>Datacenter segment up 112%</li>
+          </ul>
+        </article>
+        <footer>copyright nonsense</footer>
+        <script>tracker();</script>
+      </body>
+    </html>
+    """
+
+    class _StubResp:
+        text = sample_html
+        def raise_for_status(self) -> None:
+            return None
+
+    class _StubClient:
+        def __init__(self, *args: Any, **kwargs: Any) -> None: ...
+        async def __aenter__(self) -> _StubClient:
+            return self
+        async def __aexit__(self, *a: Any) -> None:
+            return None
+        async def get(self, url: str) -> _StubResp:
+            return _StubResp()
+
+    monkeypatch.setattr(mod.httpx, "AsyncClient", _StubClient)
+    monkeypatch.setattr(settings, "use_mock_data", False)
+
+    result = await mod.WebExtractTool().run(url="https://example.com/nvda-q3")
+    assert result.ok
+    data = result.data
+    # og:title beats <title>
+    assert data["title"] == "NVDA Q3 FY25 results review"
+    # body contains article content, NOT nav / footer / scripts
+    assert "Revenue hit $35.1B" in data["text"]
+    assert "menu" not in data["text"]
+    assert "copyright nonsense" not in data["text"]
+    assert "tracker" not in data["text"]
+    # list items kept (article-mode preserves <li>)
+    assert "Blackwell ramp tracking ahead" in data["text"]
+    # H1 gets markdown heading prefix
+    assert "# NVDA crushes Q3" in data["text"]
+    # meta-tag published_at lifted
+    assert data["published_at"] == "2025-11-21T14:00:00Z"
+    # source point includes the published_at so SourceCatalog can rank/reject
+    assert result.sources[0]["published_at"] == "2025-11-21T14:00:00Z"
+    assert result.sources[0]["source_type"] == "web_extract"
+
+
+@pytest.mark.asyncio
+async def test_web_extract_degrades_on_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """HTTP failure → mock fixture fallback with explanatory note so the
+    agent's tool-use loop keeps progressing instead of crashing."""
+    from uteki_api.tools import web_extract as mod
+
+    class _StubClient:
+        def __init__(self, *args: Any, **kwargs: Any) -> None: ...
+        async def __aenter__(self) -> _StubClient:
+            return self
+        async def __aexit__(self, *a: Any) -> None:
+            return None
+        async def get(self, url: str) -> Any:
+            raise mod.httpx.ConnectError("simulated network failure")
+
+    monkeypatch.setattr(mod.httpx, "AsyncClient", _StubClient)
+    monkeypatch.setattr(settings, "use_mock_data", False)
+
+    result = await mod.WebExtractTool().run(url="https://unreachable.example.com/x")
+    assert result.ok  # graceful degrade — tool itself doesn't fail
+    assert "fetch failed" in result.summary
+    assert result.data["url"] == "https://unreachable.example.com/x"
+    assert result.sources[0]["confidence"] == "low"
+
+
+@pytest.mark.asyncio
+async def test_web_extract_validates_url() -> None:
+    """Refuses missing or non-http(s) URLs without making a request."""
+    from uteki_api.tools.web_extract import WebExtractTool
+
+    tool = WebExtractTool()
+    assert (await tool.run(url="")).ok is False
+    assert (await tool.run(url="ftp://example.com/x")).ok is False
+    assert (await tool.run(url="javascript:alert(1)")).ok is False
 
 
 @pytest.mark.asyncio
