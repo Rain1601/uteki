@@ -107,6 +107,13 @@ export async function listAgents(): Promise<{ items: AgentInfo[] }> {
   return r.json();
 }
 
+export async function getAgent(name: string): Promise<AgentDetail> {
+  const r = await authedFetch(`${API_BASE}/api/agents/${name}`, {
+    cache: "no-store",
+  });
+  return r.json();
+}
+
 export async function listVersions(
   name: string,
 ): Promise<{ items: SkillVersion[] }> {
@@ -174,6 +181,13 @@ export interface AgentInfo {
   name: string;
   description: string;
   version: string;
+  default_tools?: string[];
+  default_model?: string;
+  kind?: "skill" | "pipeline";
+}
+
+export interface AgentDetail extends AgentInfo {
+  current_version?: SkillVersion | null;
 }
 
 export interface SkillVersion {
