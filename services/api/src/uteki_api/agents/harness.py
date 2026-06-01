@@ -380,7 +380,7 @@ class AgentHarness:
 
         summary = "".join(delta_buffer)[:200]
         # Narrow the status to the literal type expected by RunStore.finish.
-        from uteki_api.runs.models import RunStatus  # local import to keep top tidy
+        from uteki_api.runs.models import RunStatus, derive_overall_assessment  # local
         status: RunStatus = final_status  # type: ignore[assignment]
 
         # Persist final usage_summary on the Run record before finish().
@@ -390,6 +390,16 @@ class AgentHarness:
         run_record_now.usage_summary.cache_read_tokens = usage_totals["cache_read_tokens"]
         run_record_now.usage_summary.cache_creation_tokens = usage_totals["cache_creation_tokens"]
         run_record_now.usage_summary.cost_usd = _estimate_cost(cost_model, usage_totals)
+
+        # M1.9: split status into 3 independent signals. harness_status =
+        # the same RunStatus we've always used; evaluator_decision pulled
+        # from eval-report.json if a pipeline run produced one;
+        # overall_assessment derived for operator-facing surfaces.
+        run_record_now.harness_status = status
+        run_record_now.evaluator_decision = await self._extract_evaluator_decision()
+        run_record_now.overall_assessment = derive_overall_assessment(
+            status, run_record_now.evaluator_decision
+        )
 
         await self.run_store.finish(run_id, status, summary)
 
@@ -670,6 +680,28 @@ class AgentHarness:
                 "display_name": art.display_name,
             },
         )
+
+    async def _extract_evaluator_decision(self) -> str | None:
+        """M1.9: pull ``decision`` out of eval-report.json if a pipeline
+        run produced one. ``None`` for leaf-skill runs (no evaluator).
+
+        Best-effort — a malformed eval-report or missing artifact must
+        not break the finish path; the overall_assessment derives sensibly
+        on None ('ok_no_judge')."""
+        artifacts = getattr(self.skill, "artifacts", None)
+        if artifacts is None:
+            return None
+        try:
+            if not await artifacts.exists("eval-report.json"):
+                return None
+            text = await artifacts.read_text("eval-report.json")
+            obj = json.loads(text)
+            decision = obj.get("decision")
+        except (OSError, json.JSONDecodeError, AttributeError):
+            return None
+        if decision in ("approve", "revise", "reject"):
+            return str(decision)
+        return None
 
     async def _trace_diagnosis_event(
         self,

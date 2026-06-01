@@ -35,6 +35,14 @@ class RunRow(SQLModel, table=True):
     started_at: float = Field(index=True)
     ended_at: float | None = None
     status: str = "running"  # "running" | "ok" | "error" | "timeout"
+    # M1.9 — status reshape. ``status`` stays as the legacy alias of
+    # ``harness_status`` for back-compat; new code reads the split fields.
+    # Pre-M1.9 DBs need 'ALTER TABLE run ADD COLUMN harness_status TEXT
+    # DEFAULT "running"' (and same for the other two) — handled by
+    # ``core.db.init_db`` for SQLite installs.
+    harness_status: str = "running"
+    evaluator_decision: str | None = None  # 'approve' | 'revise' | 'reject' | None
+    overall_assessment: str = "running"
     user_input: str = ""
     summary: str = ""
     # JSON-encoded blobs; deserialized by SqliteRunStore.

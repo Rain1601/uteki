@@ -168,6 +168,9 @@ class SqliteRunStore(RunStore):
             started_at=run.started_at,
             ended_at=run.ended_at,
             status=str(run.status),
+            harness_status=str(run.harness_status),
+            evaluator_decision=run.evaluator_decision,
+            overall_assessment=str(run.overall_assessment),
             user_input=run.user_input,
             summary=run.summary,
             events_json=json.dumps([e.model_dump() for e in events]),
@@ -184,6 +187,10 @@ class SqliteRunStore(RunStore):
         from uteki_api.runs.models import UsageSummary
 
         usage = UsageSummary.model_validate_json(row.usage_summary_json or "{}")
+        # M1.9 — old rows pre-ALTER will have None for harness_status; fall
+        # back to legacy ``status`` so the Run object stays consistent.
+        harness_status = row.harness_status or row.status or "running"
+        overall = row.overall_assessment or "running"
         return Run(
             id=row.id,
             user_id=row.user_id,
@@ -194,6 +201,9 @@ class SqliteRunStore(RunStore):
             started_at=row.started_at,
             ended_at=row.ended_at,
             status=row.status,  # type: ignore[arg-type]
+            harness_status=harness_status,  # type: ignore[arg-type]
+            evaluator_decision=row.evaluator_decision,  # type: ignore[arg-type]
+            overall_assessment=overall,  # type: ignore[arg-type]
             user_input=row.user_input,
             summary=row.summary,
             events=events,
@@ -249,6 +259,7 @@ class SqliteRunStore(RunStore):
                 for col in (
                     "user_id", "skill", "skill_version", "triggered_by",
                     "trigger_reason", "started_at", "ended_at", "status",
+                    "harness_status", "evaluator_decision", "overall_assessment",
                     "user_input", "summary", "events_json", "tags_json",
                     "usage_summary_json",
                 ):

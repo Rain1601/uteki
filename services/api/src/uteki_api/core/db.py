@@ -48,6 +48,7 @@ def init_db() -> None:
 
     SQLModel.metadata.create_all(engine)
     _ensure_user_role_column(engine)
+    _ensure_run_assessment_columns(engine)
 
 
 def _ensure_user_role_column(db_engine: Engine) -> None:
@@ -62,6 +63,54 @@ def _ensure_user_role_column(db_engine: Engine) -> None:
     with db_engine.begin() as conn:
         conn.execute(text('ALTER TABLE "user" ADD COLUMN role VARCHAR(16) DEFAULT \'reader\''))
         conn.execute(text('UPDATE "user" SET role = \'reader\' WHERE role IS NULL OR role = \'\''))
+
+
+def _ensure_run_assessment_columns(db_engine: Engine) -> None:
+    """M1.9: add harness_status / evaluator_decision / overall_assessment
+    columns to existing ``run`` tables. SQLite supports ADD COLUMN.
+
+    For fresh DBs ``create_all`` already includes these columns and the
+    inspector finds them; for upgraded DBs the missing ones get added
+    with sane defaults backfilled from the legacy ``status`` field where
+    possible (status == harness_status for runs that pre-date M1.9).
+    """
+    inspector = inspect(db_engine)
+    try:
+        columns = {column["name"] for column in inspector.get_columns("run")}
+    except Exception:
+        return  # run table doesn't exist yet — create_all will handle it
+    additions: list[str] = []
+    if "harness_status" not in columns:
+        additions.append(
+            'ALTER TABLE run ADD COLUMN harness_status VARCHAR(16) DEFAULT \'running\''
+        )
+    if "evaluator_decision" not in columns:
+        additions.append(
+            "ALTER TABLE run ADD COLUMN evaluator_decision VARCHAR(16)"
+        )
+    if "overall_assessment" not in columns:
+        additions.append(
+            'ALTER TABLE run ADD COLUMN overall_assessment VARCHAR(32) DEFAULT \'running\''
+        )
+    if not additions:
+        return
+    with db_engine.begin() as conn:
+        for stmt in additions:
+            conn.execute(text(stmt))
+        # Backfill harness_status from status (they're synonymous for pre-M1.9
+        # runs) so historical rows have meaningful values on first read.
+        if "harness_status" in (stmt for stmt in additions if "harness_status" in stmt):
+            pass  # default already 'running'; legacy status preserved separately
+        conn.execute(text(
+            "UPDATE run SET harness_status = status WHERE harness_status = 'running' AND status != 'running'"
+        ))
+        conn.execute(text(
+            "UPDATE run SET overall_assessment = CASE "
+            "WHEN status = 'ok' THEN 'ok_no_judge' "
+            "WHEN status IN ('error', 'timeout') THEN 'failed' "
+            "ELSE 'running' END "
+            "WHERE overall_assessment = 'running' AND status != 'running'"
+        ))
 
 
 def get_db() -> Iterator[Session]:
