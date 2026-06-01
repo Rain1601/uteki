@@ -42,7 +42,17 @@ export default function AgentPage() {
     listAgents()
       .then((r) => {
         setAgents(r.items);
-        if (r.items.length > 0) setAgent((prev) => prev || r.items[0].name);
+        if (r.items.length > 0) {
+          // Phase B: uteki is the main router — prefer it as the default
+          // selection so the single-chat-input UX hits the dispatcher
+          // first; fall back to the first registered skill if missing.
+          setAgent(
+            (prev) =>
+              prev ||
+              r.items.find((a) => a.name === "uteki")?.name ||
+              r.items[0].name,
+          );
+        }
       })
       .catch(() => {});
   }, []);

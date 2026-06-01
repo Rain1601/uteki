@@ -20,6 +20,7 @@ from uteki_api.skills.recap import RecapSkill
 from uteki_api.skills.registry import SkillEntry, SkillRegistry, default_skills
 from uteki_api.skills.research import ResearchAgent
 from uteki_api.skills.screener import ScreenerSkill
+from uteki_api.skills.uteki import UtekiRouter
 
 # --- register built-in skills ------------------------------------------------
 
@@ -106,6 +107,19 @@ default_skills.register(
     kind="pipeline",
 )
 
+# Phase B.1 — uteki is the main router agent. Takes a one-liner from the
+# user, classifies intent, and either answers directly or delegates to the
+# right leaf skill (research / company / earnings / research_pipeline).
+_uteki_router = UtekiRouter()
+default_skills.register(
+    _uteki_router,
+    description="主代理：识别用户意图后直接回答简短问题，或分派到合适的 sub-skill。",
+    version="v1",
+    default_tools=list(UtekiRouter.DEFAULT_TOOLS),
+    default_model=UtekiRouter.DEFAULT_MODEL,
+    kind="pipeline",
+)
+
 
 __all__ = [
     "SkillRegistry",
@@ -120,4 +134,5 @@ __all__ = [
     "EvaluatorSkill",
     "ResearchPipeline",
     "CompanyResearchPipeline",
+    "UtekiRouter",
 ]
