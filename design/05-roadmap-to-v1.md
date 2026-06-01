@@ -118,7 +118,7 @@ Adopt?  [y/n] y
 | 1.9 | Run.status 重塑 | API 返回新字段：`harness_status`, `evaluator_decision`, `overall_assessment` |
 | 1.10 | Quality definition 统一 schema | sprint-contract + judges 引用同一份 criteria.json |
 | ✅ 1.11 | drift_monitor 自动 trigger | T17 5/5 pass; `check_drift()` 升级：drift 检测到 → 找最近 EvalRecord.run_id → 查 Run 拿 skill → rate-limit（每 skill 最多 1 个 in-flight proposal）→ 创建 Proposal(triggered_by=system:drift_monitor) → inline 跑 cc_runner → 落到 pending_review；CLI `proposals drift-check` 手动触发；返回 `{alert, auto_triggered, auto_trigger_reason}` 给操作员可见；smoke：故意 today=0.40 vs week_ago=0.85 → 42pp drop → P-2026-001 自动出现 + cc_runner 走完到 pending_review |
-| 1.12 | 跨 skill smoke：3 个不同 skill 走完整闭环 | proposals-archive 下出现 3 份真实自动 proposal |
+| ✅ 1.12 | 跨 skill smoke：3 个不同 skill 走完整闭环 | T18 4/4 pass: parameterized 跑 research / earnings / planner 三个 leaf skill 各自走完整 create → cc_runner → accept → apply → ab_eval → adopt；外加 `test_three_skills_independent_in_same_root` 在同一个 ProposalStore 里依次跑 3 个 skill，验证 P-id 不冲突 + 每个 skill 独立的 EvolutionStore version 链 + provenance 互不污染 |
 
 ### Gate
 
