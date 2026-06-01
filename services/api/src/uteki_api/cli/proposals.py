@@ -511,6 +511,17 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_ab.add_argument("proposal_id")
 
+    for verb in ("adopt", "rollback", "inconclusive"):
+        p_g2 = sub.add_parser(
+            verb,
+            help=f"G2 terminal decision: transition a_b_eval proposal to {verb}.",
+        )
+        p_g2.add_argument("proposal_id")
+        p_g2.add_argument(
+            "--reason", "-r", default="", help="Audit-log reason text."
+        )
+        p_g2.set_defaults(_g2_verb=verb)
+
     return p
 
 
@@ -583,8 +594,92 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 3
         return _run_ab_eval(args.proposal_id, store)
+    if args.cmd in {"adopt", "rollback", "inconclusive"}:
+        return _run_g2(args, store)
     parser.print_help()
     return 1
+
+
+def _run_g2(args: argparse.Namespace, store: ProposalStore) -> int:
+    """Drive a G2 decision (adopt / rollback / inconclusive) inline."""
+    import asyncio as _asyncio
+
+    from uteki_api.evolution.g2 import (
+        adopt_proposal,
+        inconclusive_proposal,
+        rollback_proposal,
+    )
+
+    verb: str = args._g2_verb  # noqa: SLF001
+    try:
+        proposal = store.get(args.proposal_id)
+    except KeyError:
+        print(_c("red", f"unknown proposal: {args.proposal_id}"), file=sys.stderr)
+        return 2
+
+    # Pre-flight the most common operator mistake — running G2 before A/B
+    # has populated ab_summary. The async functions guard this too, but
+    # exiting here with code 3 (wrong status) matches the rest of the CLI.
+    if proposal.status != "a_b_eval":
+        print(
+            _c(
+                "red",
+                f"refusing {verb}: {args.proposal_id} is {proposal.status}, "
+                "expected a_b_eval",
+            ),
+            file=sys.stderr,
+        )
+        return 3
+    if not proposal.ab_summary:
+        print(
+            _c(
+                "red",
+                f"refusing {verb}: {args.proposal_id} has no ab_summary yet — "
+                "run 'proposals ab-eval' first",
+            ),
+            file=sys.stderr,
+        )
+        return 3
+
+    by = _operator_by()
+    try:
+        if verb == "adopt":
+            result = _asyncio.run(
+                adopt_proposal(args.proposal_id, by=by, reason=args.reason, store=store)
+            )
+        elif verb == "rollback":
+            result = _asyncio.run(
+                rollback_proposal(
+                    args.proposal_id, by=by, reason=args.reason, store=store
+                )
+            )
+        else:  # inconclusive
+            result = _asyncio.run(
+                inconclusive_proposal(
+                    args.proposal_id, by=by, reason=args.reason, store=store
+                )
+            )
+    except ValueError as e:
+        print(_c("red", str(e)), file=sys.stderr)
+        return 4
+    except Exception as e:  # noqa: BLE001 — surface, don't crash
+        print(_c("red", f"  {verb} crashed: {e}"), file=sys.stderr)
+        return 10
+
+    print(
+        f"{args.proposal_id}: {_c('bold', 'a_b_eval')} → "
+        f"{_status_pretty(result.final_status)}"
+    )
+    if args.reason:
+        print(_c("dim", f"  reason: {args.reason}"))
+    print(_c("dim", f"  by:     {by}"))
+    if result.new_version:
+        print(_c("dim", f"  new_version: {result.new_version}"))
+    if result.live_signature:
+        print(_c("dim", f"  live_signature: {result.live_signature}"))
+    if verb == "rollback":
+        print(_c("green", "  live SKILL.md reverted to baseline"))
+    return 0
 
 
 if __name__ == "__main__":
