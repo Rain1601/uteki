@@ -117,7 +117,7 @@ Adopt?  [y/n] y
 | ✅ 1.8 | G2 决策 + Rollback | T16 7/7 pass; `evolution/g2.py`: 三个 terminal verb — `adopt_proposal`/`rollback_proposal`/`inconclusive_proposal`，都要求 status=a_b_eval + ab_summary 已填；rollback 把 snapshot/skill/SKILL.md 写回 live、reload skill、记一个新 SkillVersion（`params.rolled_back_from=P-id` + `baseline_signature`），更新 `Proposal.applied_skill_signature` 为 baseline；adopt/inconclusive 是纯 transition（live 文件不动）；CLI 3 个 subcommand；闭环 demo：pending_review → adopted **12 步 transition / 2 句操作员命令** |
 | 1.9 | Run.status 重塑 | API 返回新字段：`harness_status`, `evaluator_decision`, `overall_assessment` |
 | 1.10 | Quality definition 统一 schema | sprint-contract + judges 引用同一份 criteria.json |
-| 1.11 | drift_monitor 自动 trigger | 故意写一个 pass_rate=0.4 的 run → 6 小时后 proposal 自动生成 |
+| ✅ 1.11 | drift_monitor 自动 trigger | T17 5/5 pass; `check_drift()` 升级：drift 检测到 → 找最近 EvalRecord.run_id → 查 Run 拿 skill → rate-limit（每 skill 最多 1 个 in-flight proposal）→ 创建 Proposal(triggered_by=system:drift_monitor) → inline 跑 cc_runner → 落到 pending_review；CLI `proposals drift-check` 手动触发；返回 `{alert, auto_triggered, auto_trigger_reason}` 给操作员可见；smoke：故意 today=0.40 vs week_ago=0.85 → 42pp drop → P-2026-001 自动出现 + cc_runner 走完到 pending_review |
 | 1.12 | 跨 skill smoke：3 个不同 skill 走完整闭环 | proposals-archive 下出现 3 份真实自动 proposal |
 
 ### Gate

@@ -522,6 +522,15 @@ def _build_parser() -> argparse.ArgumentParser:
         )
         p_g2.set_defaults(_g2_verb=verb)
 
+    sub.add_parser(
+        "drift-check",
+        help=(
+            "Run drift_monitor.check_drift now — compares today vs 7d-ago "
+            "pass_rate and, if drift fires, automatically creates a Proposal "
+            "+ runs cc_runner. Idempotent under the per-skill rate limit."
+        ),
+    )
+
     return p
 
 
@@ -596,8 +605,64 @@ def main(argv: list[str] | None = None) -> int:
         return _run_ab_eval(args.proposal_id, store)
     if args.cmd in {"adopt", "rollback", "inconclusive"}:
         return _run_g2(args, store)
+    if args.cmd == "drift-check":
+        return _run_drift_check()
     parser.print_help()
     return 1
+
+
+def _run_drift_check() -> int:
+    """Manual entrypoint for the drift_monitor — same code path the cron
+    will run on a schedule, but operator-driven for the demo + on-call
+    investigation. Prints a structured summary."""
+    import asyncio as _asyncio
+
+    from uteki_api.eval.drift_monitor import check_drift
+
+    print(_c("dim", "  checking eval drift (today vs 7d-ago, system partition)..."))
+    try:
+        result = _asyncio.run(check_drift())
+    except Exception as e:  # noqa: BLE001
+        print(_c("red", f"  drift-check crashed: {e}"), file=sys.stderr)
+        return 11
+
+    today_rate = result.get("today_pass_rate")
+    week_rate = result.get("week_ago_pass_rate")
+    drop = result.get("drop")
+    if today_rate is None or week_rate is None:
+        print(_c(
+            "dim",
+            f"  insufficient data: today={result['today_count']} records, "
+            f"week_ago={result['week_ago_count']} records",
+        ))
+        return 0
+
+    delta_color = "red" if result["alert"] else "green"
+    arrow = "↓" if (drop or 0) > 0 else "↑"
+    print(_c("dim", f"  today:      {today_rate * 100:.0f}% ({result['today_count']} records)"))
+    print(_c("dim", f"  7-days-ago: {week_rate * 100:.0f}% ({result['week_ago_count']} records)"))
+    print(
+        _c("dim", "  delta:      ")
+        + _c(delta_color, f"{arrow} {abs((drop or 0) * 100):.1f}pp")
+    )
+    if not result["alert"]:
+        print(_c("green", "  no drift — within threshold."))
+        return 0
+
+    if result["auto_triggered"]:
+        print(
+            _c("yellow", "  DRIFT alert: ")
+            + _c("bold", f"auto-triggered {result['auto_triggered']}")
+        )
+        print(_c(
+            "dim",
+            f"  next: 'proposals show {result['auto_triggered']}' to inspect CC critique",
+        ))
+    else:
+        print(_c("yellow", "  DRIFT alert: no auto-trigger fired"))
+        if result.get("auto_trigger_reason"):
+            print(_c("dim", f"  reason: {result['auto_trigger_reason']}"))
+    return 0
 
 
 def _run_g2(args: argparse.Namespace, store: ProposalStore) -> int:

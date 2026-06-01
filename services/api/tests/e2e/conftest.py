@@ -119,6 +119,14 @@ def client() -> Iterator[TestClient]:
     from uteki_api.evolution import cc_runner as cc_runner_mod
     cc_runner_mod.default_run_store = fresh_runs
 
+    # drift_monitor (M1.11) imports default_run_store by name to anchor
+    # auto-triggered proposals on the originating skill. Without this
+    # rebind, T17's seeded run goes into the per-test InMemoryRunStore
+    # but drift_monitor.get() reads from the import-time SqliteRunStore
+    # → "run_id not found" and auto-trigger silently skips.
+    from uteki_api.eval import drift_monitor as drift_mod
+    drift_mod.default_run_store = fresh_runs
+
     with TestClient(app_main.app) as c:
         yield c
 

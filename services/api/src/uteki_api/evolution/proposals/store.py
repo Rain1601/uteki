@@ -64,6 +64,10 @@ class ProposalStore:
         y = year if year is not None else datetime.now(UTC).year
         prefix = f"P-{y}-"
         max_n = 0
+        # Same resilience as list(): recreate if a peer wiped the dir.
+        if not self._root.exists():
+            self._root.mkdir(parents=True, exist_ok=True)
+            return f"{prefix}001"
         for entry in self._root.iterdir():
             if not entry.is_dir():
                 continue
@@ -179,6 +183,13 @@ class ProposalStore:
         """Newest-first by created_at. In-memory filter — fine for the
         v1 volume (drift triggers ~1/skill/week, single-digit pending)."""
         items: list[Proposal] = []
+        # The root may have been wiped between __init__ and the call
+        # (tests, manual cleanup). Treat 'missing' as 'no proposals' and
+        # recreate so subsequent create() calls don't trip on the same
+        # race.
+        if not self._root.exists():
+            self._root.mkdir(parents=True, exist_ok=True)
+            return items
         for entry in self._root.iterdir():
             if not entry.is_dir():
                 continue
