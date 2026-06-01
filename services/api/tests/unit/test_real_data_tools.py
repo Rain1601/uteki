@@ -330,6 +330,168 @@ async def test_news_search_uses_live_provider_when_mock_data_disabled(
     assert result.sources[0]["source_type"] == "news"
 
 
+@pytest.fixture(autouse=False)
+def _reset_sec_ticker_cache() -> Any:
+    """SEC ticker map cache leaks across tests; reset before + after."""
+    from uteki_api.tools import report_analysis as mod
+
+    mod._TICKER_CACHE = None
+    yield
+    mod._TICKER_CACHE = None
+
+
+@pytest.mark.asyncio
+async def test_report_analysis_resolves_sec_filing_for_symbol(
+    monkeypatch: pytest.MonkeyPatch, _reset_sec_ticker_cache: Any
+) -> None:
+    """Phase C.2 — symbol → CIK lookup → submissions → primary doc → text.
+    Verifies the full SEC EDGAR happy path, including the doc URL builder
+    and that the result carries a sec_edgar source point."""
+    from uteki_api.tools import report_analysis as mod
+
+    monkeypatch.setattr(settings, "use_mock_data", False)
+
+    ticker_payload = {
+        "0": {"cik_str": 320193, "ticker": "AAPL", "title": "Apple Inc."},
+        "1": {"cik_str": 789019, "ticker": "MSFT", "title": "Microsoft Corp."},
+    }
+    submissions_payload = {
+        "filings": {
+            "recent": {
+                "form": ["8-K", "10-K", "10-Q"],
+                "accessionNumber": [
+                    "0000320193-23-000077",
+                    "0000320193-23-000106",
+                    "0000320193-23-000064",
+                ],
+                "primaryDocument": [
+                    "aapl-20230501.htm",
+                    "aapl-20230930.htm",
+                    "aapl-20230701.htm",
+                ],
+                "filingDate": ["2023-05-04", "2023-11-02", "2023-08-03"],
+            }
+        }
+    }
+    filing_html = (
+        "<html><body>"
+        "<script>tracker()</script>"
+        "<h2>Item 1A. Risk Factors</h2>"
+        "<p>Macroeconomic conditions could materially impact demand for our products.</p>"
+        "<p>Supply chain concentration in Asia remains a key operational risk.</p>"
+        "<p>Foreign exchange volatility may pressure reported revenue.</p>"
+        "<h2>Item 2. Properties</h2>"
+        "<p>Headquarters in Cupertino, CA.</p>"
+        "</body></html>"
+    )
+
+    class _Resp:
+        def __init__(self, payload: Any = None, text: str = "") -> None:
+            self._payload = payload
+            self.text = text
+
+        def json(self) -> Any:
+            return self._payload
+
+        def raise_for_status(self) -> None:
+            return None
+
+    class _StubClient:
+        def __init__(self, *args: Any, **kwargs: Any) -> None: ...
+        async def __aenter__(self) -> _StubClient:
+            return self
+        async def __aexit__(self, *a: Any) -> None:
+            return None
+        async def get(self, url: str) -> _Resp:
+            if url == mod.TICKER_MAP_URL:
+                return _Resp(payload=ticker_payload)
+            if url.startswith("https://data.sec.gov/submissions/"):
+                # CIK should be zero-padded to 10 digits
+                assert "CIK0000320193.json" in url
+                return _Resp(payload=submissions_payload)
+            if url.startswith("https://www.sec.gov/Archives/edgar/data/"):
+                # Archive path uses unpadded CIK + dashless accession
+                assert "/320193/000032019323000106/aapl-20230930.htm" in url
+                return _Resp(text=filing_html)
+            raise AssertionError(f"unexpected URL: {url}")
+
+    monkeypatch.setattr(mod.httpx, "AsyncClient", _StubClient)
+
+    result = await mod.ReportAnalysisTool().run(
+        symbol="AAPL", filing_type="10-K", focus="risks"
+    )
+
+    assert result.ok, result.error
+    assert result.data["filing"]["form"] == "10-K"
+    assert result.data["filing"]["filing_date"] == "2023-11-02"
+    sec = result.sources[0]
+    assert sec["source_type"] == "sec_edgar"
+    assert sec["publisher"] == "SEC EDGAR"
+    assert sec["published_at"] == "2023-11-02"
+    # The risk-factors section was extracted (not the Properties section)
+    section_text = result.data["sections"][0]["bullets"]
+    joined = " ".join(section_text)
+    assert "Macroeconomic conditions" in joined
+    assert "Cupertino" not in joined
+
+
+@pytest.mark.asyncio
+async def test_report_analysis_unknown_symbol_returns_error(
+    monkeypatch: pytest.MonkeyPatch, _reset_sec_ticker_cache: Any
+) -> None:
+    """Unknown ticker → ok=False with a clear summary, no further fetches."""
+    from uteki_api.tools import report_analysis as mod
+
+    monkeypatch.setattr(settings, "use_mock_data", False)
+
+    class _Resp:
+        def json(self) -> dict:
+            return {"0": {"cik_str": 320193, "ticker": "AAPL"}}
+        def raise_for_status(self) -> None:
+            return None
+
+    fetches: list[str] = []
+
+    class _StubClient:
+        def __init__(self, *args: Any, **kwargs: Any) -> None: ...
+        async def __aenter__(self) -> _StubClient:
+            return self
+        async def __aexit__(self, *a: Any) -> None:
+            return None
+        async def get(self, url: str) -> _Resp:
+            fetches.append(url)
+            return _Resp()
+
+    monkeypatch.setattr(mod.httpx, "AsyncClient", _StubClient)
+
+    result = await mod.ReportAnalysisTool().run(symbol="ZZZZ", focus="summary")
+
+    assert result.ok is False
+    assert "not found" in result.summary
+    # Only the ticker map should have been fetched — no submissions call
+    assert fetches == [mod.TICKER_MAP_URL]
+
+
+def test_report_analysis_extract_focus_section_picks_risk_factors() -> None:
+    """Section extraction stops at the next ``Item N`` heading and caps length."""
+    from uteki_api.tools.report_analysis import _extract_focus_section
+
+    text = (
+        "Item 1. Business\n\n"
+        "We sell things.\n\n"
+        "Item 1A. Risk Factors\n\n"
+        "Foreign exchange exposure is a risk.\n\n"
+        "Supply chain is a risk.\n\n"
+        "Item 2. Properties\n\n"
+        "Our HQ is in Cupertino."
+    )
+    section = _extract_focus_section(text, "risks")
+    assert "Foreign exchange exposure" in section
+    assert "Supply chain" in section
+    # Boundary respected — Properties block excluded
+    assert "Cupertino" not in section
+
+
 @pytest.mark.asyncio
 async def test_kline_uses_yfinance_when_mock_data_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
     from uteki_api.tools import kline as mod
