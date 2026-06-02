@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>uteki · 雨滴主题配色候选</title>
+<title>uteki · 雨檐 黑夜 / 白天</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;1,9..144,400;1,9..144,500&family=JetBrains+Mono:wght@400;500;600&family=Newsreader:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
@@ -14,8 +14,8 @@
     --font-mono:    "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
     --font-sans:    -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
 
-    /* Page chrome — true neutral so the candidate palettes don't compete */
-    --page-bg:      #0d0e10;
+    /* Page chrome — neutral mid-gray so neither variant wins by chrome */
+    --page-bg:      #2a2826;
     --page-fg:      #c8cbcf;
     --page-muted:   #7e848b;
     --page-faint:   #4a4f55;
@@ -65,7 +65,6 @@
     color: var(--page-muted);
   }
 
-  /* Palette grid */
   .grid {
     display: grid;
     grid-template-columns: 1fr;
@@ -75,7 +74,6 @@
     .grid { grid-template-columns: 1fr 1fr; }
   }
 
-  /* Each palette card */
   .palette {
     border-radius: 14px;
     overflow: hidden;
@@ -87,6 +85,7 @@
     padding: 22px 24px 18px;
     display: flex; align-items: baseline; gap: 14px;
     border-bottom: 1px solid var(--p-line);
+    box-shadow: inset 3px 0 0 var(--p-accent);
   }
   .palette-name {
     font-family: var(--font-display);
@@ -123,7 +122,6 @@
     gap: 22px;
   }
 
-  /* Swatch row */
   .swatches {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -148,7 +146,6 @@
     color: var(--p-muted);
   }
 
-  /* Ink ramp */
   .inks {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
@@ -157,14 +154,6 @@
     border-radius: 8px;
     background: var(--p-surface-1);
     border: 1px solid var(--p-line);
-  }
-  .ink-cell { text-align: left; }
-  .ink-cell .dot {
-    display: inline-block;
-    width: 10px; height: 10px;
-    border-radius: 50%;
-    margin-right: 6px;
-    vertical-align: middle;
   }
   .ink-cell .sample {
     font-family: var(--font-display);
@@ -181,7 +170,6 @@
     color: var(--p-faint);
   }
 
-  /* Accent demo */
   .accent-row {
     display: grid;
     grid-template-columns: 1fr auto;
@@ -215,7 +203,6 @@
     text-transform: uppercase;
   }
 
-  /* Mockup — feels like a real app card */
   .mock {
     background: var(--p-surface-1);
     border: 1px solid var(--p-line);
@@ -265,7 +252,6 @@
     background: var(--p-accent-soft);
   }
 
-  /* Run row */
   .run-row {
     margin-top: 14px;
     padding: 12px 14px;
@@ -307,7 +293,6 @@
   .status.ok    { color: var(--p-gain); border-color: color-mix(in srgb, var(--p-gain) 40%, transparent); background: color-mix(in srgb, var(--p-gain) 8%, transparent); }
   .status.err   { color: var(--p-loss); border-color: color-mix(in srgb, var(--p-loss) 40%, transparent); background: color-mix(in srgb, var(--p-loss) 8%, transparent); }
 
-  /* Numeric mini-table — gain/loss in context */
   .table {
     margin-top: 14px;
     border: 1px solid var(--p-line);
@@ -328,7 +313,6 @@
   .pct.up   { color: var(--p-gain); }
   .pct.down { color: var(--p-loss); }
 
-  /* Hex strip footer */
   .hex-strip {
     display: grid;
     grid-template-columns: repeat(5, 1fr);
@@ -344,78 +328,11 @@
     letter-spacing: 0.04em;
     color: var(--p-muted);
   }
-  .hex-cell .bar {
-    height: 4px; border-radius: 2px;
-  }
+  .hex-cell .bar { height: 4px; border-radius: 2px; }
   .hex-cell code { color: var(--p-ink-soft); font-size: 10px; }
 
-  /* ─────────────────────────────────────────────────── */
-  /* Palette A · 砚池 / Inkstone                        */
-  /* ─────────────────────────────────────────────────── */
-  .pa-A {
-    --p-surface:      #15181c;
-    --p-surface-1:    #1b1f23;
-    --p-surface-2:    #232830;
-    --p-ink:          #eef2f5;
-    --p-ink-soft:     #b2b9c0;
-    --p-muted:        #7c848c;
-    --p-faint:        #545b62;
-    --p-line:         rgba(238, 242, 245, 0.08);
-    --p-accent:       #5fa8a3;
-    --p-accent-soft:  rgba(95, 168, 163, 0.16);
-    --p-accent-line:  rgba(95, 168, 163, 0.35);
-    --p-gain:         #6faf8d;
-    --p-loss:         #b0524a;
-    background: var(--p-surface);
-    color: var(--p-ink);
-  }
-
-  /* ─────────────────────────────────────────────────── */
-  /* Palette B · 靛雨 / Indigo Rain                      */
-  /* ─────────────────────────────────────────────────── */
-  .pa-B {
-    --p-surface:      #141821;
-    --p-surface-1:    #1a1f2a;
-    --p-surface-2:    #232a37;
-    --p-ink:          #e8ecf2;
-    --p-ink-soft:     #a8b0bd;
-    --p-muted:        #6f7787;
-    --p-faint:        #494f5d;
-    --p-line:         rgba(232, 236, 242, 0.08);
-    --p-accent:       #6b7fd6;
-    --p-accent-soft:  rgba(107, 127, 214, 0.16);
-    --p-accent-line:  rgba(107, 127, 214, 0.35);
-    --p-gain:         #6faf8d;
-    --p-loss:         #b0524a;
-    background: var(--p-surface);
-    color: var(--p-ink);
-  }
-
-  /* ─────────────────────────────────────────────────── */
-  /* Palette C · 寒砚 / Cold Slate  (you picked this)    */
-  /* ─────────────────────────────────────────────────── */
-  .pa-C {
-    --p-surface:      #16191c;
-    --p-surface-1:    #1c1f23;
-    --p-surface-2:    #252930;
-    --p-ink:          #ebeef1;
-    --p-ink-soft:     #aab1b8;
-    --p-muted:        #747a82;
-    --p-faint:        #4d5258;
-    --p-line:         rgba(235, 238, 241, 0.08);
-    --p-accent:       #7a9ab8;
-    --p-accent-soft:  rgba(122, 154, 184, 0.16);
-    --p-accent-line:  rgba(122, 154, 184, 0.35);
-    --p-gain:         #6faf8d;
-    --p-loss:         #b0524a;
-    background: var(--p-surface);
-    color: var(--p-ink);
-  }
-
-  /* ─────────────────────────────────────────────────── */
-  /* Palette D · 雨檐 / Cedar & Rain                     */
-  /* ─────────────────────────────────────────────────── */
-  .pa-D {
+  /* 🌙 雨檐 · 黑夜（当前 prod） */
+  .pa-night {
     --p-surface:      #1c1814;
     --p-surface-1:    #221d18;
     --p-surface-2:    #2a241e;
@@ -433,9 +350,23 @@
     color: var(--p-ink);
   }
 
-  /* Picked-flag for the recommended one */
-  .pa-C .palette-head {
-    box-shadow: inset 3px 0 0 var(--p-accent);
+  /* ☀️ 雨檐 · 白天（新提案） */
+  .pa-day {
+    --p-surface:      #f8f3ea;
+    --p-surface-1:    #f1ebde;
+    --p-surface-2:    #e7e0d0;
+    --p-ink:          #1c1814;
+    --p-ink-soft:     #3d3429;
+    --p-muted:        #6b6052;
+    --p-faint:        #a39786;
+    --p-line:         rgba(28, 24, 20, 0.10);
+    --p-accent:       #3f7398;
+    --p-accent-soft:  rgba(63, 115, 152, 0.12);
+    --p-accent-line:  rgba(63, 115, 152, 0.28);
+    --p-gain:         #4f8c6c;
+    --p-loss:         #9c463c;
+    background: var(--p-surface);
+    color: var(--p-ink);
   }
 </style>
 </head>
@@ -444,242 +375,25 @@
   <div class="page-head">
     <div>
       <div class="eyebrow">UTEKI · DESIGN SCRATCH</div>
-      <h1 class="page-title">雨滴 · 配色候选</h1>
+      <h1 class="page-title">雨檐 · 黑夜 / 白天</h1>
     </div>
-    <div class="page-sub">4 palettes · dark editorial · 1 accent each</div>
+    <div class="page-sub">cedar &amp; rain · two times of day · same identity</div>
   </div>
 
   <div class="grid">
-    <!-- ============================================================ -->
-    <!-- Palette A · 砚池 / Inkstone                                  -->
-    <!-- ============================================================ -->
-    <section class="palette pa-A">
-      <header class="palette-head">
-        <div class="palette-name">砚池</div>
-        <div class="palette-roman">Inkstone · A</div>
-        <div class="palette-tag">jade-cyan accent</div>
-      </header>
-      <div class="palette-body">
-        <div class="swatches">
-          <div class="swatch" style="background: var(--p-surface);">
-            <div class="swatch-label">surface</div>
-            <div class="swatch-hex">#15181c</div>
-          </div>
-          <div class="swatch" style="background: var(--p-surface-1);">
-            <div class="swatch-label">surface-1</div>
-            <div class="swatch-hex">#1b1f23</div>
-          </div>
-          <div class="swatch" style="background: var(--p-surface-2);">
-            <div class="swatch-label">surface-2</div>
-            <div class="swatch-hex">#232830</div>
-          </div>
-        </div>
 
-        <div class="inks">
-          <div class="ink-cell"><div class="sample" style="color: var(--p-ink);">Aa</div><div class="meta">ink</div></div>
-          <div class="ink-cell"><div class="sample" style="color: var(--p-ink-soft);">Aa</div><div class="meta">soft</div></div>
-          <div class="ink-cell"><div class="sample" style="color: var(--p-muted);">Aa</div><div class="meta">muted</div></div>
-          <div class="ink-cell"><div class="sample" style="color: var(--p-faint);">Aa</div><div class="meta">faint</div></div>
-        </div>
-
-        <div class="accent-row">
-          <div class="accent-bar">#5fa8a3 · 雨水留在石砚里</div>
-          <a class="accent-btn">View runs ↗</a>
-        </div>
-
-        <div class="mock">
-          <div class="mock-eyebrow">CATALOG · SKILL</div>
-          <div class="mock-title">company_research_pipeline</div>
-          <div class="mock-sub">公司 7-gate 投研流水线：证据收集 → 六维分析 → 投资备忘录 + 结构化裁决。</div>
-          <div class="mock-chips">
-            <span class="chip accent">v3</span>
-            <span class="chip">market_quote</span>
-            <span class="chip">financials</span>
-            <span class="chip">news_search</span>
-          </div>
-          <div class="run-row">
-            <span class="skill">research</span>
-            <span class="ver">v2</span>
-            <span class="status ok">ok</span>
-            <span class="ms">2 144 ms</span>
-          </div>
-          <div class="table">
-            <div class="tr"><span class="sym">NVDA</span><span class="name">Nvidia Corp.</span><span class="pct up">+1.24%</span></div>
-            <div class="tr"><span class="sym">AAPL</span><span class="name">Apple Inc.</span><span class="pct up">+0.38%</span></div>
-            <div class="tr"><span class="sym">TSLA</span><span class="name">Tesla Inc.</span><span class="pct down">−2.07%</span></div>
-          </div>
-        </div>
-      </div>
-      <div class="hex-strip">
-        <div class="hex-cell"><div class="bar" style="background: var(--p-surface);"></div><code>#15181c</code>surface</div>
-        <div class="hex-cell"><div class="bar" style="background: var(--p-ink);"></div><code>#eef2f5</code>ink</div>
-        <div class="hex-cell"><div class="bar" style="background: var(--p-accent);"></div><code>#5fa8a3</code>accent</div>
-        <div class="hex-cell"><div class="bar" style="background: var(--p-gain);"></div><code>#6faf8d</code>gain</div>
-        <div class="hex-cell"><div class="bar" style="background: var(--p-loss);"></div><code>#b0524a</code>loss</div>
-      </div>
-    </section>
-
-    <!-- ============================================================ -->
-    <!-- Palette B · 靛雨 / Indigo Rain                                -->
-    <!-- ============================================================ -->
-    <section class="palette pa-B">
-      <header class="palette-head">
-        <div class="palette-name">靛雨</div>
-        <div class="palette-roman">Indigo Rain · B</div>
-        <div class="palette-tag">aizome indigo</div>
-      </header>
-      <div class="palette-body">
-        <div class="swatches">
-          <div class="swatch" style="background: var(--p-surface);">
-            <div class="swatch-label">surface</div>
-            <div class="swatch-hex">#141821</div>
-          </div>
-          <div class="swatch" style="background: var(--p-surface-1);">
-            <div class="swatch-label">surface-1</div>
-            <div class="swatch-hex">#1a1f2a</div>
-          </div>
-          <div class="swatch" style="background: var(--p-surface-2);">
-            <div class="swatch-label">surface-2</div>
-            <div class="swatch-hex">#232a37</div>
-          </div>
-        </div>
-
-        <div class="inks">
-          <div class="ink-cell"><div class="sample" style="color: var(--p-ink);">Aa</div><div class="meta">ink</div></div>
-          <div class="ink-cell"><div class="sample" style="color: var(--p-ink-soft);">Aa</div><div class="meta">soft</div></div>
-          <div class="ink-cell"><div class="sample" style="color: var(--p-muted);">Aa</div><div class="meta">muted</div></div>
-          <div class="ink-cell"><div class="sample" style="color: var(--p-faint);">Aa</div><div class="meta">faint</div></div>
-        </div>
-
-        <div class="accent-row">
-          <div class="accent-bar">#6b7fd6 · 蓝染布被雨打湿</div>
-          <a class="accent-btn">View runs ↗</a>
-        </div>
-
-        <div class="mock">
-          <div class="mock-eyebrow">CATALOG · SKILL</div>
-          <div class="mock-title">company_research_pipeline</div>
-          <div class="mock-sub">公司 7-gate 投研流水线：证据收集 → 六维分析 → 投资备忘录 + 结构化裁决。</div>
-          <div class="mock-chips">
-            <span class="chip accent">v3</span>
-            <span class="chip">market_quote</span>
-            <span class="chip">financials</span>
-            <span class="chip">news_search</span>
-          </div>
-          <div class="run-row">
-            <span class="skill">research</span>
-            <span class="ver">v2</span>
-            <span class="status ok">ok</span>
-            <span class="ms">2 144 ms</span>
-          </div>
-          <div class="table">
-            <div class="tr"><span class="sym">NVDA</span><span class="name">Nvidia Corp.</span><span class="pct up">+1.24%</span></div>
-            <div class="tr"><span class="sym">AAPL</span><span class="name">Apple Inc.</span><span class="pct up">+0.38%</span></div>
-            <div class="tr"><span class="sym">TSLA</span><span class="name">Tesla Inc.</span><span class="pct down">−2.07%</span></div>
-          </div>
-        </div>
-      </div>
-      <div class="hex-strip">
-        <div class="hex-cell"><div class="bar" style="background: var(--p-surface);"></div><code>#141821</code>surface</div>
-        <div class="hex-cell"><div class="bar" style="background: var(--p-ink);"></div><code>#e8ecf2</code>ink</div>
-        <div class="hex-cell"><div class="bar" style="background: var(--p-accent);"></div><code>#6b7fd6</code>accent</div>
-        <div class="hex-cell"><div class="bar" style="background: var(--p-gain);"></div><code>#6faf8d</code>gain</div>
-        <div class="hex-cell"><div class="bar" style="background: var(--p-loss);"></div><code>#b0524a</code>loss</div>
-      </div>
-    </section>
-
-    <!-- ============================================================ -->
-    <!-- Palette C · 寒砚 / Cold Slate  (你选的)                       -->
-    <!-- ============================================================ -->
-    <section class="palette pa-C">
-      <header class="palette-head">
-        <div class="palette-name">寒砚</div>
-        <div class="palette-roman">Cold Slate · C</div>
-        <div class="palette-tag">★ picked · steel-blue</div>
-      </header>
-      <div class="palette-body">
-        <div class="swatches">
-          <div class="swatch" style="background: var(--p-surface);">
-            <div class="swatch-label">surface</div>
-            <div class="swatch-hex">#16191c</div>
-          </div>
-          <div class="swatch" style="background: var(--p-surface-1);">
-            <div class="swatch-label">surface-1</div>
-            <div class="swatch-hex">#1c1f23</div>
-          </div>
-          <div class="swatch" style="background: var(--p-surface-2);">
-            <div class="swatch-label">surface-2</div>
-            <div class="swatch-hex">#252930</div>
-          </div>
-        </div>
-
-        <div class="inks">
-          <div class="ink-cell"><div class="sample" style="color: var(--p-ink);">Aa</div><div class="meta">ink</div></div>
-          <div class="ink-cell"><div class="sample" style="color: var(--p-ink-soft);">Aa</div><div class="meta">soft</div></div>
-          <div class="ink-cell"><div class="sample" style="color: var(--p-muted);">Aa</div><div class="meta">muted</div></div>
-          <div class="ink-cell"><div class="sample" style="color: var(--p-faint);">Aa</div><div class="meta">faint</div></div>
-        </div>
-
-        <div class="accent-row">
-          <div class="accent-bar">#7a9ab8 · 阴天石板上的水光</div>
-          <a class="accent-btn">View runs ↗</a>
-        </div>
-
-        <div class="mock">
-          <div class="mock-eyebrow">CATALOG · SKILL</div>
-          <div class="mock-title">company_research_pipeline</div>
-          <div class="mock-sub">公司 7-gate 投研流水线：证据收集 → 六维分析 → 投资备忘录 + 结构化裁决。</div>
-          <div class="mock-chips">
-            <span class="chip accent">v3</span>
-            <span class="chip">market_quote</span>
-            <span class="chip">financials</span>
-            <span class="chip">news_search</span>
-          </div>
-          <div class="run-row">
-            <span class="skill">research</span>
-            <span class="ver">v2</span>
-            <span class="status ok">ok</span>
-            <span class="ms">2 144 ms</span>
-          </div>
-          <div class="table">
-            <div class="tr"><span class="sym">NVDA</span><span class="name">Nvidia Corp.</span><span class="pct up">+1.24%</span></div>
-            <div class="tr"><span class="sym">AAPL</span><span class="name">Apple Inc.</span><span class="pct up">+0.38%</span></div>
-            <div class="tr"><span class="sym">TSLA</span><span class="name">Tesla Inc.</span><span class="pct down">−2.07%</span></div>
-          </div>
-        </div>
-      </div>
-      <div class="hex-strip">
-        <div class="hex-cell"><div class="bar" style="background: var(--p-surface);"></div><code>#16191c</code>surface</div>
-        <div class="hex-cell"><div class="bar" style="background: var(--p-ink);"></div><code>#ebeef1</code>ink</div>
-        <div class="hex-cell"><div class="bar" style="background: var(--p-accent);"></div><code>#7a9ab8</code>accent</div>
-        <div class="hex-cell"><div class="bar" style="background: var(--p-gain);"></div><code>#6faf8d</code>gain</div>
-        <div class="hex-cell"><div class="bar" style="background: var(--p-loss);"></div><code>#b0524a</code>loss</div>
-      </div>
-    </section>
-
-    <!-- ============================================================ -->
-    <!-- Palette D · 雨檐 / Cedar & Rain                              -->
-    <!-- ============================================================ -->
-    <section class="palette pa-D">
+    <!-- 🌙 NIGHT — current prod -->
+    <section class="palette pa-night">
       <header class="palette-head">
         <div class="palette-name">雨檐</div>
-        <div class="palette-roman">Cedar &amp; Rain · D</div>
-        <div class="palette-tag">ice-blue on cedar</div>
+        <div class="palette-roman">Night · 黑夜</div>
+        <div class="palette-tag">★ current prod</div>
       </header>
       <div class="palette-body">
         <div class="swatches">
-          <div class="swatch" style="background: var(--p-surface);">
-            <div class="swatch-label">surface</div>
-            <div class="swatch-hex">#1c1814</div>
-          </div>
-          <div class="swatch" style="background: var(--p-surface-1);">
-            <div class="swatch-label">surface-1</div>
-            <div class="swatch-hex">#221d18</div>
-          </div>
-          <div class="swatch" style="background: var(--p-surface-2);">
-            <div class="swatch-label">surface-2</div>
-            <div class="swatch-hex">#2a241e</div>
-          </div>
+          <div class="swatch" style="background: var(--p-surface);"><div class="swatch-label">surface</div><div class="swatch-hex">#1c1814</div></div>
+          <div class="swatch" style="background: var(--p-surface-1);"><div class="swatch-label">surface-1</div><div class="swatch-hex">#221d18</div></div>
+          <div class="swatch" style="background: var(--p-surface-2);"><div class="swatch-label">surface-2</div><div class="swatch-hex">#2a241e</div></div>
         </div>
 
         <div class="inks">
@@ -690,7 +404,7 @@
         </div>
 
         <div class="accent-row">
-          <div class="accent-bar">#6da4c7 · 杉木屋檐挂雨</div>
+          <div class="accent-bar">#6da4c7 · 雪松屋檐挂雨（夜）</div>
           <a class="accent-btn">View runs ↗</a>
         </div>
 
@@ -725,10 +439,69 @@
         <div class="hex-cell"><div class="bar" style="background: var(--p-loss);"></div><code>#b0524a</code>loss</div>
       </div>
     </section>
+
+    <!-- ☀️ DAY — proposed -->
+    <section class="palette pa-day">
+      <header class="palette-head">
+        <div class="palette-name">雨檐</div>
+        <div class="palette-roman">Day · 白天</div>
+        <div class="palette-tag">proposed</div>
+      </header>
+      <div class="palette-body">
+        <div class="swatches">
+          <div class="swatch" style="background: var(--p-surface);"><div class="swatch-label">surface</div><div class="swatch-hex">#f8f3ea</div></div>
+          <div class="swatch" style="background: var(--p-surface-1);"><div class="swatch-label">surface-1</div><div class="swatch-hex">#f1ebde</div></div>
+          <div class="swatch" style="background: var(--p-surface-2);"><div class="swatch-label">surface-2</div><div class="swatch-hex">#e7e0d0</div></div>
+        </div>
+
+        <div class="inks">
+          <div class="ink-cell"><div class="sample" style="color: var(--p-ink);">Aa</div><div class="meta">ink</div></div>
+          <div class="ink-cell"><div class="sample" style="color: var(--p-ink-soft);">Aa</div><div class="meta">soft</div></div>
+          <div class="ink-cell"><div class="sample" style="color: var(--p-muted);">Aa</div><div class="meta">muted</div></div>
+          <div class="ink-cell"><div class="sample" style="color: var(--p-faint);">Aa</div><div class="meta">faint</div></div>
+        </div>
+
+        <div class="accent-row">
+          <div class="accent-bar">#3f7398 · 雪松屋檐挂雨（晨）</div>
+          <a class="accent-btn">View runs ↗</a>
+        </div>
+
+        <div class="mock">
+          <div class="mock-eyebrow">CATALOG · SKILL</div>
+          <div class="mock-title">company_research_pipeline</div>
+          <div class="mock-sub">公司 7-gate 投研流水线：证据收集 → 六维分析 → 投资备忘录 + 结构化裁决。</div>
+          <div class="mock-chips">
+            <span class="chip accent">v3</span>
+            <span class="chip">market_quote</span>
+            <span class="chip">financials</span>
+            <span class="chip">news_search</span>
+          </div>
+          <div class="run-row">
+            <span class="skill">research</span>
+            <span class="ver">v2</span>
+            <span class="status ok">ok</span>
+            <span class="ms">2 144 ms</span>
+          </div>
+          <div class="table">
+            <div class="tr"><span class="sym">NVDA</span><span class="name">Nvidia Corp.</span><span class="pct up">+1.24%</span></div>
+            <div class="tr"><span class="sym">AAPL</span><span class="name">Apple Inc.</span><span class="pct up">+0.38%</span></div>
+            <div class="tr"><span class="sym">TSLA</span><span class="name">Tesla Inc.</span><span class="pct down">−2.07%</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="hex-strip">
+        <div class="hex-cell"><div class="bar" style="background: var(--p-surface);"></div><code>#f8f3ea</code>surface</div>
+        <div class="hex-cell"><div class="bar" style="background: var(--p-ink);"></div><code>#1c1814</code>ink</div>
+        <div class="hex-cell"><div class="bar" style="background: var(--p-accent);"></div><code>#3f7398</code>accent</div>
+        <div class="hex-cell"><div class="bar" style="background: var(--p-gain);"></div><code>#4f8c6c</code>gain</div>
+        <div class="hex-cell"><div class="bar" style="background: var(--p-loss);"></div><code>#9c463c</code>loss</div>
+      </div>
+    </section>
+
   </div>
 
   <footer style="margin-top: 56px; padding-top: 24px; border-top: 1px solid var(--page-line); font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em; color: var(--page-muted); text-transform: uppercase;">
-    each palette renders an actual card · run row · gain/loss table · so comparison is in-context, not a swatch dump.
+    same identity · two times of day · night = cedar at dusk after rain · day = same cedar in morning sun
   </footer>
 </div>
 </body>
