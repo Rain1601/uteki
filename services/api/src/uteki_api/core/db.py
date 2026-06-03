@@ -49,6 +49,7 @@ def init_db() -> None:
     SQLModel.metadata.create_all(engine)
     _ensure_user_role_column(engine)
     _ensure_run_assessment_columns(engine)
+    _ensure_run_visibility_column(engine)
 
 
 def _ensure_user_role_column(db_engine: Engine) -> None:
@@ -110,6 +111,34 @@ def _ensure_run_assessment_columns(db_engine: Engine) -> None:
             "WHEN status IN ('error', 'timeout') THEN 'failed' "
             "ELSE 'running' END "
             "WHERE overall_assessment = 'running' AND status != 'running'"
+        ))
+
+
+def _ensure_run_visibility_column(db_engine: Engine) -> None:
+    """010: add ``visibility`` column to existing ``run`` tables.
+
+    Defaults to ``private`` for all pre-010 rows — safe choice, owner can
+    promote curated runs to ``public`` post-deploy. Adds an index because
+    every anon list query filters by this column.
+    """
+    inspector = inspect(db_engine)
+    try:
+        columns = {column["name"] for column in inspector.get_columns("run")}
+    except Exception:
+        return  # run table doesn't exist yet — create_all will handle it
+    if "visibility" in columns:
+        return
+    with db_engine.begin() as conn:
+        conn.execute(text(
+            "ALTER TABLE run ADD COLUMN visibility VARCHAR(16) DEFAULT 'private'"
+        ))
+        conn.execute(text(
+            "UPDATE run SET visibility = 'private' WHERE visibility IS NULL"
+        ))
+        # Index name matches SQLModel's auto-generated convention
+        # (ix_<table>_<col>) so create_all on fresh DBs is consistent.
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_run_visibility ON run (visibility)"
         ))
 
 
