@@ -45,6 +45,11 @@ class RunRow(SQLModel, table=True):
     overall_assessment: str = "running"
     user_input: str = ""
     summary: str = ""
+    # 010 — public surface gating. "private" | "unlisted" | "public".
+    # See uteki_api.runs.models.RunVisibility. Indexed because list queries
+    # filter by it on every anon read (~majority of public traffic).
+    # Pre-010 DBs need ALTER TABLE — handled by core.db._ensure_run_visibility_column.
+    visibility: str = Field(default="private", index=True)
     # JSON-encoded blobs; deserialized by SqliteRunStore.
     events_json: str = "[]"
     tags_json: str = "[]"

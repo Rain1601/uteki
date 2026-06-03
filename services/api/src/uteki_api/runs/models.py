@@ -51,6 +51,11 @@ OverallAssessment = Literal[
     "ok_no_judge",
 ]
 
+# 010 — public surface visibility. Default `private`: owner promotes runs to
+# `public` deliberately. `unlisted` = accessible by direct URL but not in
+# anon-facing lists (Substack/gist-style share-by-link).
+RunVisibility = Literal["private", "unlisted", "public"]
+
 
 def derive_overall_assessment(
     harness_status: str,
@@ -108,3 +113,5 @@ class Run(BaseModel):
     events: list[AgentEvent] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
     usage_summary: UsageSummary = Field(default_factory=UsageSummary)
+    # 010 — owner gates per-run visibility for the public surface.
+    visibility: RunVisibility = "private"
