@@ -25,7 +25,7 @@ from abc import ABC, abstractmethod
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, select
 
-from uteki_api.runs.models import Run, RunStatus
+from uteki_api.runs.models import Run, RunStatus, RunVisibility
 from uteki_api.runs.sql_models import RunRow
 from uteki_api.schemas.events import AgentEvent
 
@@ -63,8 +63,18 @@ class RunStore(ABC):
         user_id: str,
         skill: str | None = None,
         triggered_by: str | None = None,
+        visibility_filter: RunVisibility | list[RunVisibility] | None = None,
         limit: int = 50,
     ) -> list[Run]: ...
+
+    @abstractmethod
+    async def set_visibility(
+        self, run_id: str, user_id: str, visibility: RunVisibility
+    ) -> None:
+        """Owner-scoped visibility flip. Raises KeyError if the run isn't
+        owned by ``user_id`` (defense in depth — the API layer also gates
+        the route on ``require_owner``)."""
+        ...
 
 
 class InMemoryRunStore(RunStore):
@@ -105,8 +115,10 @@ class InMemoryRunStore(RunStore):
         user_id: str,
         skill: str | None = None,
         triggered_by: str | None = None,
+        visibility_filter: RunVisibility | list[RunVisibility] | None = None,
         limit: int = 50,
     ) -> list[Run]:
+        viz_set = _viz_filter_to_set(visibility_filter)
         out: list[Run] = []
         for rid in self._order:
             run = self._runs.get(rid)
@@ -118,10 +130,31 @@ class InMemoryRunStore(RunStore):
                 continue
             if triggered_by is not None and run.triggered_by != triggered_by:
                 continue
+            if viz_set is not None and run.visibility not in viz_set:
+                continue
             out.append(run)
             if len(out) >= limit:
                 break
         return out
+
+    async def set_visibility(
+        self, run_id: str, user_id: str, visibility: RunVisibility
+    ) -> None:
+        run = self._runs.get(run_id)
+        if run is None or run.user_id != user_id:
+            raise KeyError(f"Unknown run: {run_id}")
+        run.visibility = visibility
+
+
+def _viz_filter_to_set(
+    f: RunVisibility | list[RunVisibility] | None,
+) -> set[str] | None:
+    """Normalize filter shapes into a set for membership tests, or None to skip."""
+    if f is None:
+        return None
+    if isinstance(f, str):
+        return {f}
+    return set(f)
 
 
 class SqliteRunStore(RunStore):
@@ -173,6 +206,7 @@ class SqliteRunStore(RunStore):
             overall_assessment=str(run.overall_assessment),
             user_input=run.user_input,
             summary=run.summary,
+            visibility=str(run.visibility),
             events_json=json.dumps([e.model_dump() for e in events]),
             tags_json=json.dumps(list(run.tags)),
             usage_summary_json=run.usage_summary.model_dump_json(),
@@ -191,6 +225,9 @@ class SqliteRunStore(RunStore):
         # back to legacy ``status`` so the Run object stays consistent.
         harness_status = row.harness_status or row.status or "running"
         overall = row.overall_assessment or "running"
+        # Pre-010 rows may have NULL visibility — coerce to private (the
+        # safe default; owner can promote later).
+        visibility = row.visibility or "private"
         return Run(
             id=row.id,
             user_id=row.user_id,
@@ -209,6 +246,7 @@ class SqliteRunStore(RunStore):
             events=events,
             tags=tags,
             usage_summary=usage,
+            visibility=visibility,  # type: ignore[arg-type]
         )
 
     # ── RunStore impl ───────────────────────────────────────────────
@@ -260,8 +298,8 @@ class SqliteRunStore(RunStore):
                     "user_id", "skill", "skill_version", "triggered_by",
                     "trigger_reason", "started_at", "ended_at", "status",
                     "harness_status", "evaluator_decision", "overall_assessment",
-                    "user_input", "summary", "events_json", "tags_json",
-                    "usage_summary_json",
+                    "user_input", "summary", "visibility",
+                    "events_json", "tags_json", "usage_summary_json",
                 ):
                     setattr(existing, col, getattr(fresh, col))
                 db.add(existing)
@@ -292,8 +330,10 @@ class SqliteRunStore(RunStore):
         user_id: str,
         skill: str | None = None,
         triggered_by: str | None = None,
+        visibility_filter: RunVisibility | list[RunVisibility] | None = None,
         limit: int = 50,
     ) -> list[Run]:
+        viz_set = _viz_filter_to_set(visibility_filter)
         with Session(self._engine) as db:
             stmt = (
                 select(RunRow)
@@ -305,6 +345,8 @@ class SqliteRunStore(RunStore):
                 stmt = stmt.where(RunRow.skill == skill)
             if triggered_by is not None:
                 stmt = stmt.where(RunRow.triggered_by == triggered_by)
+            if viz_set is not None:
+                stmt = stmt.where(RunRow.visibility.in_(viz_set))  # type: ignore[attr-defined]
             rows = db.exec(stmt).all()
         out: list[Run] = []
         for row in rows:
@@ -313,6 +355,21 @@ class SqliteRunStore(RunStore):
             live = self._active.get(row.id)
             out.append(live if live is not None else self._from_row(row))
         return out
+
+    async def set_visibility(
+        self, run_id: str, user_id: str, visibility: RunVisibility
+    ) -> None:
+        # Update both the cached live Run (if mid-flight) and the DB row.
+        live = self._active.get(run_id)
+        if live is not None and live.user_id == user_id:
+            live.visibility = visibility
+        with Session(self._engine) as db:
+            row = db.get(RunRow, run_id)
+            if row is None or row.user_id != user_id:
+                raise KeyError(f"Unknown run: {run_id}")
+            row.visibility = str(visibility)
+            db.add(row)
+            db.commit()
 
 
 def _build_default_run_store() -> RunStore:
