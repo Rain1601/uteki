@@ -12,7 +12,7 @@
   --surface-1:     #221d18;
   --surface-2:     #2a241e;
   --surface-hover: rgba(244, 236, 223, 0.04);
-  --surface-active:rgba(217, 119, 87, 0.10);
+  --surface-active:rgba(109, 164, 199, 0.10);
 
   /* Hairlines */
   --line:          #2e2822;
@@ -24,16 +24,22 @@
   --ink-muted:     #8a8275;
   --ink-faint:     #635a4f;
 
-  /* Accent — terracotta */
-  --accent:        #d97757;
-  --accent-soft:   rgba(217, 119, 87, 0.16);
-  --accent-line:   rgba(217, 119, 87, 0.35);
+  /* 雨檐 · ice-blue on cedar — single accent token shift.
+     Warm cedar surface family stays; the cool accent creates the
+     "rain on cedar shingle" tension that names the theme. */
+  --accent:        #6da4c7;
+  --accent-soft:   rgba(109, 164, 199, 0.16);
+  --accent-line:   rgba(109, 164, 199, 0.35);
 
   /* Semantic */
   --gain:          #6faf8d;  /* sage */
   --loss:          #b0524a;  /* terracotta */
   --warn:          #c9a97e;  /* amber */
   --info:          #6f8db0;
+
+  /* color-scheme tells the UA to render native widgets (scrollbars, form
+     controls) in a matching tone — only effective when not overridden. */
+  color-scheme: dark;
 
   /* Radii */
   --r-sm: 4px;
@@ -49,6 +55,39 @@
   /* Motion */
   --ease: cubic-bezier(0.32, 0.72, 0, 1);
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ─── 雨檐 · 白天 override ─────────────────────────────────────────────
+   Triggered by html[data-theme="light"] (set by the FOUC-prevention
+   script in layout.tsx + the ThemeToggle button in Sidebar). Same
+   identity as the dark default — only lightness inverts. Cedar's the
+   wood, ice-blue's the rain, in morning sun now. */
+:root[data-theme="light"] {
+  --canvas:        #fbf7ef;
+  --surface:       #f8f3ea;
+  --surface-1:     #f1ebde;
+  --surface-2:     #e7e0d0;
+  --surface-hover: rgba(28, 24, 20, 0.04);
+  --surface-active:rgba(63, 115, 152, 0.10);
+
+  --line:          #d8cebd;
+  --line-strong:   #c2b59f;
+
+  --ink:           #1c1814;
+  --ink-soft:      #3d3429;
+  --ink-muted:     #6b6052;
+  --ink-faint:     #a39786;
+
+  --accent:        #3f7398;
+  --accent-soft:   rgba(63, 115, 152, 0.12);
+  --accent-line:   rgba(63, 115, 152, 0.28);
+
+  --gain:          #4f8c6c;
+  --loss:          #9c463c;
+  --warn:          #b78640;
+  --info:          #4a6e96;
+
+  color-scheme: light;
 }
 
 @theme inline {
@@ -89,12 +128,22 @@ html, body {
 
 body {
   min-height: 100vh;
-  /* Subtle warm vignette + film grain */
+  /* Subtle ice-blue vignette top + sage breath bottom-right (night) */
   background-image:
     radial-gradient(ellipse 80% 60% at 50% 0%,
-      rgba(217, 119, 87, 0.04) 0%, transparent 60%),
+      rgba(109, 164, 199, 0.04) 0%, transparent 60%),
     radial-gradient(ellipse 60% 50% at 100% 100%,
       rgba(111, 175, 141, 0.025) 0%, transparent 50%);
+}
+
+/* Day-mode vignette — slightly deeper alphas so the wash registers on
+   the cream surface (4% accent over light is barely visible). */
+:root[data-theme="light"] body {
+  background-image:
+    radial-gradient(ellipse 80% 60% at 50% 0%,
+      rgba(63, 115, 152, 0.06) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 50% at 100% 100%,
+      rgba(79, 140, 108, 0.04) 0%, transparent 50%);
 }
 
 /* Paper grain via stacked subtle gradients (no SVG, no images) */
@@ -111,6 +160,25 @@ body {
       90deg,
       rgba(244, 236, 223, 0.008) 0px,
       rgba(244, 236, 223, 0.008) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+}
+
+/* Day-mode grain — inverted: subtle dark tracks on cream */
+:root[data-theme="light"] .paper-grain {
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      rgba(28, 24, 20, 0.018) 0px,
+      rgba(28, 24, 20, 0.018) 1px,
+      transparent 1px,
+      transparent 3px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(28, 24, 20, 0.012) 0px,
+      rgba(28, 24, 20, 0.012) 1px,
       transparent 1px,
       transparent 3px
     );

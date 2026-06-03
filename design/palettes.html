@@ -1,0 +1,508 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>uteki · 雨檐 黑夜 / 白天</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;1,9..144,400;1,9..144,500&family=JetBrains+Mono:wght@400;500;600&family=Newsreader:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-display: "Fraunces", Georgia, ui-serif, serif;
+    --font-body:    "Newsreader", Georgia, ui-serif, serif;
+    --font-mono:    "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+    --font-sans:    -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+
+    /* Page chrome — neutral mid-gray so neither variant wins by chrome */
+    --page-bg:      #2a2826;
+    --page-fg:      #c8cbcf;
+    --page-muted:   #7e848b;
+    --page-faint:   #4a4f55;
+    --page-line:    rgba(255,255,255,0.06);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--page-bg);
+    color: var(--page-fg);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  .page {
+    max-width: 1480px;
+    margin: 0 auto;
+    padding: 56px 36px 80px;
+  }
+  .page-head {
+    display: flex; align-items: baseline; gap: 18px;
+    padding-bottom: 28px;
+    border-bottom: 1px solid var(--page-line);
+    margin-bottom: 36px;
+  }
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--page-faint);
+  }
+  .page-title {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 500;
+    font-size: 34px;
+    letter-spacing: -0.01em;
+    color: #e8eaed;
+    line-height: 1;
+  }
+  .page-sub {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    color: var(--page-muted);
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
+  @media (min-width: 1100px) {
+    .grid { grid-template-columns: 1fr 1fr; }
+  }
+
+  .palette {
+    border-radius: 14px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 720px;
+  }
+  .palette-head {
+    padding: 22px 24px 18px;
+    display: flex; align-items: baseline; gap: 14px;
+    border-bottom: 1px solid var(--p-line);
+    box-shadow: inset 3px 0 0 var(--p-accent);
+  }
+  .palette-name {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 500;
+    font-size: 26px;
+    letter-spacing: -0.01em;
+    color: var(--p-ink);
+  }
+  .palette-roman {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--p-faint);
+  }
+  .palette-tag {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--p-accent);
+    background: var(--p-accent-soft);
+    padding: 4px 8px;
+    border-radius: 3px;
+    border: 1px solid var(--p-accent-line);
+  }
+  .palette-body {
+    padding: 22px 24px 26px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+
+  .swatches {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  .swatch {
+    border-radius: 8px;
+    padding: 14px 12px 12px;
+    border: 1px solid var(--p-line);
+  }
+  .swatch-label {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--p-faint);
+    margin-bottom: 8px;
+  }
+  .swatch-hex {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--p-muted);
+  }
+
+  .inks {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    padding: 14px 16px;
+    border-radius: 8px;
+    background: var(--p-surface-1);
+    border: 1px solid var(--p-line);
+  }
+  .ink-cell .sample {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: 18px;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+  .ink-cell .meta {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--p-faint);
+  }
+
+  .accent-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 14px;
+    align-items: center;
+  }
+  .accent-bar {
+    height: 36px;
+    border-radius: 6px;
+    background: var(--p-accent);
+    display: flex;
+    align-items: center;
+    padding: 0 14px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--p-surface);
+    font-weight: 600;
+  }
+  .accent-btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 8px 14px;
+    border-radius: 6px;
+    background: var(--p-accent-soft);
+    border: 1px solid var(--p-accent-line);
+    color: var(--p-accent);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .mock {
+    background: var(--p-surface-1);
+    border: 1px solid var(--p-line);
+    border-radius: 10px;
+    padding: 18px 20px;
+  }
+  .mock-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--p-faint);
+  }
+  .mock-title {
+    margin-top: 6px;
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 500;
+    font-size: 22px;
+    letter-spacing: -0.01em;
+    color: var(--p-ink);
+  }
+  .mock-sub {
+    margin-top: 6px;
+    font-family: var(--font-body);
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--p-ink-soft);
+  }
+  .mock-chips {
+    margin-top: 14px;
+    display: flex; flex-wrap: wrap; gap: 6px;
+  }
+  .chip {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 3px 7px;
+    border-radius: 3px;
+    border: 1px solid var(--p-line);
+    color: var(--p-muted);
+  }
+  .chip.accent {
+    color: var(--p-accent);
+    border-color: var(--p-accent-line);
+    background: var(--p-accent-soft);
+  }
+
+  .run-row {
+    margin-top: 14px;
+    padding: 12px 14px;
+    border-radius: 8px;
+    background: var(--p-surface);
+    border: 1px solid var(--p-line);
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .run-row .skill {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: 14px;
+    color: var(--p-ink);
+  }
+  .run-row .ver {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    color: var(--p-faint);
+  }
+  .run-row .ms {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: var(--p-muted);
+  }
+  .status {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 3px 7px;
+    border-radius: 3px;
+    border: 1px solid;
+  }
+  .status.ok    { color: var(--p-gain); border-color: color-mix(in srgb, var(--p-gain) 40%, transparent); background: color-mix(in srgb, var(--p-gain) 8%, transparent); }
+  .status.err   { color: var(--p-loss); border-color: color-mix(in srgb, var(--p-loss) 40%, transparent); background: color-mix(in srgb, var(--p-loss) 8%, transparent); }
+
+  .table {
+    margin-top: 14px;
+    border: 1px solid var(--p-line);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .table .tr {
+    display: grid;
+    grid-template-columns: 80px 1fr auto;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--p-line);
+    align-items: baseline;
+  }
+  .table .tr:last-child { border-bottom: 0; }
+  .table .sym  { font-family: var(--font-mono); font-size: 11px; color: var(--p-ink-soft); }
+  .table .name { font-family: var(--font-body); font-size: 13px; color: var(--p-muted); }
+  .table .pct  { font-family: var(--font-mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .pct.up   { color: var(--p-gain); }
+  .pct.down { color: var(--p-loss); }
+
+  .hex-strip {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 6px;
+    padding: 14px 16px;
+    border-top: 1px solid var(--p-line);
+    background: var(--p-surface);
+  }
+  .hex-cell {
+    display: flex; flex-direction: column; gap: 4px;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.04em;
+    color: var(--p-muted);
+  }
+  .hex-cell .bar { height: 4px; border-radius: 2px; }
+  .hex-cell code { color: var(--p-ink-soft); font-size: 10px; }
+
+  /* 🌙 雨檐 · 黑夜（当前 prod） */
+  .pa-night {
+    --p-surface:      #1c1814;
+    --p-surface-1:    #221d18;
+    --p-surface-2:    #2a241e;
+    --p-ink:          #f4ecdf;
+    --p-ink-soft:     #c4b9aa;
+    --p-muted:        #8a8275;
+    --p-faint:        #635a4f;
+    --p-line:         rgba(244, 236, 223, 0.08);
+    --p-accent:       #6da4c7;
+    --p-accent-soft:  rgba(109, 164, 199, 0.16);
+    --p-accent-line:  rgba(109, 164, 199, 0.35);
+    --p-gain:         #6faf8d;
+    --p-loss:         #b0524a;
+    background: var(--p-surface);
+    color: var(--p-ink);
+  }
+
+  /* ☀️ 雨檐 · 白天（新提案） */
+  .pa-day {
+    --p-surface:      #f8f3ea;
+    --p-surface-1:    #f1ebde;
+    --p-surface-2:    #e7e0d0;
+    --p-ink:          #1c1814;
+    --p-ink-soft:     #3d3429;
+    --p-muted:        #6b6052;
+    --p-faint:        #a39786;
+    --p-line:         rgba(28, 24, 20, 0.10);
+    --p-accent:       #3f7398;
+    --p-accent-soft:  rgba(63, 115, 152, 0.12);
+    --p-accent-line:  rgba(63, 115, 152, 0.28);
+    --p-gain:         #4f8c6c;
+    --p-loss:         #9c463c;
+    background: var(--p-surface);
+    color: var(--p-ink);
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="page-head">
+    <div>
+      <div class="eyebrow">UTEKI · DESIGN SCRATCH</div>
+      <h1 class="page-title">雨檐 · 黑夜 / 白天</h1>
+    </div>
+    <div class="page-sub">cedar &amp; rain · two times of day · same identity</div>
+  </div>
+
+  <div class="grid">
+
+    <!-- 🌙 NIGHT — current prod -->
+    <section class="palette pa-night">
+      <header class="palette-head">
+        <div class="palette-name">雨檐</div>
+        <div class="palette-roman">Night · 黑夜</div>
+        <div class="palette-tag">★ current prod</div>
+      </header>
+      <div class="palette-body">
+        <div class="swatches">
+          <div class="swatch" style="background: var(--p-surface);"><div class="swatch-label">surface</div><div class="swatch-hex">#1c1814</div></div>
+          <div class="swatch" style="background: var(--p-surface-1);"><div class="swatch-label">surface-1</div><div class="swatch-hex">#221d18</div></div>
+          <div class="swatch" style="background: var(--p-surface-2);"><div class="swatch-label">surface-2</div><div class="swatch-hex">#2a241e</div></div>
+        </div>
+
+        <div class="inks">
+          <div class="ink-cell"><div class="sample" style="color: var(--p-ink);">Aa</div><div class="meta">ink</div></div>
+          <div class="ink-cell"><div class="sample" style="color: var(--p-ink-soft);">Aa</div><div class="meta">soft</div></div>
+          <div class="ink-cell"><div class="sample" style="color: var(--p-muted);">Aa</div><div class="meta">muted</div></div>
+          <div class="ink-cell"><div class="sample" style="color: var(--p-faint);">Aa</div><div class="meta">faint</div></div>
+        </div>
+
+        <div class="accent-row">
+          <div class="accent-bar">#6da4c7 · 雪松屋檐挂雨（夜）</div>
+          <a class="accent-btn">View runs ↗</a>
+        </div>
+
+        <div class="mock">
+          <div class="mock-eyebrow">CATALOG · SKILL</div>
+          <div class="mock-title">company_research_pipeline</div>
+          <div class="mock-sub">公司 7-gate 投研流水线：证据收集 → 六维分析 → 投资备忘录 + 结构化裁决。</div>
+          <div class="mock-chips">
+            <span class="chip accent">v3</span>
+            <span class="chip">market_quote</span>
+            <span class="chip">financials</span>
+            <span class="chip">news_search</span>
+          </div>
+          <div class="run-row">
+            <span class="skill">research</span>
+            <span class="ver">v2</span>
+            <span class="status ok">ok</span>
+            <span class="ms">2 144 ms</span>
+          </div>
+          <div class="table">
+            <div class="tr"><span class="sym">NVDA</span><span class="name">Nvidia Corp.</span><span class="pct up">+1.24%</span></div>
+            <div class="tr"><span class="sym">AAPL</span><span class="name">Apple Inc.</span><span class="pct up">+0.38%</span></div>
+            <div class="tr"><span class="sym">TSLA</span><span class="name">Tesla Inc.</span><span class="pct down">−2.07%</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="hex-strip">
+        <div class="hex-cell"><div class="bar" style="background: var(--p-surface);"></div><code>#1c1814</code>surface</div>
+        <div class="hex-cell"><div class="bar" style="background: var(--p-ink);"></div><code>#f4ecdf</code>ink</div>
+        <div class="hex-cell"><div class="bar" style="background: var(--p-accent);"></div><code>#6da4c7</code>accent</div>
+        <div class="hex-cell"><div class="bar" style="background: var(--p-gain);"></div><code>#6faf8d</code>gain</div>
+        <div class="hex-cell"><div class="bar" style="background: var(--p-loss);"></div><code>#b0524a</code>loss</div>
+      </div>
+    </section>
+
+    <!-- ☀️ DAY — proposed -->
+    <section class="palette pa-day">
+      <header class="palette-head">
+        <div class="palette-name">雨檐</div>
+        <div class="palette-roman">Day · 白天</div>
+        <div class="palette-tag">proposed</div>
+      </header>
+      <div class="palette-body">
+        <div class="swatches">
+          <div class="swatch" style="background: var(--p-surface);"><div class="swatch-label">surface</div><div class="swatch-hex">#f8f3ea</div></div>
+          <div class="swatch" style="background: var(--p-surface-1);"><div class="swatch-label">surface-1</div><div class="swatch-hex">#f1ebde</div></div>
+          <div class="swatch" style="background: var(--p-surface-2);"><div class="swatch-label">surface-2</div><div class="swatch-hex">#e7e0d0</div></div>
+        </div>
+
+        <div class="inks">
+          <div class="ink-cell"><div class="sample" style="color: var(--p-ink);">Aa</div><div class="meta">ink</div></div>
+          <div class="ink-cell"><div class="sample" style="color: var(--p-ink-soft);">Aa</div><div class="meta">soft</div></div>
+          <div class="ink-cell"><div class="sample" style="color: var(--p-muted);">Aa</div><div class="meta">muted</div></div>
+          <div class="ink-cell"><div class="sample" style="color: var(--p-faint);">Aa</div><div class="meta">faint</div></div>
+        </div>
+
+        <div class="accent-row">
+          <div class="accent-bar">#3f7398 · 雪松屋檐挂雨（晨）</div>
+          <a class="accent-btn">View runs ↗</a>
+        </div>
+
+        <div class="mock">
+          <div class="mock-eyebrow">CATALOG · SKILL</div>
+          <div class="mock-title">company_research_pipeline</div>
+          <div class="mock-sub">公司 7-gate 投研流水线：证据收集 → 六维分析 → 投资备忘录 + 结构化裁决。</div>
+          <div class="mock-chips">
+            <span class="chip accent">v3</span>
+            <span class="chip">market_quote</span>
+            <span class="chip">financials</span>
+            <span class="chip">news_search</span>
+          </div>
+          <div class="run-row">
+            <span class="skill">research</span>
+            <span class="ver">v2</span>
+            <span class="status ok">ok</span>
+            <span class="ms">2 144 ms</span>
+          </div>
+          <div class="table">
+            <div class="tr"><span class="sym">NVDA</span><span class="name">Nvidia Corp.</span><span class="pct up">+1.24%</span></div>
+            <div class="tr"><span class="sym">AAPL</span><span class="name">Apple Inc.</span><span class="pct up">+0.38%</span></div>
+            <div class="tr"><span class="sym">TSLA</span><span class="name">Tesla Inc.</span><span class="pct down">−2.07%</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="hex-strip">
+        <div class="hex-cell"><div class="bar" style="background: var(--p-surface);"></div><code>#f8f3ea</code>surface</div>
+        <div class="hex-cell"><div class="bar" style="background: var(--p-ink);"></div><code>#1c1814</code>ink</div>
+        <div class="hex-cell"><div class="bar" style="background: var(--p-accent);"></div><code>#3f7398</code>accent</div>
+        <div class="hex-cell"><div class="bar" style="background: var(--p-gain);"></div><code>#4f8c6c</code>gain</div>
+        <div class="hex-cell"><div class="bar" style="background: var(--p-loss);"></div><code>#9c463c</code>loss</div>
+      </div>
+    </section>
+
+  </div>
+
+  <footer style="margin-top: 56px; padding-top: 24px; border-top: 1px solid var(--page-line); font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em; color: var(--page-muted); text-transform: uppercase;">
+    same identity · two times of day · night = cedar at dusk after rain · day = same cedar in morning sun
+  </footer>
+</div>
+</body>
+</html>

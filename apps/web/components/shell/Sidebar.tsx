@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
-  Eye,
   CalendarClock,
   Activity,
   GitCompareArrows,
@@ -16,6 +15,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { canOperate, type AuthUser } from "@/lib/auth";
+import { ThemeToggle } from "./ThemeToggle";
 import { UserMenu } from "./UserMenu";
 
 type NavItem = {
@@ -37,8 +37,7 @@ const SECTIONS: NavSection[] = [
     items: [
       { href: "/", label: "Overview", icon: LayoutDashboard },
       { href: "/company-agent", label: "研究台", icon: Building2 },
-      { href: "/watchlist", label: "关注列表", icon: Eye, badge: "DEMO" },
-      { href: "/tasks", label: "调度任务", icon: CalendarClock, badge: "DEMO" },
+      { href: "/tasks", label: "触发器", icon: CalendarClock },
     ],
   },
   {
@@ -136,6 +135,7 @@ export function Sidebar({
       {/* Footer */}
       <div className="border-t border-[var(--line)] px-2 py-2 space-y-1">
         <UserMenu user={user} />
+        <ThemeToggle />
         <button
           onClick={onTogglePin}
           className={cn(
