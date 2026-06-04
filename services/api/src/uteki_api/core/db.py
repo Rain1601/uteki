@@ -1,10 +1,14 @@
-"""SQLite (or any SQLAlchemy URL) database engine + session dependency.
+"""SQLite / Postgres database engine + session dependency.
 
-For M4 we use SQLModel + SQLite by default. ``init_db`` creates tables via
-``SQLModel.metadata.create_all`` — good enough for dev / v0. Production
-migrations should switch to alembic; the alembic skeleton lives at
-``services/api/alembic/`` (added in M4.1 but not generating migrations yet —
-SQLModel.metadata stays the source of truth until the schema stabilizes).
+Local dev defaults to SQLite (``sqlite:///data/uteki.db``). Production
+points ``UTEKI_DB_URL`` at Cloud SQL Postgres (``postgresql+psycopg://…``)
+— see ``services/api/MIGRATION_PG.md`` for the deployment flow.
+
+For M4 we use SQLModel for table definitions. ``init_db`` creates tables
+via ``SQLModel.metadata.create_all`` — good enough for dev / v0. The
+hand-rolled ``_ensure_*_column`` helpers ALTER TABLE in place when an
+older SQLite file is missing newer columns. Production should switch to
+alembic for schema evolution; see MIGRATION_PG.md for the migration plan.
 """
 
 from __future__ import annotations
@@ -19,10 +23,21 @@ from sqlmodel import Session, SQLModel, create_engine
 from uteki_api.core.config import settings
 
 
+def _is_postgres_url(url: str) -> bool:
+    """Return True for any libpq/psycopg flavoured URL.
+
+    Accepts ``postgresql://``, ``postgresql+psycopg://``, ``postgresql+asyncpg://``
+    and the legacy ``postgres://`` alias. Cloud SQL Unix-socket form
+    ``postgresql+psycopg://user:pass@/db?host=/cloudsql/...`` is a valid PG
+    URL — the empty host segment is intentional, libpq treats ``host`` as
+    the connection's UDS path. No special handling needed here.
+    """
+    return url.startswith(("postgresql://", "postgresql+", "postgres://"))
+
+
 def _make_engine() -> Engine:
     url = settings.db_url
-    # For sqlite, ensure parent dir exists + relax thread check (FastAPI uses
-    # one connection per request via dependency).
+    # ── SQLite (local dev / tests) ─────────────────────────────────────
     if url.startswith("sqlite:///"):
         rel = url.removeprefix("sqlite:///")
         path = Path(rel).expanduser()
@@ -30,9 +45,29 @@ def _make_engine() -> Engine:
         if not path.is_absolute():
             path = Path.cwd() / path
         path.parent.mkdir(parents=True, exist_ok=True)
+        # check_same_thread=False: FastAPI uses one connection per request via
+        # the dependency, but the SqliteRunStore's in-flight cache can be
+        # touched from background tasks.
         return create_engine(
             url, connect_args={"check_same_thread": False}, echo=False
         )
+
+    # ── Postgres (Cloud SQL prod) ──────────────────────────────────────
+    if _is_postgres_url(url):
+        # Cloud SQL idle-disconnect timeout is 600s; recycle before that so
+        # we never hand a dead socket to a request. pool_size + max_overflow
+        # are sized for a single Cloud Run instance — multiply by max
+        # instances to get the total connection ceiling (see MIGRATION_PG.md).
+        return create_engine(
+            url,
+            echo=False,
+            pool_size=5,
+            max_overflow=10,
+            pool_recycle=300,
+            pool_pre_ping=True,
+        )
+
+    # ── Anything else (in-memory sqlite, custom dialects) ──────────────
     return create_engine(url, echo=False)
 
 
