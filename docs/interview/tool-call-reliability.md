@@ -68,7 +68,81 @@ HTTP 200 ≠ tool succeeded。三道验证：
 
 ---
 
-## 4 · uteki 真实代码引用（被追问时直接报）
+## 4 · 强限制 vs 弱限制（这是 architecture maturity 的核心 signal）
+
+新人会把所有规则都塞 prompt；naive 工程师会把所有规则都塞代码。
+**Senior 知道分清楚**：
+
+| | 强限制 (Hard) | 弱限制 (Soft) |
+|---|---|---|
+| **本质** | 结构上不可能违反 | 鼓励 / 要求，但模型可绕开 |
+| **生效层** | 调度 / 协议 / 代码 | Prompt / 训练数据 / 评分 |
+| **违反后果** | 物理上做不到 | 监控告警，事后纠正 |
+| **修复方式** | 改代码 | 改 prompt / 加 eval case |
+| **LLM 可绕过？** | ❌ 不能 | ✅ 能 |
+| **Trust** | 不信任 LLM | 信任 LLM（带验证） |
+
+**金句**：「**强限制是 architecture，弱限制是 culture。**」
+
+### 4.1 uteki 的强限制（代码物理实现）
+
+| 限制 | 在哪 |
+|---|---|
+| `max_tool_calls=30` / `wall_time=120s` / `max_cost_usd=0.5` | `harness.py:43-62` |
+| `risk_level == "high"` 物理阻挡，根本不调 `tool.run()` | `harness.py:485` |
+| 跨用户读 artifact 返 `FileNotFoundError` | `artifacts/store.py` 路径分区 |
+| Tool schema validation | Pydantic `ToolResult` |
+| Skill 不能直接调 tool — 只能 yield event | `BaseAgent` 不持有 registry |
+| `tool_call_id` 配对 | `llm/client.py:166-176` |
+| Timeout / Exception → `ok=False` | `harness.py:488-503` |
+
+### 4.2 uteki 的弱限制（prompt + evaluator）
+
+| 限制 | 在哪 |
+|---|---|
+| 数字必须 cite `[src:N]` | `guardrails.md` Rule 2 |
+| `tool_call` 前先 yield `thinking` | `guardrails.md` Rule 6 |
+| Artifact 不能含"过程话" | `guardrails.md` Rule 5a |
+| 该用 tool 时不要凭记忆 | `guardrails.md` Rule 1 |
+| 工具选择优先级（financials > web_search） | `guardrails.md` 1a 表 |
+
+### 4.3 怎么判定一条规则该走强还是弱（送分判定题）
+
+> **会造成不可逆损失 / 安全 / cost 失控 / 法律风险 → 强限制。
+> 只是质量 / 风格 / 偏好 → 弱限制。**
+
+| 例子 | 答案 |
+|---|---|
+| "下单前必须 owner approval" | **强**（金钱不可逆） |
+| "回答尽量用中文" | **弱**（风格） |
+| "max cost per run $1" | **强**（cost 失控） |
+| "不能调用 high-risk tool" | **强**（uteki 已做） |
+| "每条 numerical claim 要有 [src:N]" | **弱**（uteki 现状，靠 evaluator 后置审计） |
+| "优先 financials 而非 web_search 拿财务" | **弱**（质量偏好） |
+
+### 4.4 进阶 — 强弱限制会随时间迁移
+
+一条限制初期是弱（prompt 教），跑一阵发现 LLM 经常违反、且违反代价大 → 升级为强。
+
+uteki 真实迁移案例：
+- `report_analysis` 参数：起初 prompt 提醒（弱）→ 后来加 Pydantic input validator（强）
+- `max_cost_usd` 上限：起初没有 → real-LLM 跑 pipeline 偶尔失控 → 加进 HarnessLimits（强）
+- `thinking` event 现在是弱；如果 evaluator 持续 catch 到「无 thinking → 质量下降」相关性 → 未来可能 self-evolution propose 升级为强
+
+**Senior 系统设计** = 知道哪些必须 day 1 强制、哪些先 soft、等数据说话再 harden。
+- Over-engineering = 全设成强（系统死板，加 case 困难）
+- Naive = 全设成弱（系统失控，不可预测）
+
+### 4.5 一句话收尾（如果面试官追问）
+
+> 「架构上**让正确事情容易做、错误事情做不到**，是强限制。
+> 剩下的靠 **prompt + evaluator 的反馈环纠偏**，是弱限制。
+> 关键是判断**什么必须 hard-enforced**：cost / safety / 不可逆操作走强，
+> 其他都先走弱、被 evaluator catch 到再 graduate 成强。」
+
+---
+
+## 5 · uteki 真实代码引用（被追问时直接报）
 
 ### A. ToolResult 协议把错误抬到 protocol
 `services/api/src/uteki_api/tools/base.py:21-26`
@@ -132,7 +206,7 @@ if event.type == "tool_call":
 
 ---
 
-## 5 · 怎么测稳定执行率（被追问就答这套）
+## 6 · 怎么测稳定执行率（被追问就答这套）
 
 | 测试层 | uteki 做法 | 频率 |
 |---|---|---|
@@ -144,7 +218,7 @@ if event.type == "tool_call":
 
 ---
 
-## 6 · uteki 现状的诚实自评（被追问 gap 时讲）
+## 7 · uteki 现状的诚实自评（被追问 gap 时讲）
 
 | 防御 | 状态 | 备注 |
 |---|---|---|
@@ -164,7 +238,7 @@ if event.type == "tool_call":
 
 ---
 
-## 7 · 千万别说的 trap 答案
+## 8 · 千万别说的 trap 答案
 
 ❌ "我们加了 try/except，捕获所有异常，记日志"
 
@@ -177,7 +251,7 @@ if event.type == "tool_call":
 
 ---
 
-## 8 · 一分钟收尾（如果让你 wrap up）
+## 9 · 一分钟收尾（如果让你 wrap up）
 
 > 这道题答好的关键是别只盯 tool 本身。围绕 tool 的 **LLM 决策**、**harness 边界**、**observability**、**evaluation**——是同一个问题的不同侧面。
 >
