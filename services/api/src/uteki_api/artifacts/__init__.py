@@ -20,6 +20,7 @@ from uteki_api.artifacts.store import (
     LocalFileArtifactStore,
     RunArtifacts,
     default_artifact_store,
+    make_default_artifact_store,
 )
 
 __all__ = [
@@ -31,4 +32,5 @@ __all__ = [
     "LocalFileArtifactStore",
     "RunArtifacts",
     "default_artifact_store",
+    "make_default_artifact_store",
 ]

@@ -104,6 +104,16 @@ class Settings(BaseSettings):
     # Where the frontend lives (used by callback redirects after token issuance).
     frontend_base: str = "http://localhost:3000"
 
+    # ── Artifact storage backend ─────────────────────────────────────────
+    # "fs" (default) → LocalFileArtifactStore under data/runs/.
+    # "gcs"          → GCSArtifactStore (requires `uteki-api[gcs]` extra).
+    storage_backend: str = "fs"
+    # GCS bucket name (without gs:// prefix). Required when storage_backend=gcs.
+    gcs_bucket: str | None = None
+    # Optional: path to a service-account JSON for local dev against GCS.
+    # In Cloud Run, leave blank → Application Default Credentials (ADC) take over.
+    gcs_credentials_path: str | None = None
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
@@ -173,4 +183,7 @@ settings = Settings(
     google_client_secret=os.getenv("GOOGLE_CLIENT_SECRET") or "",
     oauth_redirect_base=os.getenv("UTEKI_OAUTH_REDIRECT_BASE") or "http://localhost:8000",
     frontend_base=os.getenv("UTEKI_FRONTEND_BASE") or "http://localhost:3000",
+    storage_backend=(os.getenv("UTEKI_STORAGE_BACKEND") or "fs").lower(),
+    gcs_bucket=os.getenv("UTEKI_GCS_BUCKET") or None,
+    gcs_credentials_path=os.getenv("UTEKI_GCS_CREDENTIALS_PATH") or None,
 )

@@ -363,4 +363,32 @@ class RunArtifacts:
         return await self._store.exists(self._run_id, name, self._user_id)
 
 
-default_artifact_store: ArtifactStore = LocalFileArtifactStore()
+def make_default_artifact_store() -> ArtifactStore:
+    """Construct the configured ArtifactStore from settings.
+
+    Selects between the local filesystem backend (default — used in dev, tests,
+    and any deployment not on GCS) and the GCS backend (production Cloud Run).
+
+    The GCS import is lazy: callers running the default "fs" backend never
+    pay the ``google.cloud.storage`` import cost and don't need the [gcs] extra
+    installed.
+    """
+    # Imported lazily to avoid a config<->settings import cycle at module load
+    # time (this module is imported from `__init__` during package init).
+    from uteki_api.core.config import settings  # noqa: PLC0415
+
+    if settings.storage_backend == "gcs":
+        from uteki_api.artifacts.gcs_store import GCSArtifactStore  # noqa: PLC0415
+
+        if not settings.gcs_bucket:
+            raise RuntimeError(
+                "UTEKI_STORAGE_BACKEND=gcs requires UTEKI_GCS_BUCKET to be set"
+            )
+        return GCSArtifactStore(
+            bucket_name=settings.gcs_bucket,
+            credentials_path=settings.gcs_credentials_path,
+        )
+    return LocalFileArtifactStore()
+
+
+default_artifact_store: ArtifactStore = make_default_artifact_store()
