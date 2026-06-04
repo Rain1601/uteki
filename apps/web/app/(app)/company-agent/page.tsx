@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   ArrowRight,
+  CandlestickChart,
   FileText,
   Loader2,
   Play,
@@ -19,6 +20,7 @@ import { canOperate, fetchMe, type AuthUser } from "@/lib/auth";
 import type { AgentEvent, ChatMessage } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { TradingViewChart, toTradingViewSymbol } from "@/components/charts/TradingViewChart";
 import { cn } from "@/lib/cn";
 
 type WatchVerdict = "BUY" | "WATCH" | "AVOID" | "UNRATED";
@@ -239,6 +241,7 @@ export default function CompanyAgentPage() {
   const [loadingRuns, setLoadingRuns] = useState(false);
   const [aborter, setAborter] = useState<AbortController | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [chartItem, setChartItem] = useState<CompanyWatchItem | null>(null);
   const canRunCompanyAgent = canOperate(user, "company_research_pipeline");
   const peerSuggestions = useMemo(
     () =>
@@ -461,57 +464,75 @@ export default function CompanyAgentPage() {
           <ul className="divide-y divide-[var(--line)]">
             {filteredWatchItems.map((item) => (
               <li key={item.symbol}>
-                <button
+                {/* Slimmer card: vertical rhythm tightened (px-5 py-3 instead
+                    of px-7 py-5), name inline next to symbol, meta + verdict
+                    folded into one row, two actions (K线 + 起草) stacked right.
+                    Density ≈ 60% of the old card. */}
+                <div
                   className={cn(
-                    "group w-full border-l-2 px-7 py-5 text-left transition-colors hover:bg-[var(--surface-hover)]",
+                    "group relative border-l-2 px-5 py-3 transition-colors hover:bg-[var(--surface-hover)]",
                     symbol === item.symbol ? "border-[var(--gain)] bg-[var(--surface-hover)]" : "border-transparent",
                   )}
-                  onClick={() => chooseCompany(item)}
                 >
-                  <div className="flex items-start gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="font-display text-[21px] italic leading-none text-[var(--ink)]">
+                  <button
+                    type="button"
+                    className="block w-full text-left"
+                    onClick={() => chooseCompany(item)}
+                  >
+                    <div className="flex items-baseline gap-2">
+                      <span className="font-display text-[18px] italic leading-none text-[var(--ink)]">
                         {item.symbol}
-                      </div>
-                      <div className="mt-2 font-display text-[13px] italic text-[var(--ink-muted)]">
+                      </span>
+                      <span className="min-w-0 truncate font-display text-[12px] italic text-[var(--ink-muted)]">
                         {item.name}
-                      </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-2 font-mono text-[9px] tracking-[0.12em] text-[var(--ink-faint)]">
-                        <span>{item.market}</span>
-                        <span>{item.sector}</span>
-                        {item.changePct != null && (
-                          <span className={item.changePct >= 0 ? "text-[var(--gain)]" : "text-[var(--loss)]"}>
-                            {item.changePct >= 0 ? "+" : ""}
-                            {item.changePct.toFixed(2)}%
-                          </span>
-                        )}
-                      </div>
-                      <div className="mt-3 flex items-center gap-2">
-                        <Badge tone={verdictTone(item.verdict)}>{item.verdict}</Badge>
-                        {item.runs != null && (
-                          <span className="font-mono text-[10px] tracking-[0.08em] text-[var(--ink-faint)]">
-                            {item.runs}x
-                          </span>
-                        )}
-                      </div>
+                      </span>
                     </div>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[9px] tracking-[0.10em] text-[var(--ink-faint)]">
+                      <Badge tone={verdictTone(item.verdict)}>{item.verdict}</Badge>
+                      <span>{item.market}</span>
+                      <span className="truncate">{item.sector}</span>
+                      {item.changePct != null && (
+                        <span className={item.changePct >= 0 ? "text-[var(--gain)]" : "text-[var(--loss)]"}>
+                          {item.changePct >= 0 ? "+" : ""}
+                          {item.changePct.toFixed(2)}%
+                        </span>
+                      )}
+                      {item.runs != null && <span>{item.runs}x</span>}
+                    </div>
+                  </button>
+                  {/* Action row — absolute-positioned so it sits on the right
+                      without affecting the button's hit-area width. */}
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 opacity-70 group-hover:opacity-100 transition-opacity">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setChartItem(item);
+                      }}
+                      className="inline-flex h-6 w-6 items-center justify-center rounded border border-[var(--line-strong)] text-[var(--ink-muted)] hover:border-[var(--accent-line)] hover:text-[var(--accent)] transition-colors"
+                      title={`查看 ${item.symbol} K 线`}
+                      aria-label={`查看 ${item.symbol} K 线`}
+                    >
+                      <CandlestickChart size={12} />
+                    </button>
                     {canRunCompanyAgent && (
-                      <span
-                        className="mt-9 inline-flex h-7 items-center border border-[var(--line-strong)] px-2 font-mono text-[10px] text-[var(--ink-muted)] opacity-70 transition-colors group-hover:text-[var(--ink)]"
+                      <button
+                        type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           chooseCompany(item, true);
                         }}
+                        className="inline-flex h-6 items-center gap-1 border border-[var(--line-strong)] px-2 font-mono text-[9px] text-[var(--ink-muted)] hover:border-[var(--accent-line)] hover:text-[var(--accent)] transition-colors"
                       >
-                        起草 <ArrowRight size={12} />
-                      </span>
+                        起草 <ArrowRight size={10} />
+                      </button>
                     )}
                   </div>
-                </button>
+                </div>
               </li>
             ))}
             {filteredWatchItems.length === 0 && (
-              <li className="px-7 py-8 text-[12px] leading-relaxed text-[var(--ink-muted)]">
+              <li className="px-5 py-6 text-[12px] leading-relaxed text-[var(--ink-muted)]">
                 没有匹配的公司。可以清空筛选，或添加一个新的 ticker。
               </li>
             )}
@@ -696,6 +717,73 @@ export default function CompanyAgentPage() {
             )}
           </div>
         </aside>
+      </div>
+
+      {/* TradingView K线 modal — opens when user clicks the chart icon on
+          any watchlist card. ESC / click-backdrop / × button to close.
+          We unmount the chart on close (TradingView widget owns its DOM,
+          re-mounting is the only clean way to swap symbols). */}
+      {chartItem && (
+        <ChartModal item={chartItem} onClose={() => setChartItem(null)} />
+      )}
+    </div>
+  );
+}
+
+function ChartModal({
+  item,
+  onClose,
+}: {
+  item: CompanyWatchItem;
+  onClose: () => void;
+}) {
+  const tvSymbol = toTradingViewSymbol(item);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    // Lock body scroll while modal is open
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="relative flex h-[640px] max-h-[88vh] w-[1080px] max-w-[92vw] flex-col overflow-hidden rounded-[var(--r-lg)] border border-[var(--line-strong)] bg-[var(--surface)] shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex shrink-0 items-baseline gap-3 border-b border-[var(--line)] px-5 py-3">
+          <div className="font-display text-[22px] italic leading-none text-[var(--ink)]">
+            {item.symbol}
+          </div>
+          <div className="font-display text-[13px] italic text-[var(--ink-muted)]">
+            {item.name}
+          </div>
+          <span className="font-mono text-[10px] tracking-[0.10em] text-[var(--ink-faint)]">
+            {tvSymbol} · EMA20 · SMA50
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded border border-[var(--line-strong)] text-[var(--ink-muted)] hover:border-[var(--accent-line)] hover:text-[var(--accent)] transition-colors"
+            aria-label="关闭 K 线"
+          >
+            <X size={13} />
+          </button>
+        </div>
+        <div className="min-h-0 flex-1">
+          <TradingViewChart symbol={tvSymbol} />
+        </div>
       </div>
     </div>
   );
