@@ -1,0 +1,143 @@
+# Cloud Build pipeline for uteki.
+#
+# Triggered by Cloud Build Trigger on push to main (trigger configured in the
+# GCP console; this file is the build definition only). Builds both images,
+# pushes them to Artifact Registry, deploys each to its Cloud Run service with
+# --no-traffic so a smoke step can validate the new revision before traffic
+# flips to 100%.
+#
+# Prerequisites (one-time, see DEPLOY.md):
+#   • Artifact Registry repo `uteki` in us-central1
+#   • Cloud Run services `uteki-api` and `uteki-web` in us-central1
+#   • Cloud Build service account has roles/run.admin + iam.serviceAccountUser
+#     on the Cloud Run runtime SAs
+#
+# Substitutions provided automatically by Cloud Build:
+#   $PROJECT_ID, $COMMIT_SHA, $SHORT_SHA
+
+steps:
+  # ── Build api ────────────────────────────────────────────────────────────
+  - id: build-api
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - services/api/Dockerfile
+      - -t
+      - us-central1-docker.pkg.dev/$PROJECT_ID/uteki/api:$COMMIT_SHA
+      - -t
+      - us-central1-docker.pkg.dev/$PROJECT_ID/uteki/api:latest
+      - .
+
+  # ── Build web ────────────────────────────────────────────────────────────
+  - id: build-web
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - apps/web/Dockerfile
+      - -t
+      - us-central1-docker.pkg.dev/$PROJECT_ID/uteki/web:$COMMIT_SHA
+      - -t
+      - us-central1-docker.pkg.dev/$PROJECT_ID/uteki/web:latest
+      - .
+
+  # ── Push api ─────────────────────────────────────────────────────────────
+  - id: push-api
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - --all-tags
+      - us-central1-docker.pkg.dev/$PROJECT_ID/uteki/api
+    waitFor: [build-api]
+
+  # ── Push web ─────────────────────────────────────────────────────────────
+  - id: push-web
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - --all-tags
+      - us-central1-docker.pkg.dev/$PROJECT_ID/uteki/web
+    waitFor: [build-web]
+
+  # ── Deploy api (no traffic, tagged revision for smoke) ───────────────────
+  - id: deploy-api
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - uteki-api
+      - --image=us-central1-docker.pkg.dev/$PROJECT_ID/uteki/api:$COMMIT_SHA
+      - --region=us-central1
+      - --no-traffic
+      - --tag=rev-$SHORT_SHA
+    waitFor: [push-api]
+
+  # ── Deploy web (no traffic, tagged revision for smoke) ───────────────────
+  - id: deploy-web
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - uteki-web
+      - --image=us-central1-docker.pkg.dev/$PROJECT_ID/uteki/web:$COMMIT_SHA
+      - --region=us-central1
+      - --no-traffic
+      - --tag=rev-$SHORT_SHA
+    waitFor: [push-web]
+
+  # ── Smoke test the staged revisions (TODO PR ε wires this up) ────────────
+  # The tagged revision is reachable at:
+  #   https://rev-$SHORT_SHA---uteki-api-<hash>-uc.a.run.app
+  #   https://rev-$SHORT_SHA---uteki-web-<hash>-uc.a.run.app
+  # smoke_test.sh should: GET /healthz on each, assert 200 + expected body,
+  # and exit non-zero on failure. Until that lands, this step is a no-op so
+  # the build is green but traffic is NOT flipped (the next step is gated on
+  # this and is currently commented out).
+  - id: smoke
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args:
+      - -c
+      - 'echo "[smoke] not yet wired up — TODO PR ε implements scripts/smoke_test.sh"; exit 0'
+    waitFor: [deploy-api, deploy-web]
+
+  # ── Flip 100% traffic to the new revisions (gated on smoke) ──────────────
+  # Disabled until smoke_test.sh exists. Re-enable by un-commenting and the
+  # build will auto-promote on green smoke.
+  #
+  # - id: promote-api
+  #   name: gcr.io/google.com/cloudsdktool/cloud-sdk
+  #   entrypoint: gcloud
+  #   args:
+  #     - run
+  #     - services
+  #     - update-traffic
+  #     - uteki-api
+  #     - --region=us-central1
+  #     - --to-latest
+  #   waitFor: [smoke]
+  #
+  # - id: promote-web
+  #   name: gcr.io/google.com/cloudsdktool/cloud-sdk
+  #   entrypoint: gcloud
+  #   args:
+  #     - run
+  #     - services
+  #     - update-traffic
+  #     - uteki-web
+  #     - --region=us-central1
+  #     - --to-latest
+  #   waitFor: [smoke]
+
+images:
+  - us-central1-docker.pkg.dev/$PROJECT_ID/uteki/api:$COMMIT_SHA
+  - us-central1-docker.pkg.dev/$PROJECT_ID/uteki/web:$COMMIT_SHA
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8
+
+timeout: 1200s
