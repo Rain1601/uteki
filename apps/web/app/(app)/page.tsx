@@ -1,7 +1,6 @@
 import Link from "next/link";
 import {
   ArrowUpRight,
-  Eye,
   CalendarClock,
   Workflow,
   ClipboardCheck,
@@ -31,7 +30,7 @@ export default async function Home() {
       <PageHeader
         eyebrow="An investment-research agent framework"
         title="Trigger. Harness. Skill. Run."
-        subtitle="uteki 把投研流程拆成四个固定环节：你维护关注列表，按时间触发任务，harness 编排 skill 调度工具，每次执行落成一条可回放、可评测、可对比的 run。"
+        subtitle="uteki 把投研流程拆成四个固定环节：你在研究台维护关注公司，触发器监听新闻 / 财报 / 事件 / 定时规则，harness 编排 skill 调度工具，每次执行落成一条可回放、可评测、可对比的 run。"
         actions={
           <Link
             href="/runs"
@@ -56,7 +55,7 @@ export default async function Home() {
         <FlowCard
           n="01"
           title="Trigger"
-          body="user · cron · event · eval · compare"
+          body="news · earnings · event · cron · user"
           href="/tasks"
           icon={CalendarClock}
         />
@@ -91,20 +90,20 @@ export default async function Home() {
         />
       </div>
 
-      {/* Two-column: Watchlist + Skills */}
+      {/* Two-column: Workspace + Engine */}
       <div className="grid gap-6 md:grid-cols-2">
         <Card className="p-6">
           <div className="mb-4 flex items-center justify-between">
-            <SectionTitle eyebrow="Workspace" title="关注列表 + 调度" className="mb-0" />
-            <Badge tone="warn">DEMO</Badge>
+            <SectionTitle eyebrow="Workspace" title="研究台 + 触发器" className="mb-0" />
+            <Badge tone="accent">agent triggers</Badge>
           </div>
           <p className="mb-5 text-[13px] leading-relaxed text-[var(--ink-soft)]">
-            维护一组标的（公司 / ETF × 中国 / 美国），针对每个或一组创建调度任务。任务到点 → 自动触发 harness → skill 跑研究 → 报告落库。
+            研究台维护关注公司和同行标签；触发器监听新闻、财报、重大事件、价格异常或 cron。规则命中后启动 harness，skill 跑研究，报告落库。
           </p>
           <div className="space-y-2">
-            <NavRow href="/watchlist" icon={Eye} label="关注列表" hint="companies · ETFs · US / CN" />
-            <NavRow href="/tasks"     icon={CalendarClock} label="调度任务" hint="cron-fired research jobs" />
-            <NavRow href="/runs"      icon={Activity} label="执行报告" hint={`${runsCount} runs captured`} />
+            <NavRow href="/company-agent" icon={Activity} label="研究台 / 关注列表" hint="company watchlist · peer tags" />
+            <NavRow href="/tasks"         icon={CalendarClock} label="触发器" hint="news · earnings · events · cron" />
+            <NavRow href="/runs"          icon={Activity} label="执行报告" hint={`${runsCount} runs captured`} />
           </div>
         </Card>
 

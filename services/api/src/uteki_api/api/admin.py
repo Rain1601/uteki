@@ -26,14 +26,18 @@ import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+from sqlmodel import Session
 
 from uteki_api.auth.deps import require_admin
+from uteki_api.core.db import get_db
 from uteki_api.evolution.cc_runner import run_cc_review
 from uteki_api.evolution.proposals import default_proposal_store
 from uteki_api.runs import default_run_store
 from uteki_api.skills import default_skills
 from uteki_api.skills.loader import load_skill_prompt
 from uteki_api.users.models import User
+from uteki_api.users.store import default_user_store
 
 logger = logging.getLogger(__name__)
 
@@ -169,6 +173,107 @@ async def get_proposal(
     except KeyError as e:
         raise HTTPException(404, detail=str(e)) from e
     return proposal.model_dump()
+
+
+class UserRow(BaseModel):
+    id: str
+    email: str
+    display_name: str
+    avatar_url: str | None
+    role: str
+    status: str
+    created_at: str
+    providers: list[str]
+
+
+class UsersListResponse(BaseModel):
+    items: list[UserRow]
+    total: int
+    limit: int
+    offset: int
+
+
+class UpdateRoleBody(BaseModel):
+    role: str = Field(..., pattern=r"^(admin|reader)$")
+
+
+def _row(db: Session, user: User) -> UserRow:
+    return UserRow(
+        id=user.id,
+        email=user.email,
+        display_name=user.display_name,
+        avatar_url=user.avatar_url,
+        role=user.role,
+        status=user.status,
+        created_at=user.created_at.isoformat(),
+        providers=default_user_store.providers_for(db, user.id),
+    )
+
+
+@router.get("/users", response_model=UsersListResponse)
+async def list_users(
+    limit: int = 50,
+    offset: int = 0,
+    _user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> UsersListResponse:
+    """List all real users (demo@local hidden) with their identity providers.
+
+    Paginated. Newest first by ``created_at``. Used by the ``/admin/users``
+    console page; not part of the public API contract.
+    """
+    limit = max(1, min(int(limit), 200))
+    offset = max(0, int(offset))
+    rows, total = default_user_store.list(db, limit=limit, offset=offset)
+    return UsersListResponse(
+        items=[_row(db, u) for u in rows],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.patch("/users/{user_id}", response_model=UserRow)
+async def update_user_role(
+    user_id: str,
+    body: UpdateRoleBody,
+    actor: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> UserRow:
+    """Promote / demote a user. Two guards against lockout:
+
+    1. An admin cannot demote themselves — must be done by another admin.
+    2. Cannot demote the last remaining admin (system would have zero).
+    """
+    if user_id == actor.id and body.role != "admin":
+        raise HTTPException(
+            409, detail="cannot demote yourself; ask another admin"
+        )
+
+    target = default_user_store.get(db, user_id)
+    if target is None:
+        raise HTTPException(404, detail=f"user {user_id} not found")
+
+    if target.role == "admin" and body.role != "admin":
+        admin_count = default_user_store.count_admins(db)
+        if admin_count <= 1:
+            raise HTTPException(
+                409,
+                detail="refusing to demote the last admin",
+            )
+
+    if target.role == body.role:
+        # No-op; still return current state so the UI can reconcile.
+        return _row(db, target)
+
+    updated = default_user_store.update_role(db, user_id, body.role)
+    if updated is None:
+        raise HTTPException(404, detail=f"user {user_id} not found")
+    logger.info(
+        "admin role change actor=%s target=%s %s→%s",
+        actor.id, updated.id, target.role, updated.role,
+    )
+    return _row(db, updated)
 
 
 # Re-export so test conftest can rebind it alongside default_proposal_store.

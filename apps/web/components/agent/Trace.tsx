@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { AgentEvent } from "@/lib/types";
 import { cn } from "@/lib/cn";
 import {
@@ -17,6 +18,7 @@ import {
   FileText,
   ChevronDown,
   ChevronUp,
+  ChevronRight,
   Brain,
 } from "lucide-react";
 
@@ -192,9 +194,9 @@ function TraceEvent({ ev }: { ev: AgentEvent }) {
             </span>
             <span className="font-mono text-[10px] text-[var(--ink-faint)]">→ pending</span>
           </div>
-          <div className="mt-1 truncate font-mono text-[10px] text-[var(--ink-muted)]">
-            {JSON.stringify(ev.data.args ?? {})}
-          </div>
+          {Object.keys((ev.data.args as Record<string, unknown>) ?? {}).length > 0 && (
+            <JsonDisclosure label="args" value={ev.data.args} />
+          )}
         </div>
       );
 
@@ -222,14 +224,12 @@ function TraceEvent({ ev }: { ev: AgentEvent }) {
             </span>
           </div>
           {Boolean(ev.data.summary || ev.data.error) && (
-            <div className="mt-1 text-[12px] text-[var(--ink-soft)]">
+            <div className="mt-1 break-words text-[12px] text-[var(--ink-soft)]">
               {String(ev.data.summary ?? ev.data.error ?? "")}
             </div>
           )}
           {ev.data.preview != null && (
-            <pre className="mt-2 max-h-32 overflow-auto rounded-sm bg-[var(--surface)] p-2 font-mono text-[10px] leading-relaxed text-[var(--ink-muted)]">
-              {JSON.stringify(ev.data.preview, null, 2)}
-            </pre>
+            <JsonDisclosure label="preview" value={ev.data.preview} />
           )}
         </div>
       );
@@ -385,6 +385,54 @@ function Row({
     >
       <Icon size={12} className="shrink-0" />
       {children}
+    </div>
+  );
+}
+
+// JsonDisclosure — collapsed by default chip that reveals pretty-printed
+// JSON on click. Replaces both the always-visible `args = {...}` line and
+// the always-expanded `preview` <pre> that produced the wall-of-JSON in
+// the trace. Click "args" or "preview" to see it.
+function JsonDisclosure({ label, value }: { label: string; value: unknown }) {
+  const [open, setOpen] = useState(false);
+  let summary = "";
+  try {
+    summary = JSON.stringify(value);
+  } catch {
+    summary = String(value);
+  }
+  // One-line teaser shown inline next to the chip — first ~64 chars only.
+  const teaser = summary.length > 64 ? summary.slice(0, 64) + "…" : summary;
+  return (
+    <div className="mt-1.5 min-w-0">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="group inline-flex items-baseline gap-1 text-left font-mono text-[10px] tracking-[0.04em] text-[var(--ink-muted)] hover:text-[var(--ink)]"
+      >
+        <span className="inline-flex h-3 w-3 shrink-0 items-center justify-center">
+          {open ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+        </span>
+        <span className="uppercase tracking-[0.12em] text-[var(--ink-faint)] group-hover:text-[var(--ink-muted)]">
+          {label}
+        </span>
+        {!open && (
+          <span className="ml-1 truncate text-[var(--ink-faint)]" title={summary}>
+            {teaser}
+          </span>
+        )}
+      </button>
+      {open && (
+        <pre className="mt-1 max-h-60 min-w-0 overflow-auto rounded-sm bg-[var(--surface)] p-2 font-mono text-[10px] leading-relaxed text-[var(--ink-muted)] whitespace-pre-wrap break-all">
+          {(() => {
+            try {
+              return JSON.stringify(value, null, 2);
+            } catch {
+              return String(value);
+            }
+          })()}
+        </pre>
+      )}
     </div>
   );
 }

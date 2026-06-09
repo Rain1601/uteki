@@ -5,77 +5,78 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   ArrowRight,
+  CandlestickChart,
   FileText,
   Loader2,
   Play,
+  Plus,
   RefreshCw,
+  Search,
   Square,
+  X,
 } from "lucide-react";
-import { streamChat, listRuns, type RunSummary } from "@/lib/api";
+import {
+  createCompany,
+  listCompanies,
+  listEarningsNext,
+  listRuns,
+  streamChat,
+  type Company as ApiCompany,
+  type EarningsEvent,
+  type RunSummary,
+} from "@/lib/api";
+import { EarningsCountdown } from "@/components/EarningsCountdown";
 import { canOperate, fetchMe, type AuthUser } from "@/lib/auth";
 import type { AgentEvent, ChatMessage } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { TradingViewChart, toTradingViewSymbol } from "@/components/charts/TradingViewChart";
 import { cn } from "@/lib/cn";
 
 type WatchVerdict = "BUY" | "WATCH" | "AVOID" | "UNRATED";
+type WatchMarket = "US" | "TW" | "CN" | "HK";
 
+/** UI-facing shape. ``last`` / ``changePct`` / ``runs`` are ephemeral
+ *  display fields fed by separate live sources (quotes feed, run count)
+ *  — not persisted on Company. */
 interface CompanyWatchItem {
   symbol: string;
   name: string;
+  market: WatchMarket;
+  sector: string;
   peers: string[];
   verdict: WatchVerdict;
   conviction?: number;
+  last?: number;
+  changePct?: number;
   runs?: number;
 }
 
-const WATCHLIST: CompanyWatchItem[] = [
-  {
-    symbol: "GOOGL",
-    name: "Alphabet Inc.",
-    peers: ["META", "MSFT", "AMZN"],
-    verdict: "BUY",
-    conviction: 0.7,
-    runs: 37,
-  },
-  {
-    symbol: "TSM",
-    name: "Taiwan Semi.",
-    peers: ["NVDA", "ASML", "AMD"],
-    verdict: "WATCH",
-    conviction: 0.45,
-    runs: 4,
-  },
-  {
-    symbol: "NVDA",
-    name: "NVIDIA Corp.",
-    peers: ["AMD", "AVGO", "INTC"],
-    verdict: "WATCH",
-    conviction: 0.55,
-    runs: 6,
-  },
-  {
-    symbol: "AAPL",
-    name: "Apple Inc.",
-    peers: ["MSFT", "GOOGL", "META"],
-    verdict: "WATCH",
-    conviction: 0.5,
-    runs: 2,
-  },
-  {
-    symbol: "MSFT",
-    name: "Microsoft",
-    peers: ["GOOGL", "AMZN", "ORCL"],
-    verdict: "UNRATED",
-  },
-  {
-    symbol: "TSLA",
-    name: "Tesla, Inc.",
-    peers: ["GM", "F", "RIVN"],
-    verdict: "AVOID",
-    conviction: 0.35,
-    runs: 10,
-  },
+function fromApi(company: ApiCompany): CompanyWatchItem {
+  return {
+    symbol: company.symbol,
+    name: company.name,
+    market: (company.market as WatchMarket) ?? "US",
+    sector: company.sector,
+    peers: company.peers,
+    verdict: (company.verdict as WatchVerdict) ?? "UNRATED",
+    conviction: company.conviction ?? undefined,
+  };
+}
+
+const COMMON_PEERS = [
+  "META",
+  "MSFT",
+  "AMZN",
+  "NVDA",
+  "AMD",
+  "AVGO",
+  "ASML",
+  "ORCL",
+  "CRM",
+  "TSM",
+  "INTC",
+  "QCOM",
 ];
 
 const STAGE_LABELS = [
@@ -176,7 +177,18 @@ function runPrompt(symbol: string, peers: string): string {
 
 export default function CompanyAgentPage() {
   const [symbol, setSymbol] = useState("GOOGL");
-  const [peers, setPeers] = useState("META, MSFT, AMZN");
+  const [peerTags, setPeerTags] = useState<string[]>(["META", "MSFT", "AMZN"]);
+  const [watchItems, setWatchItems] = useState<CompanyWatchItem[]>([]);
+  const [loadingWatch, setLoadingWatch] = useState(true);
+  const [earningsBySymbol, setEarningsBySymbol] = useState<
+    Record<string, EarningsEvent>
+  >({});
+  const [watchSearch, setWatchSearch] = useState("");
+  const [verdictFilter, setVerdictFilter] = useState<"ALL" | WatchVerdict>("ALL");
+  const [marketFilter, setMarketFilter] = useState<"ALL" | WatchMarket>("ALL");
+  const [showAddWatch, setShowAddWatch] = useState(false);
+  const [newWatchSymbol, setNewWatchSymbol] = useState("");
+  const [newWatchName, setNewWatchName] = useState("");
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [events, setEvents] = useState<AgentEvent[]>([]);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
@@ -185,7 +197,32 @@ export default function CompanyAgentPage() {
   const [loadingRuns, setLoadingRuns] = useState(false);
   const [aborter, setAborter] = useState<AbortController | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [chartItem, setChartItem] = useState<CompanyWatchItem | null>(null);
   const canRunCompanyAgent = canOperate(user, "company_research_pipeline");
+  const peerSuggestions = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...watchItems.map((item) => item.symbol),
+          ...watchItems.flatMap((item) => item.peers),
+          ...COMMON_PEERS,
+        ]),
+      ).sort(),
+    [watchItems],
+  );
+  const filteredWatchItems = useMemo(() => {
+    const q = watchSearch.trim().toUpperCase();
+    return watchItems.filter((item) => {
+      const matchesQuery =
+        !q ||
+        item.symbol.includes(q) ||
+        item.name.toUpperCase().includes(q) ||
+        item.sector.toUpperCase().includes(q);
+      const matchesVerdict = verdictFilter === "ALL" || item.verdict === verdictFilter;
+      const matchesMarket = marketFilter === "ALL" || item.market === marketFilter;
+      return matchesQuery && matchesVerdict && matchesMarket;
+    });
+  }, [marketFilter, verdictFilter, watchItems, watchSearch]);
 
   const refreshRuns = useCallback(async () => {
     setLoadingRuns(true);
@@ -207,6 +244,26 @@ export default function CompanyAgentPage() {
     fetchMe().then(setUser).catch(() => setUser(null));
   }, []);
 
+  const refreshWatchlist = useCallback(async () => {
+    setLoadingWatch(true);
+    try {
+      const [rows, nextMap] = await Promise.all([
+        listCompanies(true),
+        listEarningsNext(),
+      ]);
+      setWatchItems(rows.map(fromApi));
+      setEarningsBySymbol(nextMap);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoadingWatch(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshWatchlist();
+  }, [refreshWatchlist]);
+
   const latestRun = runs[0] ?? null;
   const currentStage = useMemo(() => stageFromEvents(events), [events]);
   const visibleEvents = useMemo(
@@ -221,13 +278,45 @@ export default function CompanyAgentPage() {
 
   function chooseCompany(item: CompanyWatchItem, runNow = false) {
     setSymbol(item.symbol);
-    setPeers(item.peers.join(", "));
+    setPeerTags(item.peers.slice(0, 3));
     if (runNow && canRunCompanyAgent) {
       void startRun(item.symbol, item.peers.join(", "));
     }
   }
 
-  async function startRun(targetSymbol = symbol, peerText = peers) {
+  async function addWatchItem() {
+    const cleanSymbol = newWatchSymbol.trim().toUpperCase();
+    if (!cleanSymbol) return;
+    const existing = watchItems.find((item) => item.symbol === cleanSymbol);
+    if (existing) {
+      chooseCompany(existing);
+      setShowAddWatch(false);
+      setNewWatchSymbol("");
+      setNewWatchName("");
+      return;
+    }
+    try {
+      const created = await createCompany({
+        symbol: cleanSymbol,
+        name: newWatchName.trim() || cleanSymbol,
+        market: "US",
+        sector: "",
+        peers: [],
+        verdict: "UNRATED",
+      });
+      const item = fromApi(created);
+      setWatchItems((prev) => [item, ...prev]);
+      setSymbol(item.symbol);
+      setPeerTags([]);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+    setShowAddWatch(false);
+    setNewWatchSymbol("");
+    setNewWatchName("");
+  }
+
+  async function startRun(targetSymbol = symbol, peerText = peerTags.join(", ")) {
     const cleanSymbol = targetSymbol.trim().toUpperCase();
     if (!cleanSymbol || isRunning || !canRunCompanyAgent) return;
     const controller = new AbortController();
@@ -265,15 +354,15 @@ export default function CompanyAgentPage() {
   }
 
   return (
-    <div className="min-h-screen paper-grain">
-      <div className="border-b border-[var(--line)] px-8 py-7">
+    <div className="h-screen overflow-hidden flex flex-col paper-grain">
+      <div className="shrink-0 border-b border-[var(--line)] px-8 py-5">
         <div className="flex flex-wrap items-end gap-5">
           <div>
-            <div className="eyebrow mb-2">RESEARCH DESK · COMPANY AGENT</div>
-            <h1 className="h-display text-[42px] text-[var(--ink)]">研究台</h1>
+            <div className="eyebrow mb-1.5">RESEARCH DESK · COMPANY AGENT</div>
+            <h1 className="h-display text-[32px] text-[var(--ink)]">研究台</h1>
           </div>
-          <div className="mb-2 font-mono text-[10px] tracking-[0.18em] text-[var(--ink-faint)]">
-            关注 {WATCHLIST.length} · 在跑 {isRunning ? 1 : 0} · 历史 {runs.length}
+          <div className="mb-1 font-mono text-[10px] tracking-[0.18em] text-[var(--ink-faint)]">
+            关注 {watchItems.length} · 在跑 {isRunning ? 1 : 0} · 历史 {runs.length}
             {user ? ` · ${user.role.toUpperCase()}` : ""}
           </div>
           <div className="ml-auto mb-1 flex items-center gap-2">
@@ -289,85 +378,223 @@ export default function CompanyAgentPage() {
         </div>
       </div>
 
-      <div className="grid min-h-[calc(100vh-112px)] grid-cols-1 lg:grid-cols-[360px_minmax(0,1fr)_360px]">
-        <aside className="border-b border-[var(--line)] lg:border-b-0 lg:border-r">
-          <div className="flex items-center justify-between border-b border-[var(--line)] px-7 py-5">
-            <div className="eyebrow">WATCHLIST</div>
-            <span className="font-mono text-[10px] text-[var(--ink-faint)]">
-              {canRunCompanyAgent ? "+ 添加" : "READ ONLY"}
-            </span>
+      <div className="grid flex-1 min-h-0 grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)_340px]">
+        <aside className="min-h-0 overflow-y-auto border-b border-[var(--line)] lg:border-b-0 lg:border-r">
+          <div className="border-b border-[var(--line)] px-7 py-5">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <div className="eyebrow">WATCHLIST</div>
+                <div className="mt-1 font-mono text-[10px] text-[var(--ink-faint)]">
+                  {filteredWatchItems.length} / {watchItems.length} companies
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setShowAddWatch((v) => !v)}
+                disabled={!canRunCompanyAgent}
+              >
+                <Plus size={12} /> 添加
+              </Button>
+            </div>
+
+            <label className="mb-3 flex h-9 items-center gap-2 border border-[var(--line)] bg-[var(--surface)] px-3">
+              <Search size={13} className="text-[var(--ink-faint)]" />
+              <input
+                value={watchSearch}
+                onChange={(e) => setWatchSearch(e.target.value)}
+                className="min-w-0 flex-1 bg-transparent font-mono text-[11px] text-[var(--ink-soft)] outline-none placeholder:text-[var(--ink-faint)]"
+                placeholder="搜索 symbol / sector"
+              />
+            </label>
+
+            <div className="space-y-2">
+              <SegmentedFilter
+                value={verdictFilter}
+                onChange={(v) => setVerdictFilter(v as "ALL" | WatchVerdict)}
+                options={["ALL", "BUY", "WATCH", "AVOID", "UNRATED"]}
+              />
+              <SegmentedFilter
+                value={marketFilter}
+                onChange={(v) => setMarketFilter(v as "ALL" | WatchMarket)}
+                options={["ALL", "US", "TW", "CN"]}
+              />
+            </div>
+
+            {showAddWatch && (
+              <div className="mt-4 space-y-2 border-t border-[var(--line)] pt-4">
+                <input
+                  value={newWatchSymbol}
+                  onChange={(e) => setNewWatchSymbol(e.target.value.toUpperCase())}
+                  className="h-9 w-full border border-[var(--line-strong)] bg-[var(--surface)] px-3 font-mono text-[12px] text-[var(--ink)] outline-none focus:border-[var(--accent)]"
+                  placeholder="SYMBOL"
+                />
+                <input
+                  value={newWatchName}
+                  onChange={(e) => setNewWatchName(e.target.value)}
+                  className="h-9 w-full border border-[var(--line)] bg-[var(--surface)] px-3 text-[12px] text-[var(--ink-soft)] outline-none focus:border-[var(--accent)]"
+                  placeholder="Company name"
+                />
+                <Button size="sm" variant="primary" onClick={addWatchItem} disabled={!newWatchSymbol.trim()}>
+                  添加到研究台
+                </Button>
+              </div>
+            )}
           </div>
           <ul className="divide-y divide-[var(--line)]">
-            {WATCHLIST.map((item) => (
+            {filteredWatchItems.map((item) => (
               <li key={item.symbol}>
-                <button
+                {/* Slimmer card: vertical rhythm tightened (px-5 py-3 instead
+                    of px-7 py-5), name inline next to symbol, meta + verdict
+                    folded into one row, two actions (K线 + 起草) stacked right.
+                    Density ≈ 60% of the old card. */}
+                <div
                   className={cn(
-                    "group w-full border-l-2 px-7 py-5 text-left transition-colors hover:bg-[var(--surface-hover)]",
+                    "group relative border-l-2 px-5 py-3 transition-colors hover:bg-[var(--surface-hover)]",
                     symbol === item.symbol ? "border-[var(--gain)] bg-[var(--surface-hover)]" : "border-transparent",
                   )}
-                  onClick={() => chooseCompany(item)}
                 >
-                  <div className="flex items-start gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="font-display text-[21px] italic leading-none text-[var(--ink)]">
+                  <button
+                    type="button"
+                    className="block w-full text-left"
+                    onClick={() => chooseCompany(item)}
+                  >
+                    <div className="flex items-baseline gap-2">
+                      <span className="font-display text-[18px] italic leading-none text-[var(--ink)]">
                         {item.symbol}
-                      </div>
-                      <div className="mt-2 font-display text-[13px] italic text-[var(--ink-muted)]">
+                      </span>
+                      <span className="min-w-0 truncate font-display text-[12px] italic text-[var(--ink-muted)]">
                         {item.name}
-                      </div>
-                      <div className="mt-3 flex items-center gap-2">
-                        <Badge tone={verdictTone(item.verdict)}>{item.verdict}</Badge>
-                        {item.runs != null && (
-                          <span className="font-mono text-[10px] tracking-[0.08em] text-[var(--ink-faint)]">
-                            {item.runs}x
-                          </span>
-                        )}
-                      </div>
+                      </span>
                     </div>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[9px] tracking-[0.10em] text-[var(--ink-faint)]">
+                      <Badge tone={verdictTone(item.verdict)}>{item.verdict}</Badge>
+                      <span>{item.market}</span>
+                      <span className="truncate">{item.sector}</span>
+                      {item.changePct != null && (
+                        <span className={item.changePct >= 0 ? "text-[var(--gain)]" : "text-[var(--loss)]"}>
+                          {item.changePct >= 0 ? "+" : ""}
+                          {item.changePct.toFixed(2)}%
+                        </span>
+                      )}
+                      {item.runs != null && <span>{item.runs}x</span>}
+                      <EarningsCountdown
+                        event={earningsBySymbol[item.symbol]}
+                        size="sm"
+                      />
+                    </div>
+                  </button>
+                  {/* Action row — absolute-positioned so it sits on the right
+                      without affecting the button's hit-area width. */}
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 opacity-70 group-hover:opacity-100 transition-opacity">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setChartItem(item);
+                      }}
+                      className="inline-flex h-6 w-6 items-center justify-center rounded border border-[var(--line-strong)] text-[var(--ink-muted)] hover:border-[var(--accent-line)] hover:text-[var(--accent)] transition-colors"
+                      title={`查看 ${item.symbol} K 线`}
+                      aria-label={`查看 ${item.symbol} K 线`}
+                    >
+                      <CandlestickChart size={12} />
+                    </button>
                     {canRunCompanyAgent && (
-                      <span
-                        className="mt-9 inline-flex h-7 items-center border border-[var(--line-strong)] px-2 font-mono text-[10px] text-[var(--ink-muted)] opacity-70 transition-colors group-hover:text-[var(--ink)]"
+                      <button
+                        type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           chooseCompany(item, true);
                         }}
+                        className="inline-flex h-6 items-center gap-1 border border-[var(--line-strong)] px-2 font-mono text-[9px] text-[var(--ink-muted)] hover:border-[var(--accent-line)] hover:text-[var(--accent)] transition-colors"
                       >
-                        起草 <ArrowRight size={12} />
-                      </span>
+                        起草 <ArrowRight size={10} />
+                      </button>
                     )}
                   </div>
-                </button>
+                </div>
               </li>
             ))}
+            {filteredWatchItems.length === 0 && (
+              <li className="px-5 py-6 text-[12px] leading-relaxed text-[var(--ink-muted)]">
+                没有匹配的公司。可以清空筛选，或添加一个新的 ticker。
+              </li>
+            )}
           </ul>
         </aside>
 
-        <main className="px-8 py-10 xl:px-12">
-          <div className="mb-8 grid gap-3 md:grid-cols-[180px_minmax(0,1fr)_auto]">
-            <label>
-              <div className="mb-2 font-mono text-[9px] tracking-[0.18em] text-[var(--ink-faint)]">
+        <main className="min-h-0 overflow-y-auto px-6 py-8 xl:px-10">
+          {/* Inline K线 panel. Renders ABOVE the form when the user clicks
+              the chart icon on a watchlist row. Uses an outer grid wrapper
+              with `chart-grow` (0fr → 1fr) so the rest of the work area
+              slides down smoothly; inner section runs `chart-reveal`
+              (fade + lift + blur) so the chart fades into place. The
+              `key={chartItem.symbol}` re-mounts the TradingView widget
+              cleanly when the user opens a different ticker. */}
+          {chartItem && (
+            <div
+              className="mb-7 grid overflow-hidden"
+              style={{ animation: "chart-grow 380ms var(--ease-out) both" }}
+            >
+              <section
+                key={chartItem.symbol}
+                className="min-h-0 overflow-hidden border border-[var(--line-strong)] bg-[color-mix(in_srgb,var(--surface)_70%,transparent)] shadow-[0_8px_28px_rgba(0,0,0,0.18)]"
+                style={{ animation: "chart-reveal 420ms var(--ease-out) both" }}
+              >
+                <div className="flex flex-wrap items-baseline gap-3 border-b border-[var(--line)] px-5 py-3">
+                  <div className="font-display text-[22px] italic leading-none text-[var(--ink)]">
+                    {chartItem.symbol}
+                  </div>
+                  <div className="font-display text-[13px] italic text-[var(--ink-muted)]">
+                    {chartItem.name}
+                  </div>
+                  <span className="font-mono text-[10px] tracking-[0.10em] text-[var(--ink-faint)]">
+                    {toTradingViewSymbol(chartItem)} · EMA20 · SMA50
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setChartItem(null)}
+                    className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded border border-[var(--line-strong)] text-[var(--ink-muted)] transition-colors hover:border-[var(--accent-line)] hover:text-[var(--accent)]"
+                    aria-label="关闭 K 线"
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+                <div className="h-[460px]">
+                  <TradingViewChart symbol={toTradingViewSymbol(chartItem)} />
+                </div>
+              </section>
+            </div>
+          )}
+
+          {/* Flex-wrap form bar: SYMBOL is fixed width, PEERS flexes, buttons
+              hug right. Below xl (~14" laptops with two side asides) the
+              buttons may wrap to the next row — which is fine, the form
+              isn't broken into 4 vertical scraps anymore. */}
+          <div className="mb-7 flex flex-wrap items-end gap-3">
+            <label className="shrink-0">
+              <div className="mb-2 whitespace-nowrap font-mono text-[9px] tracking-[0.18em] text-[var(--ink-faint)]">
                 SYMBOL
               </div>
               <input
                 value={symbol}
                 onChange={(e) => setSymbol(e.target.value.toUpperCase())}
                 readOnly={!canRunCompanyAgent}
-                className="h-10 w-full border border-[var(--line-strong)] bg-[var(--surface)] px-3 font-display text-[20px] italic text-[var(--ink)] outline-none focus:border-[var(--accent)]"
+                className="h-10 w-[140px] border border-[var(--line-strong)] bg-[var(--surface)] px-3 font-display text-[20px] italic text-[var(--ink)] outline-none focus:border-[var(--accent)]"
               />
             </label>
-            <label>
-              <div className="mb-2 font-mono text-[9px] tracking-[0.18em] text-[var(--ink-faint)]">
+            <div className="min-w-[220px] flex-1">
+              <div className="mb-2 whitespace-nowrap font-mono text-[9px] tracking-[0.18em] text-[var(--ink-faint)]">
                 PEERS · MAX 3
               </div>
-              <input
-                value={peers}
-                onChange={(e) => setPeers(e.target.value)}
-                readOnly={!canRunCompanyAgent}
-                className="h-10 w-full border border-[var(--line-strong)] bg-[var(--surface)] px-3 font-mono text-[12px] text-[var(--ink-soft)] outline-none focus:border-[var(--accent)]"
-                placeholder="META, MSFT, AMZN"
+              <PeerTagInput
+                value={peerTags}
+                onChange={setPeerTags}
+                suggestions={peerSuggestions}
+                disabled={!canRunCompanyAgent}
               />
-            </label>
-            <div className="flex items-end gap-2">
+            </div>
+            <div className="flex shrink-0 items-end gap-2">
               {isRunning && (
                 <Button variant="outline" onClick={() => aborter?.abort()}>
                   <Square size={13} /> 中止
@@ -462,7 +689,7 @@ export default function CompanyAgentPage() {
           </section>
         </main>
 
-        <aside className="border-t border-[var(--line)] px-7 py-6 lg:border-l lg:border-t-0">
+        <aside className="min-h-0 overflow-y-auto border-t border-[var(--line)] px-7 py-6 lg:border-l lg:border-t-0">
           <div className="mb-5 flex items-center justify-between">
             <div className="eyebrow">LOG</div>
             <span className="font-mono text-[10px] text-[var(--ink-faint)]">{runs.length} entries</span>
@@ -518,6 +745,133 @@ export default function CompanyAgentPage() {
           </div>
         </aside>
       </div>
+
+    </div>
+  );
+}
+
+function SegmentedFilter({
+  value,
+  onChange,
+  options,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  options: string[];
+}) {
+  return (
+    <div className="flex flex-wrap gap-1">
+      {options.map((option) => (
+        <button
+          key={option}
+          type="button"
+          onClick={() => onChange(option)}
+          className={cn(
+            "rounded-sm border px-2 py-1 font-mono text-[9px] tracking-[0.12em] transition-colors",
+            value === option
+              ? "border-[var(--accent-line)] bg-[var(--accent-soft)] text-[var(--accent)]"
+              : "border-[var(--line)] text-[var(--ink-faint)] hover:text-[var(--ink-soft)]",
+          )}
+        >
+          {option}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function PeerTagInput({
+  value,
+  onChange,
+  suggestions,
+  disabled,
+}: {
+  value: string[];
+  onChange: (next: string[]) => void;
+  suggestions: string[];
+  disabled?: boolean;
+}) {
+  const [query, setQuery] = useState("");
+  const normalized = value.map((v) => v.toUpperCase());
+  const canAddMore = value.length < 3 && !disabled;
+  const matches = useMemo(() => {
+    const q = query.trim().toUpperCase();
+    if (!q || !canAddMore) return [];
+    return suggestions
+      .filter((symbol) => symbol.includes(q) && !normalized.includes(symbol))
+      .slice(0, 5);
+  }, [canAddMore, normalized, query, suggestions]);
+
+  function addTag(raw: string) {
+    const tag = raw.trim().replace(/,$/, "").toUpperCase();
+    if (!tag || disabled || value.length >= 3 || normalized.includes(tag)) return;
+    if (!/^[A-Z0-9.]{1,8}$/.test(tag)) return;
+    onChange([...value, tag]);
+    setQuery("");
+  }
+
+  function removeTag(tag: string) {
+    if (disabled) return;
+    onChange(value.filter((v) => v !== tag));
+  }
+
+  return (
+    <div>
+      <div
+        className={cn(
+          "flex min-h-10 flex-wrap items-center gap-1.5 border border-[var(--line-strong)] bg-[var(--surface)] px-2 py-1.5",
+          !disabled && "focus-within:border-[var(--accent)]",
+        )}
+      >
+        {value.map((tag) => (
+          <span
+            key={tag}
+            className="inline-flex h-7 items-center gap-1 rounded-sm border border-[var(--accent-line)] bg-[var(--accent-soft)] px-2 font-mono text-[11px] tracking-[0.08em] text-[var(--accent)]"
+          >
+            {tag}
+            {!disabled && (
+              <button
+                type="button"
+                onClick={() => removeTag(tag)}
+                className="text-[var(--accent)] opacity-70 hover:opacity-100"
+                aria-label={`移除 ${tag}`}
+              >
+                <X size={12} />
+              </button>
+            )}
+          </span>
+        ))}
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value.toUpperCase())}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === ",") {
+              e.preventDefault();
+              addTag(query);
+            }
+            if (e.key === "Backspace" && !query && value.length > 0) {
+              onChange(value.slice(0, -1));
+            }
+          }}
+          disabled={!canAddMore}
+          className="h-7 min-w-[120px] flex-1 bg-transparent px-1 font-mono text-[12px] text-[var(--ink-soft)] outline-none placeholder:text-[var(--ink-faint)] disabled:min-w-0"
+          placeholder={canAddMore ? "搜索或输入 ticker" : ""}
+        />
+      </div>
+      {matches.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {matches.map((match) => (
+            <button
+              key={match}
+              type="button"
+              onClick={() => addTag(match)}
+              className="rounded-sm border border-[var(--line)] px-2 py-1 font-mono text-[10px] tracking-[0.08em] text-[var(--ink-muted)] hover:border-[var(--accent-line)] hover:text-[var(--accent)]"
+            >
+              {match}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

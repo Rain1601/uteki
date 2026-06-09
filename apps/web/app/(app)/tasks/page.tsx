@@ -1,122 +1,227 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { PageContainer, PageHeader } from "@/components/ui/PageHeader";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { TASKS, WATCHLIST, formatRelativeFromNow } from "@/lib/demo";
-import { Plus, Play, Pause, MoreHorizontal, CalendarClock } from "lucide-react";
+import {
+  AlertTriangle,
+  ChevronRight,
+  Loader2,
+  MoreHorizontal,
+  Pause,
+  Play,
+  Plus,
+  Radio,
+} from "lucide-react";
+import {
+  AgentTrigger,
+  KIND_ICON as kindIcon,
+  KIND_LABEL as kindLabel,
+  loadTriggers,
+  type TriggerKind,
+} from "@/lib/triggers";
 
-const freqLabel: Record<string, string> = {
-  "daily-pre-open":   "每个交易日 · 开盘前",
-  "daily-post-close": "每个交易日 · 收盘后",
-  "weekly":           "每周",
-  "custom":           "自定义 cron",
-};
+type TriggerFilter = "all" | TriggerKind;
+type StatusFilter = "all" | "enabled" | "paused";
+
+function formatRelative(iso: string | null): string {
+  if (!iso) return "—";
+  const seconds = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  if (seconds < 60) return "刚刚";
+  if (seconds < 3600) return `${Math.round(seconds / 60)} 分钟前`;
+  if (seconds < 86400) return `${Math.round(seconds / 3600)} 小时前`;
+  return `${Math.round(seconds / 86400)} 天前`;
+}
+
+function formatRelativeFuture(iso: string | null): string {
+  if (!iso) return "—";
+  const seconds = Math.max(0, (new Date(iso).getTime() - Date.now()) / 1000);
+  if (seconds < 60) return "马上";
+  if (seconds < 3600) return `${Math.round(seconds / 60)} 分钟后`;
+  if (seconds < 86400) return `${Math.round(seconds / 3600)} 小时后`;
+  return `${Math.round(seconds / 86400)} 天后`;
+}
 
 export default function TasksPage() {
+  const [allTriggers, setAllTriggers] = useState<AgentTrigger[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [kind, setKind] = useState<TriggerFilter>("all");
+  const [status, setStatus] = useState<StatusFilter>("all");
+
+  useEffect(() => {
+    loadTriggers()
+      .then(setAllTriggers)
+      .finally(() => setLoading(false));
+  }, []);
+
+  const triggers = useMemo(
+    () =>
+      allTriggers.filter((trigger) => {
+        const matchesKind = kind === "all" || trigger.kind === kind;
+        const matchesStatus =
+          status === "all" ||
+          (status === "enabled" && trigger.enabled) ||
+          (status === "paused" && !trigger.enabled);
+        return matchesKind && matchesStatus;
+      }),
+    [allTriggers, kind, status],
+  );
+
   return (
     <PageContainer>
       <PageHeader
-        eyebrow="WORKSPACE · TASKS"
-        title="调度任务"
-        subtitle="把关注列表上的标的与 skill / 时间组合成定时任务。到点自动触发 harness，写一条 run 到 /runs，并按 eval 配置打分。"
+        eyebrow="WORKSPACE · TRIGGERS"
+        title="触发器"
+        subtitle="Trigger 不是只有 cron。它负责监听关注列表里的公司新闻、财报发布、重大事件、价格/成交量异常，并在命中规则时启动对应 agent。"
         actions={
           <>
-            <Badge tone="warn">DEMO DATA</Badge>
-            <Button variant="primary"><Plus size={14} /> 新建任务</Button>
+            <Badge tone="accent">trigger registry</Badge>
+            <Button variant="primary">
+              <Plus size={14} /> 新建触发器
+            </Button>
           </>
         }
       />
 
+      <div className="mb-6 flex flex-wrap items-center gap-4">
+        <FilterRail
+          label="TYPE"
+          value={kind}
+          onChange={(v) => setKind(v as TriggerFilter)}
+          options={[
+            { value: "all", label: "All" },
+            { value: "news", label: "新闻" },
+            { value: "earnings", label: "财报" },
+            { value: "event", label: "事件" },
+            { value: "price", label: "价格" },
+            { value: "schedule", label: "定时" },
+          ]}
+        />
+        <FilterRail
+          label="STATUS"
+          value={status}
+          onChange={(v) => setStatus(v as StatusFilter)}
+          options={[
+            { value: "all", label: "All" },
+            { value: "enabled", label: "监听中" },
+            { value: "paused", label: "暂停" },
+          ]}
+        />
+        <div className="ml-auto font-mono text-[11px] tracking-[0.08em] text-[var(--ink-faint)]">
+          {loading ? (
+            <span className="inline-flex items-center gap-1">
+              <Loader2 size={11} className="animate-spin" /> loading
+            </span>
+          ) : (
+            <>
+              {triggers.length} / {allTriggers.length} triggers
+            </>
+          )}
+        </div>
+      </div>
+
       <div className="space-y-3">
-        {TASKS.map((t) => {
-          const targets = t.watchlist_ids
-            .map((id) => WATCHLIST.find((w) => w.id === id))
-            .filter(Boolean);
+        {triggers.map((trigger) => {
+          const Icon = kindIcon[trigger.kind as TriggerKind] ?? Radio;
           return (
-            <Card key={t.id} className="overflow-hidden">
-              <div className="grid grid-cols-12 gap-4 p-5">
-                {/* Left column: name + targets */}
-                <div className="col-span-5">
-                  <div className="flex items-center gap-2">
+            <Card key={trigger.id} className="overflow-hidden">
+              <div className="grid gap-4 p-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1.2fr)_minmax(0,0.8fr)]">
+                <div>
+                  <div className="flex items-start gap-3">
                     <span
-                      className={`h-2 w-2 rounded-full ${
-                        t.enabled ? "bg-[var(--gain)] shadow-[0_0_8px_var(--gain)]" : "bg-[var(--ink-faint)]"
+                      className={`mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-md border ${
+                        trigger.enabled
+                          ? "border-[var(--accent-line)] bg-[var(--accent-soft)] text-[var(--accent)]"
+                          : "border-[var(--line)] text-[var(--ink-faint)]"
                       }`}
-                    />
-                    <span className="font-display italic text-[18px] tracking-tight text-[var(--ink)]">
-                      {t.name}
+                    >
+                      <Icon size={15} />
                     </span>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {targets.map((w) => (
-                      <span
-                        key={w!.id}
-                        className="inline-flex items-center gap-1.5 rounded-md border border-[var(--line)] bg-[var(--surface-2)] px-2 py-1"
-                      >
-                        <span className="numeric text-[11px] text-[var(--ink)]">{w!.symbol}</span>
-                        <span className="font-mono text-[9px] tracking-[0.1em] text-[var(--ink-faint)]">
-                          {w!.market}
-                        </span>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Middle: skill + schedule */}
-                <div className="col-span-4 grid grid-cols-2 gap-4">
-                  <Field label="SKILL">
-                    <Badge tone="accent">{t.skill}</Badge>
-                  </Field>
-                  <Field label="SCHEDULE">
-                    <div className="flex items-center gap-1.5">
-                      <CalendarClock size={13} className="text-[var(--ink-muted)]" />
-                      <span className="text-[12px] text-[var(--ink-soft)]">
-                        {freqLabel[t.frequency] ?? t.frequency}
-                      </span>
-                    </div>
-                    {t.cron && (
-                      <div className="mt-1 font-mono text-[10px] text-[var(--ink-faint)]">
-                        {t.cron}
-                      </div>
-                    )}
-                  </Field>
-                </div>
-
-                {/* Right: last + next */}
-                <div className="col-span-3 grid grid-cols-2 gap-4">
-                  <Field label="LAST">
-                    <div className="text-[12px] text-[var(--ink-soft)]">
-                      {formatRelativeFromNow(t.last_run_at)}
-                    </div>
-                    {t.last_status && (
-                      <div className="mt-1">
-                        <Badge tone={t.last_status === "ok" ? "gain" : t.last_status === "error" ? "loss" : "warn"}>
-                          {t.last_status}
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge tone={trigger.enabled ? "gain" : "neutral"}>
+                          {trigger.enabled ? "listening" : "paused"}
                         </Badge>
+                        <Badge tone="accent">{kindLabel[trigger.kind as TriggerKind] ?? trigger.kind}</Badge>
                       </div>
-                    )}
+                      <div className="mt-2 font-display text-[21px] italic leading-tight text-[var(--ink)]">
+                        {trigger.name}
+                      </div>
+                      <div className="mt-2 font-mono text-[10px] tracking-[0.06em] text-[var(--ink-faint)]">
+                        {trigger.id}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <Field label="LISTENING CONDITION">
+                    <div className="text-[12px] leading-relaxed text-[var(--ink-soft)]">
+                      {trigger.condition}
+                    </div>
                   </Field>
-                  <Field label="NEXT">
-                    <div className={`text-[12px] ${t.enabled ? "text-[var(--ink-soft)]" : "text-[var(--ink-faint)]"}`}>
-                      {t.enabled ? formatRelativeFromNow(t.next_run_at) : "已暂停"}
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {trigger.watchlist_symbols.length === 0 ? (
+                      <span className="font-mono text-[9px] tracking-[0.1em] text-[var(--ink-faint)]">
+                        全 watchlist
+                      </span>
+                    ) : (
+                      trigger.watchlist_symbols.map((sym) => (
+                        <span
+                          key={sym}
+                          className="inline-flex items-center gap-1.5 rounded-sm border border-[var(--line)] bg-[var(--surface-2)] px-2 py-1"
+                        >
+                          <span className="numeric text-[11px] text-[var(--ink)]">
+                            {sym}
+                          </span>
+                        </span>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 lg:grid-cols-1">
+                  <Field label="AGENT">
+                    <Badge>{trigger.skill}</Badge>
+                  </Field>
+                  <Field label="CADENCE">
+                    <div className="flex items-center gap-1.5 text-[12px] text-[var(--ink-soft)]">
+                      <Radio size={13} className="text-[var(--ink-muted)]" />
+                      {trigger.cadence_text || `每 ${trigger.cadence_minutes} 分钟`}
                     </div>
                   </Field>
                 </div>
               </div>
 
-              {/* Action bar */}
-              <div className="flex items-center justify-between border-t border-[var(--line)] bg-[var(--surface)]/60 px-5 py-2">
+              <div className="flex flex-wrap items-center gap-3 border-t border-[var(--line)] bg-[var(--surface)]/60 px-5 py-2">
                 <span className="font-mono text-[10px] tracking-[0.08em] text-[var(--ink-faint)]">
-                  {t.id}
+                  last: {formatRelative(trigger.last_triggered_at)}
                 </span>
-                <div className="flex items-center gap-1">
+                <span className="font-mono text-[10px] tracking-[0.08em] text-[var(--ink-faint)]">
+                  next check: {trigger.enabled ? formatRelativeFuture(trigger.next_check_at) : "paused"}
+                </span>
+                {trigger.last_status === "error" && (
+                  <span className="inline-flex items-center gap-1 font-mono text-[10px] text-[var(--loss)]">
+                    <AlertTriangle size={12} /> last trigger failed
+                  </span>
+                )}
+                <div className="ml-auto flex items-center gap-1">
+                  <Link
+                    href={`/tasks/${trigger.id}`}
+                    className="inline-flex h-7 items-center gap-1 rounded-sm border border-[var(--line-strong)] px-2 font-mono text-[10px] tracking-[0.04em] text-[var(--ink-soft)] transition-colors hover:border-[var(--accent-line)] hover:text-[var(--accent)]"
+                  >
+                    查看新闻流 <ChevronRight size={11} />
+                  </Link>
                   <Button size="sm" variant="ghost">
-                    {t.enabled ? <><Pause size={12} /> 暂停</> : <><Play size={12} /> 启用</>}
+                    {trigger.enabled ? <><Pause size={12} /> 暂停</> : <><Play size={12} /> 启用</>}
                   </Button>
-                  <Button size="sm" variant="ghost">立即运行</Button>
-                  <Button size="sm" variant="ghost"><MoreHorizontal size={14} /></Button>
+                  <Button size="sm" variant="ghost">立即检查</Button>
+                  <Button size="sm" variant="ghost">
+                    <MoreHorizontal size={14} />
+                  </Button>
                 </div>
               </div>
             </Card>
@@ -125,7 +230,7 @@ export default function TasksPage() {
       </div>
 
       <p className="mt-6 text-[11px] leading-relaxed text-[var(--ink-faint)]">
-        ⓘ 调度执行通过后端 <span className="font-mono text-[var(--ink-muted)]">triggers/CronTrigger</span> 注册。当前页面演示交互；接入 apscheduler 后会真实按 cron 触发。
+        当前页面表达 trigger contract：规则命中后由后端 trigger registry 启动 harness，并把触发来源写入 run。cron 只是 schedule 类型；新闻、财报和事件监听是更核心的入口。
       </p>
     </PageContainer>
   );
@@ -138,6 +243,41 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
         {label}
       </div>
       {children}
+    </div>
+  );
+}
+
+function FilterRail({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="font-mono text-[9px] tracking-[0.18em] text-[var(--ink-faint)]">
+        {label}
+      </span>
+      <div className="flex flex-wrap gap-1 rounded-md border border-[var(--line)] bg-[var(--surface-1)] p-[2px]">
+        {options.map((option) => (
+          <button
+            key={option.value}
+            onClick={() => onChange(option.value)}
+            className={`rounded-[3px] px-2.5 py-1 font-mono text-[11px] tracking-[0.04em] transition-colors ${
+              value === option.value
+                ? "bg-[var(--surface-2)] text-[var(--ink)]"
+                : "text-[var(--ink-muted)] hover:text-[var(--ink-soft)]"
+            }`}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

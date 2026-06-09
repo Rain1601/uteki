@@ -28,6 +28,27 @@ dependencies = [
     "lxml>=5.0",
 ]
 
+[project.optional-dependencies]
+# GCS-backed ArtifactStore for production Cloud Run deployment. Kept out of
+# default deps so `uv sync` in dev doesn't pull 100+ GCP transitive packages.
+# Install with: `uv sync --extra gcs` (or `pip install uteki-api[gcs]`).
+gcs = [
+    "google-cloud-storage>=2.18",
+]
+# Postgres driver for Cloud SQL Postgres 17 in production. The binary wheel
+# (~50MB) bundles libpq so deployment hosts don't need it system-installed.
+# Local dev stays on SQLite — no need to pull this in. Install with:
+# `uv sync --extra postgres` (or `pip install uteki-api[postgres]`).
+postgres = [
+    "psycopg[binary]>=3.2",
+]
+# Cloud SQL Python Connector — recommended path for Cloud Run to reach
+# Cloud SQL without running the auth proxy as a sidecar. Optional because
+# local dev uses sockets / direct TCP.
+cloudsql = [
+    "cloud-sql-python-connector[psycopg]>=1.12",
+]
+
 [dependency-groups]
 dev = [
     "ruff>=0.7",

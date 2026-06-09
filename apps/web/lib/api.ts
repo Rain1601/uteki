@@ -311,3 +311,328 @@ export async function reloadSkills(): Promise<{
   });
   return r.json();
 }
+
+// ─── News analysis SSE ─────────────────────────────────────────────
+
+export type NewsAnalyzeEvent =
+  | { type: "delta"; content: string }
+  | { type: "done"; impact: string | null; analysis: string }
+  | { type: "error"; message: string };
+
+/**
+ * Stream an AI analysis for a news article. The backend POSTs to
+ * /api/news/{id}/analyze and returns SSE frames of the shape above.
+ *
+ * Caller pattern is identical to ``streamChat`` — for-await-of the
+ * generator, abort via the passed AbortSignal.
+ */
+// ─── Triggers (persisted in DB; replaces hardcoded fixture) ────────
+
+export interface ApiTrigger {
+  id: string;
+  name: string;
+  kind: "news" | "earnings" | "event" | "price" | "schedule" | string;
+  skill: string;
+  condition: string;
+  watchlist_symbols: string[];
+  cadence_minutes: number;
+  cadence_text: string;
+  earnings_window_hours: number;
+  boost_in_earnings_window_minutes: number;
+  enabled: boolean;
+  last_check_at: string | null;
+  last_triggered_at: string | null;
+  next_check_at: string | null;
+  last_status: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ApiTriggerUpsert {
+  id: string;
+  name: string;
+  kind: "news" | "earnings" | "event" | "price" | "schedule";
+  skill?: string;
+  condition?: string;
+  watchlist_symbols?: string[];
+  cadence_minutes?: number;
+  cadence_text?: string;
+  earnings_window_hours?: number;
+  boost_in_earnings_window_minutes?: number;
+  enabled?: boolean;
+  sort_order?: number;
+}
+
+export type ApiTriggerPatch = Partial<Omit<ApiTriggerUpsert, "id">>;
+
+export async function listTriggers(enabledOnly = false): Promise<ApiTrigger[]> {
+  const qs = enabledOnly ? "?enabled_only=true" : "";
+  const r = await authedFetch(`${API_BASE}/api/triggers${qs}`, {
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error((await r.text()) || `list triggers failed: ${r.status}`);
+  return (await r.json()) as ApiTrigger[];
+}
+
+export async function upsertTrigger(body: ApiTriggerUpsert): Promise<ApiTrigger> {
+  const r = await authedFetch(`${API_BASE}/api/triggers`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error((await r.text()) || `upsert trigger failed: ${r.status}`);
+  return (await r.json()) as ApiTrigger;
+}
+
+export async function patchTrigger(
+  id: string,
+  patch: ApiTriggerPatch,
+): Promise<ApiTrigger> {
+  const r = await authedFetch(`${API_BASE}/api/triggers/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!r.ok) throw new Error((await r.text()) || `patch trigger failed: ${r.status}`);
+  return (await r.json()) as ApiTrigger;
+}
+
+export async function deleteTrigger(id: string): Promise<void> {
+  const r = await authedFetch(`${API_BASE}/api/triggers/${id}`, { method: "DELETE" });
+  if (!r.ok) throw new Error((await r.text()) || `delete trigger failed: ${r.status}`);
+}
+
+// ─── Earnings calendar ─────────────────────────────────────────────
+
+export interface EarningsEvent {
+  id: string;
+  symbol: string;
+  fiscal_period: string;
+  expected_date: string;
+  bmo_amc: "BMO" | "AMC" | "DURING" | string;
+  status: "scheduled" | "delivered" | "missed" | string;
+  delivered_at: string | null;
+  related_accession: string | null;
+  eps_estimate: number | null;
+  eps_actual: number | null;
+  revenue_estimate: number | null;
+  revenue_actual: number | null;
+  call_url: string | null;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EarningsCreate {
+  symbol: string;
+  fiscal_period: string;
+  expected_date: string; // ISO timestamp
+  bmo_amc?: "BMO" | "AMC" | "DURING";
+  status?: "scheduled" | "delivered" | "missed";
+  eps_estimate?: number | null;
+  eps_actual?: number | null;
+  revenue_estimate?: number | null;
+  revenue_actual?: number | null;
+  delivered_at?: string | null;
+  related_accession?: string | null;
+  call_url?: string | null;
+  notes?: string;
+}
+
+export type EarningsPatch = Partial<EarningsCreate>;
+
+export async function listEarnings(opts?: {
+  symbol?: string;
+  status?: "scheduled" | "delivered" | "missed";
+  upcomingOnly?: boolean;
+}): Promise<EarningsEvent[]> {
+  const qs = new URLSearchParams();
+  if (opts?.symbol) qs.set("symbol", opts.symbol);
+  if (opts?.status) qs.set("status", opts.status);
+  if (opts?.upcomingOnly) qs.set("upcoming_only", "true");
+  const url = `${API_BASE}/api/earnings${qs.toString() ? "?" + qs : ""}`;
+  const r = await authedFetch(url, { cache: "no-store" });
+  if (!r.ok) throw new Error((await r.text()) || `list earnings failed: ${r.status}`);
+  return (await r.json()) as EarningsEvent[];
+}
+
+export async function listEarningsNext(): Promise<Record<string, EarningsEvent>> {
+  const r = await authedFetch(`${API_BASE}/api/earnings/next`, { cache: "no-store" });
+  if (!r.ok) throw new Error((await r.text()) || `earnings/next failed: ${r.status}`);
+  return (await r.json()) as Record<string, EarningsEvent>;
+}
+
+export async function createEarnings(body: EarningsCreate): Promise<EarningsEvent> {
+  const r = await authedFetch(`${API_BASE}/api/earnings`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error((await r.text()) || `create earnings failed: ${r.status}`);
+  return (await r.json()) as EarningsEvent;
+}
+
+export async function patchEarnings(
+  id: string,
+  patch: EarningsPatch,
+): Promise<EarningsEvent> {
+  const r = await authedFetch(`${API_BASE}/api/earnings/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!r.ok) throw new Error((await r.text()) || `patch earnings failed: ${r.status}`);
+  return (await r.json()) as EarningsEvent;
+}
+
+export async function deleteEarnings(id: string): Promise<void> {
+  const r = await authedFetch(`${API_BASE}/api/earnings/${id}`, { method: "DELETE" });
+  if (!r.ok) throw new Error((await r.text()) || `delete earnings failed: ${r.status}`);
+}
+
+// ─── Companies (watchlist) ─────────────────────────────────────────
+
+export interface Company {
+  symbol: string;
+  name: string;
+  market: "US" | "CN" | "HK" | "TW" | string;
+  sector: string;
+  peers: string[];
+  cik: string | null;
+  ir_rss_url: string | null;
+  watch: boolean;
+  verdict: "BUY" | "WATCH" | "AVOID" | "UNRATED" | string;
+  conviction: number | null;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CompanyCreate {
+  symbol: string;
+  name: string;
+  market?: "US" | "CN" | "HK" | "TW";
+  sector?: string;
+  peers?: string[];
+  cik?: string | null;
+  ir_rss_url?: string | null;
+  verdict?: "BUY" | "WATCH" | "AVOID" | "UNRATED";
+  conviction?: number | null;
+  notes?: string;
+}
+
+export type CompanyPatch = Partial<CompanyCreate & { watch: boolean }>;
+
+export async function listCompanies(
+  watchOnly = true,
+): Promise<Company[]> {
+  const qs = new URLSearchParams({ watch_only: String(watchOnly) }).toString();
+  const r = await authedFetch(`${API_BASE}/api/companies?${qs}`, {
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error((await r.text()) || `list companies failed: ${r.status}`);
+  return (await r.json()) as Company[];
+}
+
+export async function createCompany(body: CompanyCreate): Promise<Company> {
+  const r = await authedFetch(`${API_BASE}/api/companies`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error((await r.text()) || `create company failed: ${r.status}`);
+  return (await r.json()) as Company;
+}
+
+export async function patchCompany(
+  symbol: string,
+  patch: CompanyPatch,
+): Promise<Company> {
+  const r = await authedFetch(`${API_BASE}/api/companies/${symbol}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!r.ok) throw new Error((await r.text()) || `patch company failed: ${r.status}`);
+  return (await r.json()) as Company;
+}
+
+export async function deleteCompany(symbol: string, hard = false): Promise<void> {
+  const qs = hard ? "?hard=true" : "";
+  const r = await authedFetch(`${API_BASE}/api/companies/${symbol}${qs}`, {
+    method: "DELETE",
+  });
+  if (!r.ok) throw new Error((await r.text()) || `delete company failed: ${r.status}`);
+}
+
+export interface NewsFeedbackResponse {
+  article_id: string;
+  my_feedback: "like" | "dislike" | null;
+  like_count: number;
+  dislike_count: number;
+}
+
+/** Toggle / set / clear a user's feedback on a news article.
+ *  Pass null as kind to clear. */
+export async function setNewsFeedback(
+  articleId: string,
+  kind: "like" | "dislike" | null,
+): Promise<NewsFeedbackResponse> {
+  const r = await authedFetch(`${API_BASE}/api/news/${articleId}/feedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind }),
+  });
+  if (!r.ok) throw new Error((await r.text()) || `feedback failed: ${r.status}`);
+  return (await r.json()) as NewsFeedbackResponse;
+}
+
+export async function* streamNewsAnalyze(
+  articleId: string,
+  signal?: AbortSignal,
+): AsyncGenerator<NewsAnalyzeEvent> {
+  const token = getAccessToken();
+  const headers: Record<string, string> = {
+    Accept: "text/event-stream",
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const resp = await fetch(`${API_BASE}/api/news/${articleId}/analyze`, {
+    method: "POST",
+    headers,
+    signal,
+    credentials: "include",
+  });
+  if (!resp.ok || !resp.body) {
+    const detail = await resp.text().catch(() => "");
+    throw new Error(detail || `analyze stream failed: ${resp.status}`);
+  }
+
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    let idx: number;
+    while ((idx = buffer.indexOf("\n\n")) !== -1) {
+      const raw = buffer.slice(0, idx);
+      buffer = buffer.slice(idx + 2);
+
+      let dataLine = "";
+      for (const line of raw.split("\n")) {
+        if (line.startsWith("data:")) dataLine += line.slice(5).trim();
+      }
+      if (!dataLine) continue;
+      try {
+        yield JSON.parse(dataLine) as NewsAnalyzeEvent;
+      } catch {
+        // malformed frame
+      }
+    }
+  }
+}

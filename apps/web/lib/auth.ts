@@ -193,3 +193,11 @@ export function canOperate(user: AuthUser | null | undefined, agent?: string): b
   }
   return false;
 }
+
+/** True iff the user has admin tools (user management, system settings).
+ *  Stricter than `canOperate` — dev demo with local_all_permissions still
+ *  passes, but a vanilla reader does not. */
+export function canAdmin(user: AuthUser | null | undefined): boolean {
+  if (!user) return false;
+  return user.role === "admin" || user.permissions?.includes("admin:*") === true;
+}

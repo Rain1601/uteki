@@ -1,0 +1,50 @@
+# Keep build context small + reproducible. Anything matched here is invisible
+# to `docker build` regardless of what the Dockerfile COPYs.
+
+# JS / Node
+**/node_modules
+**/.next
+**/.turbo
+**/dist
+**/build
+
+# Python
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.venv
+**/*.egg-info
+
+# Runtime data + logs (must never leak into an image)
+**/data
+**/logs
+*.log
+
+# Secrets / local config — defense in depth; gitignore should already cover
+**/.env
+**/.env.*
+!**/.env.example
+
+# VCS + tooling noise
+.git
+.gitignore
+.github
+.idea
+.vscode
+.DS_Store
+
+# Docs / design assets — not needed in any runtime image.
+# NOTE: we DON'T blanket-ignore *.md because services/api/pyproject.toml
+# references README.md and hatchling reads it during `uv sync` (editable
+# install of the project itself). Ignore specific dirs instead.
+docs
+design
+openspec/changes
+THIRD_PARTY_NOTICES.md
+AGENTS.md
+CLAUDE.md
+
+# Test fixtures
+**/tests/**/__snapshots__

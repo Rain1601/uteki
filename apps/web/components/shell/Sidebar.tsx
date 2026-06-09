@@ -12,9 +12,10 @@ import {
   Building2,
   Pin,
   PinOff,
+  Shield,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { canOperate, type AuthUser } from "@/lib/auth";
+import { canAdmin, canOperate, type AuthUser } from "@/lib/auth";
 import { ThemeToggle } from "./ThemeToggle";
 import { UserMenu } from "./UserMenu";
 
@@ -29,6 +30,9 @@ type NavItem = {
 type NavSection = {
   label: string;
   items: NavItem[];
+  /** Strict gate. Section hidden entirely unless predicate holds.
+   *  Used for the Admin section so non-admins don't even see the label. */
+  gate?: "admin";
 };
 
 const SECTIONS: NavSection[] = [
@@ -54,6 +58,16 @@ const SECTIONS: NavSection[] = [
       { href: "/agents", label: "Skills", icon: Boxes },
     ],
   },
+  {
+    label: "Admin",
+    gate: "admin",
+    items: [
+      // One entry now — the /admin layout owns sub-tab navigation
+      // (用户 / 标签 / 公司 / 财报). Keeps the sidebar dense even as
+      // we add more domains.
+      { href: "/admin", label: "管理", icon: Shield },
+    ],
+  },
 ];
 
 export function Sidebar({
@@ -67,6 +81,7 @@ export function Sidebar({
 }) {
   const pathname = usePathname();
   const canUseOperations = canOperate(user);
+  const isAdmin = canAdmin(user);
 
   return (
     <aside
@@ -113,7 +128,7 @@ export function Sidebar({
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto overflow-x-hidden py-3">
-        {SECTIONS.map((section) => (
+        {SECTIONS.filter((section) => !section.gate || (section.gate === "admin" && isAdmin)).map((section) => (
           <div key={section.label} className="mb-1.5">
             <SectionLabel label={section.label} />
             <ul className="space-y-[1px] px-2">
