@@ -297,7 +297,16 @@ class SqlNewsStore(NewsStore):
         offset: int = 0,
         tag_ids: list[str] | None = None,
     ) -> tuple[list[NewsArticle], int]:
-        # All article_ids fired for this trigger.
+        """Standard taxonomy semantics:
+
+        - ``tag_ids`` is a flat list across groups.
+        - Tags **within the same group** are OR'd (multi-select).
+        - Tags **across groups** are AND'd (must satisfy every active group).
+
+        Implementation: look up each filter tag's ``group_id``, partition by
+        group, then for each group emit a subquery "article has any tag in
+        this group" and intersect them via WHERE-IN.
+        """
         hit_subq = select(TriggerHit.article_id).where(
             TriggerHit.trigger_id == trigger_id
         )
@@ -308,12 +317,17 @@ class SqlNewsStore(NewsStore):
         stmt = select(NewsArticle).where(NewsArticle.id.in_(article_ids))  # type: ignore[attr-defined]
 
         if tag_ids:
-            # AND-filter: article must have ALL of the given tags.
-            for tid in tag_ids:
-                tagged_ids = select(ArticleTag.article_id).where(
-                    ArticleTag.tag_id == tid
+            tags = list(
+                db.exec(select(Tag).where(Tag.id.in_(tag_ids))).all()  # type: ignore[attr-defined]
+            )
+            by_group: dict[str, list[str]] = {}
+            for tag in tags:
+                by_group.setdefault(tag.group_id, []).append(tag.id)
+            for group_tag_ids in by_group.values():
+                in_group_articles = select(ArticleTag.article_id).where(
+                    ArticleTag.tag_id.in_(group_tag_ids)  # type: ignore[attr-defined]
                 )
-                stmt = stmt.where(NewsArticle.id.in_(tagged_ids))  # type: ignore[attr-defined]
+                stmt = stmt.where(NewsArticle.id.in_(in_group_articles))  # type: ignore[attr-defined]
 
         total = db.exec(
             select(func.count()).select_from(stmt.subquery())  # type: ignore[arg-type]
