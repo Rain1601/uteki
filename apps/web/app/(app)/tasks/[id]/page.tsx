@@ -122,12 +122,17 @@ export default function TriggerDetailPage() {
       .finally(() => setLoadingTaxonomy(false));
   }, []);
 
+  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+
   // Re-fetch articles whenever the filter changes.
   const fetchArticles = useCallback(async () => {
     setLoadingArticles(true);
     setError(null);
     try {
-      const qs = new URLSearchParams({ limit: "100" });
+      // Per-ticker mode (trg-news-002): pull a wider window so we can
+      // group + filter client-side. Standard mode: 100 is plenty.
+      const limit = triggerId === "trg-news-002" ? "1000" : "100";
+      const qs = new URLSearchParams({ limit });
       if (selectedTagIds.size > 0) {
         qs.set("tag_ids", Array.from(selectedTagIds).join(","));
       }
@@ -179,6 +184,39 @@ export default function TriggerDetailPage() {
     for (const g of groups) for (const t of g.tags) map.set(t.id, t);
     return map;
   }, [groups]);
+
+  // Per-ticker mode (trg-news-002): count articles per symbol so the
+  // sidebar can show "AAPL 142" / "NVDA 134" etc., and filter the feed
+  // when a symbol is picked.
+  const isPerTicker = triggerId === "trg-news-002";
+  const symbolCounts = useMemo(() => {
+    if (!isPerTicker) return new Map<string, number>();
+    const counts = new Map<string, number>();
+    for (const a of articles) {
+      for (const s of a.symbols) {
+        counts.set(s, (counts.get(s) ?? 0) + 1);
+      }
+    }
+    return counts;
+  }, [articles, isPerTicker]);
+  const orderedSymbols = useMemo(
+    () => Array.from(symbolCounts.entries()).sort((a, b) => b[1] - a[1]),
+    [symbolCounts],
+  );
+  const articlesShownInFeed = useMemo(
+    () =>
+      isPerTicker && selectedSymbol
+        ? articles.filter((a) => a.symbols.includes(selectedSymbol))
+        : articles,
+    [articles, isPerTicker, selectedSymbol],
+  );
+
+  // Auto-select most-recent ticker on first load (only in per-ticker mode).
+  useEffect(() => {
+    if (isPerTicker && !selectedSymbol && orderedSymbols.length > 0) {
+      setSelectedSymbol(orderedSymbols[0][0]);
+    }
+  }, [isPerTicker, orderedSymbols, selectedSymbol]);
 
   if (!trigger) {
     return (
@@ -263,11 +301,20 @@ export default function TriggerDetailPage() {
         {/* Filter rail — fixed in viewport */}
         <aside className="min-h-0 overflow-y-auto border-r border-[var(--line)] px-6 py-5 lg:border-b-0">
           <div className="space-y-5">
-            {articles.length > 0 && (
+            {isPerTicker && orderedSymbols.length > 0 && (
+              <TickerRail
+                symbols={orderedSymbols}
+                selected={selectedSymbol}
+                onPick={setSelectedSymbol}
+              />
+            )}
+            {articlesShownInFeed.length > 0 && (
               <MiniDensityCalendar
-                articles={articles}
+                articles={articlesShownInFeed}
                 onPickDate={(date) => {
-                  const target = articles.find((a) => a.published_at.startsWith(date));
+                  const target = articlesShownInFeed.find((a) =>
+                    a.published_at.startsWith(date),
+                  );
                   if (target) {
                     document
                       .getElementById(`article-${target.id}`)
@@ -319,7 +366,11 @@ export default function TriggerDetailPage() {
         {/* News feed — own scrollbar */}
         <main className="min-h-0 overflow-y-auto px-6 py-5 xl:px-8">
           <div className="mb-3 flex items-center justify-between font-mono text-[10px] tracking-[0.08em] text-[var(--ink-faint)]">
-            <span>{total} articles</span>
+            <span>
+              {isPerTicker && selectedSymbol
+                ? `${articlesShownInFeed.length} / ${total} articles · ${selectedSymbol}`
+                : `${total} articles`}
+            </span>
             {selectedTagIds.size > 0 && (
               <span>filtered by {selectedTagIds.size} tag(s)</span>
             )}
@@ -345,7 +396,7 @@ export default function TriggerDetailPage() {
             </Card>
           )}
           <div className="space-y-3">
-            {articles.map((article) => (
+            {articlesShownInFeed.map((article) => (
               <ArticleCard
                 key={article.id}
                 article={article}
@@ -373,6 +424,59 @@ function Meta({ label, children }: { label: string; children: React.ReactNode })
         {label}
       </div>
       <div className="text-[12px] text-[var(--ink-soft)]">{children}</div>
+    </div>
+  );
+}
+
+function TickerRail({
+  symbols,
+  selected,
+  onPick,
+}: {
+  symbols: [string, number][]; // [symbol, count]
+  selected: string | null;
+  onPick: (symbol: string) => void;
+}) {
+  const total = symbols.reduce((sum, [, c]) => sum + c, 0);
+  return (
+    <div>
+      <div className="mb-2 flex items-baseline justify-between">
+        <div className="eyebrow">公司</div>
+        <span className="font-mono text-[9px] tracking-[0.1em] text-[var(--ink-faint)]">
+          {symbols.length} tickers · {total}
+        </span>
+      </div>
+      <ul className="space-y-px">
+        {symbols.map(([sym, count]) => {
+          const active = sym === selected;
+          return (
+            <li key={sym}>
+              <button
+                type="button"
+                onClick={() => onPick(sym)}
+                className={cn(
+                  "flex w-full items-baseline justify-between rounded-sm border-l-2 px-2 py-1.5 transition-colors",
+                  active
+                    ? "border-[var(--accent)] bg-[var(--accent-soft)]"
+                    : "border-transparent hover:bg-[var(--surface-hover)]",
+                )}
+              >
+                <span
+                  className={cn(
+                    "font-display text-[14px] italic leading-none",
+                    active ? "text-[var(--accent)]" : "text-[var(--ink)]",
+                  )}
+                >
+                  {sym}
+                </span>
+                <span className="font-mono text-[10px] tracking-[0.05em] text-[var(--ink-faint)]">
+                  {count}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

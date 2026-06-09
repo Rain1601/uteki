@@ -59,10 +59,15 @@ from uteki_api.news_sources.sec_edgar import (  # noqa: E402
 # the legal event), with 10-Q/10-K landing on the dedicated earnings
 # trigger. If you want 8-K Item 2.02 to also fire trg-earnings-002 we
 # can dual-bind in a follow-up.
+# All company-specific SEC filings flow into the unified company-stream
+# trigger (P8.5 IA refactor). The earlier per-form triggers
+# (trg-event-003 / trg-earnings-002) became filtered views of this one
+# stream — the 事件 tag (earnings / regulation / m_and_a / guidance,
+# derived from 8-K Item codes) carries the discrimination instead.
 TRIGGER_FOR_FORM: dict[str, str] = {
-    "8-K": "trg-event-003",
-    "10-Q": "trg-earnings-002",
-    "10-K": "trg-earnings-002",
+    "8-K": "trg-news-002",
+    "10-Q": "trg-news-002",
+    "10-K": "trg-news-002",
 }
 
 IMPORTANCE_FOR_FORM: dict[str, str] = {

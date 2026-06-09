@@ -180,9 +180,10 @@ def _my_feedback_map(
 )
 async def list_articles_for_trigger(
     trigger_id: str,
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(50, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     tag_ids: str = Query("", description="CSV of tag IDs to AND-filter"),
+    symbol: str = Query("", description="Filter articles whose symbols CSV contains this ticker"),
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> ArticleListResponse:
@@ -190,10 +191,20 @@ async def list_articles_for_trigger(
     rows, total = default_news_store.list_articles_for_trigger(
         db,
         trigger_id=trigger_id,
-        limit=limit,
-        offset=offset,
+        # When a symbol filter is supplied we apply it post-DB; widen the
+        # SQL window to avoid losing matches that got paginated out.
+        limit=limit if not symbol else 1000,
+        offset=offset if not symbol else 0,
         tag_ids=tag_filter,
     )
+    if symbol:
+        tk = symbol.strip().upper()
+        rows = [
+            r for r in rows
+            if tk in {s.strip().upper() for s in r.symbols.split(",") if s.strip()}
+        ]
+        total = len(rows)
+        rows = rows[offset : offset + limit]
     fb_map = _my_feedback_map(db, user.id, [r.id for r in rows])
     return ArticleListResponse(
         items=[

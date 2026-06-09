@@ -56,44 +56,24 @@ export const TRIGGERS: AgentTrigger[] = [
   },
   {
     id: "trg-news-002",
-    name: "公司个体 · Yahoo per-ticker 新闻流",
+    name: "公司监听 · 总流",
     kind: "news",
     watchlist_ids: ["us-aapl", "us-nvda", "us-msft", "us-googl", "us-tsla"],
     skill: "uteki",
     condition:
-      "Yahoo Finance Search per-ticker；启发式相关度过滤（title 含 ticker / 公司主词 / Yahoo primary tag）。",
-    cadence: "每 60 分钟扫描",
+      "watchlist 公司全部信号：Google News per-ticker + SEC 8-K (管理层/监管/并购) + 10-Q/10-K (财报)。按 ticker 分组浏览，按 事件 tag 过滤。",
+    cadence: "Google News 每 60 分钟 · SEC 每日",
     enabled: true,
     last_triggered_at: NOW - 1 * HOUR,
     next_check_at: NOW + 8 * 60,
     last_status: "listening",
   },
-  {
-    id: "trg-earnings-002",
-    name: "财报发布 / 电话会 transcript",
-    kind: "earnings",
-    watchlist_ids: ["us-nvda", "us-msft", "us-aapl"],
-    skill: "company_research_pipeline",
-    condition: "10-Q / 10-K / earnings transcript becomes available",
-    cadence: "交易日盘前 + 盘后",
-    enabled: true,
-    last_triggered_at: NOW - 2 * DAY,
-    next_check_at: NOW + 3 * HOUR,
-    last_status: "ok",
-  },
-  {
-    id: "trg-event-003",
-    name: "监管 / 诉讼 / 并购事件",
-    kind: "event",
-    watchlist_ids: ["us-googl", "us-tsla"],
-    skill: "research",
-    condition: "SEC filing, antitrust, M&A, guidance revision",
-    cadence: "事件源 webhook + 每日补扫",
-    enabled: true,
-    last_triggered_at: NOW - 9 * HOUR,
-    next_check_at: NOW + 42 * 60,
-    last_status: "ok",
-  },
+  // trg-earnings-002 + trg-event-003 retired in P8.5 — both signals now
+  // flow into the unified trg-news-002 "公司监听" stream with proper
+  // 事件 tags (earnings / regulation / m_and_a / guidance) so users can
+  // filter by event type instead of switching pages. The page IDs are
+  // still safe to receive trigger_hits in the DB; the registry just
+  // doesn't expose them to the UI anymore.
   {
     id: "trg-price-004",
     name: "价格 / 成交量异常",
