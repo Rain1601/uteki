@@ -14,7 +14,7 @@ import {
   ThumbsUp,
   XCircle,
 } from "lucide-react";
-import { PageContainer, PageHeader } from "@/components/ui/PageHeader";
+import { PageContainer } from "@/components/ui/PageHeader";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
@@ -201,14 +201,44 @@ export default function TriggerDetailPage() {
 
   const Icon = KIND_ICON[trigger.kind];
 
+  // Viewport-locked layout: header strip at top stays put, left aside is
+  // fixed in viewport (filter + calendar always visible), only the right
+  // main column scrolls. Matches the /company-agent shell pattern.
   return (
-    <PageContainer>
-      <PageHeader
-        eyebrow={`TRIGGER · ${KIND_LABEL[trigger.kind].toUpperCase()}`}
-        title={trigger.name}
-        subtitle={trigger.condition}
-        actions={
-          <>
+    <div className="flex h-screen flex-col overflow-hidden paper-grain">
+      {/* Header strip — non-scrolling. Compact PageHeader-style layout
+          plus the trigger meta inline so the top doesn't eat too much
+          vertical space (4 rows of meta + 3 lines of header = too tall). */}
+      <div className="shrink-0 border-b border-[var(--line)] px-8 py-5">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div className="min-w-0">
+            <div className="eyebrow mb-2">
+              TRIGGER · {KIND_LABEL[trigger.kind].toUpperCase()}
+            </div>
+            <div className="flex items-center gap-3">
+              <span
+                className={cn(
+                  "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border",
+                  trigger.enabled
+                    ? "border-[var(--accent-line)] bg-[var(--accent-soft)] text-[var(--accent)]"
+                    : "border-[var(--line)] text-[var(--ink-faint)]",
+                )}
+              >
+                <Icon size={15} />
+              </span>
+              <h1 className="font-display text-[26px] italic leading-none text-[var(--ink)]">
+                {trigger.name}
+              </h1>
+              <Badge tone={trigger.enabled ? "gain" : "neutral"}>
+                {trigger.enabled ? "listening" : "paused"}
+              </Badge>
+              <Badge>{trigger.skill}</Badge>
+            </div>
+            <div className="mt-2 max-w-3xl text-[12px] leading-relaxed text-[var(--ink-muted)]">
+              {trigger.condition} · <span className="text-[var(--ink-faint)]">{trigger.cadence}</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
             <Link
               href="/tasks"
               className="inline-flex items-center gap-1 font-mono text-[11px] tracking-[0.05em] text-[var(--ink-muted)] hover:text-[var(--ink)]"
@@ -222,100 +252,80 @@ export default function TriggerDetailPage() {
               />
               刷新
             </Button>
-          </>
-        }
-      />
+          </div>
+        </div>
+      </div>
 
-      {/* Trigger meta strip */}
-      <Card className="mb-6">
-        <CardBody className="grid gap-4 md:grid-cols-4">
-          <Meta label="AGENT">
-            <Badge>{trigger.skill}</Badge>
-          </Meta>
-          <Meta label="CADENCE">{trigger.cadence}</Meta>
-          <Meta label="STATUS">
-            <Badge tone={trigger.enabled ? "gain" : "neutral"}>
-              {trigger.enabled ? "listening" : "paused"}
-            </Badge>
-          </Meta>
-          <Meta label="ICON">
-            <span
-              className={cn(
-                "inline-flex h-7 w-7 items-center justify-center rounded-md border",
-                trigger.enabled
-                  ? "border-[var(--accent-line)] bg-[var(--accent-soft)] text-[var(--accent)]"
-                  : "border-[var(--line)] text-[var(--ink-faint)]",
+      {/* Body: fixed-width aside (no scroll on the column itself, internal
+          scroll if filter is super tall) + flexible main with its own
+          scrollbar so long feeds don't push the aside out of view. */}
+      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)]">
+        {/* Filter rail — fixed in viewport */}
+        <aside className="min-h-0 overflow-y-auto border-r border-[var(--line)] px-6 py-5 lg:border-b-0">
+          <div className="space-y-5">
+            {articles.length > 0 && (
+              <MiniDensityCalendar
+                articles={articles}
+                onPickDate={(date) => {
+                  const target = articles.find((a) => a.published_at.startsWith(date));
+                  if (target) {
+                    document
+                      .getElementById(`article-${target.id}`)
+                      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }
+                }}
+              />
+            )}
+            <div className="flex items-center justify-between">
+              <div className="eyebrow">FILTER</div>
+              {selectedTagIds.size > 0 && (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="inline-flex items-center gap-1 font-mono text-[10px] tracking-[0.05em] text-[var(--ink-muted)] hover:text-[var(--accent)]"
+                >
+                  <XCircle size={11} />
+                  清空 ({selectedTagIds.size})
+                </button>
               )}
-            >
-              <Icon size={14} />
-            </span>
-          </Meta>
-        </CardBody>
-      </Card>
-
-      <div className="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
-        {/* Filter rail */}
-        <aside className="space-y-5">
-          {articles.length > 0 && (
-            <MiniDensityCalendar
-              articles={articles}
-              onPickDate={(date) => {
-                const target = articles.find((a) => a.published_at.startsWith(date));
-                if (target) {
-                  document
-                    .getElementById(`article-${target.id}`)
-                    ?.scrollIntoView({ behavior: "smooth", block: "start" });
-                }
-              }}
-            />
-          )}
-          <div className="flex items-center justify-between">
-            <div className="eyebrow">FILTER</div>
-            {selectedTagIds.size > 0 && (
-              <button
-                type="button"
-                onClick={clearFilters}
-                className="inline-flex items-center gap-1 font-mono text-[10px] tracking-[0.05em] text-[var(--ink-muted)] hover:text-[var(--accent)]"
-              >
-                <XCircle size={11} />
-                清空 ({selectedTagIds.size})
-              </button>
+            </div>
+            {loadingTaxonomy && (
+              <div className="flex items-center gap-2 text-[11px] text-[var(--ink-muted)]">
+                <Loader2 size={12} className="animate-spin" /> loading taxonomy…
+              </div>
+            )}
+            {groups.map((group) => (
+              <FilterGroup
+                key={group.id}
+                group={group}
+                selectedIds={selectedTagIds}
+                onToggle={(tag) => toggleTag(tag, group)}
+              />
+            ))}
+            {!loadingTaxonomy && groups.length === 0 && (
+              <p className="text-[11px] leading-relaxed text-[var(--ink-faint)]">
+                还没有标签 taxonomy。
+                <Link
+                  href="/admin/tags"
+                  className="ml-1 text-[var(--accent)] hover:underline"
+                >
+                  去管理 →
+                </Link>
+              </p>
             )}
           </div>
-          {loadingTaxonomy && (
-            <div className="flex items-center gap-2 text-[11px] text-[var(--ink-muted)]">
-              <Loader2 size={12} className="animate-spin" /> loading taxonomy…
-            </div>
-          )}
-          {groups.map((group) => (
-            <FilterGroup
-              key={group.id}
-              group={group}
-              selectedIds={selectedTagIds}
-              onToggle={(tag) => toggleTag(tag, group)}
-            />
-          ))}
-          {!loadingTaxonomy && groups.length === 0 && (
-            <p className="text-[11px] leading-relaxed text-[var(--ink-faint)]">
-              还没有标签 taxonomy。
-              <Link
-                href="/admin/tags"
-                className="ml-1 text-[var(--accent)] hover:underline"
-              >
-                去管理 →
-              </Link>
-            </p>
-          )}
         </aside>
 
-        {/* News feed */}
-        <main className="space-y-3">
-          <div className="flex items-center justify-between font-mono text-[10px] tracking-[0.08em] text-[var(--ink-faint)]">
+        {/* News feed — own scrollbar */}
+        <main className="min-h-0 overflow-y-auto px-6 py-5 xl:px-8">
+          <div className="mb-3 flex items-center justify-between font-mono text-[10px] tracking-[0.08em] text-[var(--ink-faint)]">
             <span>{total} articles</span>
-            {selectedTagIds.size > 0 && <span>filtered by {selectedTagIds.size} tag(s)</span>}
+            {selectedTagIds.size > 0 && (
+              <span>filtered by {selectedTagIds.size} tag(s)</span>
+            )}
           </div>
           {error && (
-            <div className="border border-[color-mix(in_srgb,var(--loss)_40%,transparent)] bg-[color-mix(in_srgb,var(--loss)_8%,transparent)] px-4 py-3 font-mono text-[11px] text-[var(--loss)]">
+            <div className="mb-3 border border-[color-mix(in_srgb,var(--loss)_40%,transparent)] bg-[color-mix(in_srgb,var(--loss)_8%,transparent)] px-4 py-3 font-mono text-[11px] text-[var(--loss)]">
               {error}
             </div>
           )}
@@ -334,21 +344,23 @@ export default function TriggerDetailPage() {
               </CardBody>
             </Card>
           )}
-          {articles.map((article) => (
-            <ArticleCard
-              key={article.id}
-              article={article}
-              tagById={tagById}
-              onPatch={(patch) =>
-                setArticles((prev) =>
-                  prev.map((a) => (a.id === article.id ? { ...a, ...patch } : a)),
-                )
-              }
-            />
-          ))}
+          <div className="space-y-3">
+            {articles.map((article) => (
+              <ArticleCard
+                key={article.id}
+                article={article}
+                tagById={tagById}
+                onPatch={(patch) =>
+                  setArticles((prev) =>
+                    prev.map((a) => (a.id === article.id ? { ...a, ...patch } : a)),
+                  )
+                }
+              />
+            ))}
+          </div>
         </main>
       </div>
-    </PageContainer>
+    </div>
   );
 }
 
