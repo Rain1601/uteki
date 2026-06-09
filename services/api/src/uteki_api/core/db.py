@@ -81,6 +81,7 @@ def init_db() -> None:
     from uteki_api.news.models import (  # noqa: F401
         ArticleTag,
         NewsArticle,
+        NewsFeedback,
         Tag,
         TagGroup,
         TriggerHit,

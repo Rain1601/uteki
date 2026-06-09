@@ -10,6 +10,8 @@ import {
   RefreshCw,
   Sparkles,
   Square,
+  ThumbsDown,
+  ThumbsUp,
   XCircle,
 } from "lucide-react";
 import { PageContainer, PageHeader } from "@/components/ui/PageHeader";
@@ -17,7 +19,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { API_BASE } from "@/lib/api-base";
-import { streamNewsAnalyze } from "@/lib/api";
+import { setNewsFeedback, streamNewsAnalyze } from "@/lib/api";
 import { authedFetch } from "@/lib/auth";
 import { getTrigger, KIND_ICON, KIND_LABEL } from "@/lib/triggers";
 import { cn } from "@/lib/cn";
@@ -58,6 +60,7 @@ interface ArticleSummary {
   like_count: number;
   dislike_count: number;
   tag_ids: string[];
+  my_feedback: "like" | "dislike" | null;
 }
 
 interface ArticleListResponse {
@@ -252,7 +255,20 @@ export default function TriggerDetailPage() {
 
       <div className="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
         {/* Filter rail */}
-        <aside className="space-y-4">
+        <aside className="space-y-5">
+          {articles.length > 0 && (
+            <MiniDensityCalendar
+              articles={articles}
+              onPickDate={(date) => {
+                const target = articles.find((a) => a.published_at.startsWith(date));
+                if (target) {
+                  document
+                    .getElementById(`article-${target.id}`)
+                    ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }
+              }}
+            />
+          )}
           <div className="flex items-center justify-between">
             <div className="eyebrow">FILTER</div>
             {selectedTagIds.size > 0 && (
@@ -323,6 +339,11 @@ export default function TriggerDetailPage() {
               key={article.id}
               article={article}
               tagById={tagById}
+              onPatch={(patch) =>
+                setArticles((prev) =>
+                  prev.map((a) => (a.id === article.id ? { ...a, ...patch } : a)),
+                )
+              }
             />
           ))}
         </main>
@@ -396,9 +417,11 @@ function FilterGroup({
 function ArticleCard({
   article,
   tagById,
+  onPatch,
 }: {
   article: ArticleSummary;
   tagById: Map<string, Tag>;
+  onPatch: (patch: Partial<ArticleSummary>) => void;
 }) {
   const articleTags = article.tag_ids
     .map((id) => tagById.get(id))
@@ -409,7 +432,26 @@ function ArticleCard({
   const [analyzeImpact, setAnalyzeImpact] = useState<string | null>(article.impact);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
   const [aborter, setAborter] = useState<AbortController | null>(null);
+  const [feedbackPending, setFeedbackPending] = useState(false);
   const expanded = analyzing || analyzeText.length > 0 || analyzeError !== null;
+
+  async function vote(kind: "like" | "dislike") {
+    // Toggle: clicking the active vote clears it.
+    const next = article.my_feedback === kind ? null : kind;
+    setFeedbackPending(true);
+    try {
+      const result = await setNewsFeedback(article.id, next);
+      onPatch({
+        my_feedback: result.my_feedback,
+        like_count: result.like_count,
+        dislike_count: result.dislike_count,
+      });
+    } catch {
+      // Swallow — keep UI responsive; user can retry.
+    } finally {
+      setFeedbackPending(false);
+    }
+  }
 
   async function runAnalyze() {
     setAnalyzeText("");
@@ -443,7 +485,8 @@ function ArticleCard({
   }
 
   return (
-    <Card className="overflow-hidden">
+    <Card className="overflow-hidden scroll-mt-6" as="article">
+      <div id={`article-${article.id}`} />
       <CardHeader>
         <div className="flex flex-wrap items-start gap-3">
           <div className="min-w-0 flex-1">
@@ -527,6 +570,20 @@ function ArticleCard({
               {t.name}
             </span>
           ))}
+          <FeedbackButton
+            kind="like"
+            active={article.my_feedback === "like"}
+            count={article.like_count}
+            pending={feedbackPending}
+            onClick={() => vote("like")}
+          />
+          <FeedbackButton
+            kind="dislike"
+            active={article.my_feedback === "dislike"}
+            count={article.dislike_count}
+            pending={feedbackPending}
+            onClick={() => vote("dislike")}
+          />
           <Button
             size="sm"
             variant="ghost"
@@ -583,4 +640,142 @@ function impactTone(impact: string): "gain" | "loss" | "warn" | "neutral" {
   if (impact === "negative") return "loss";
   if (impact === "neutral") return "neutral";
   return "warn";
+}
+
+function FeedbackButton({
+  kind,
+  active,
+  count,
+  pending,
+  onClick,
+}: {
+  kind: "like" | "dislike";
+  active: boolean;
+  count: number;
+  pending: boolean;
+  onClick: () => void;
+}) {
+  const Icon = kind === "like" ? ThumbsUp : ThumbsDown;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={pending}
+      title={kind === "like" ? "有帮助" : "不准确 / 没价值"}
+      className={cn(
+        "inline-flex h-7 items-center gap-1 rounded-sm border px-2 font-mono text-[10px] tracking-[0.04em] transition-colors",
+        active
+          ? kind === "like"
+            ? "border-[color-mix(in_srgb,var(--gain)_50%,transparent)] bg-[color-mix(in_srgb,var(--gain)_8%,transparent)] text-[var(--gain)]"
+            : "border-[color-mix(in_srgb,var(--loss)_50%,transparent)] bg-[color-mix(in_srgb,var(--loss)_8%,transparent)] text-[var(--loss)]"
+          : "border-[var(--line)] text-[var(--ink-muted)] hover:text-[var(--ink-soft)]",
+        pending && "opacity-50",
+      )}
+    >
+      <Icon size={11} />
+      {count > 0 && <span>{count}</span>}
+    </button>
+  );
+}
+
+// ─── Mini calendar (article density) ─────────────────────────────────
+
+/** Compact density grid showing the last 28 days of article volume.
+ *  Each cell is colored by article count for that day; dots flag the
+ *  highest-impact article on that day. Click → scroll feed to first
+ *  article from that date. Decorative — doesn't filter, just navigates. */
+function MiniDensityCalendar({
+  articles,
+  onPickDate,
+}: {
+  articles: ArticleSummary[];
+  onPickDate: (date: string) => void;
+}) {
+  const byDate = useMemo(() => {
+    const map = new Map<string, { count: number; topImpact: string | null }>();
+    for (const a of articles) {
+      const day = a.published_at.slice(0, 10);
+      const cur = map.get(day) ?? { count: 0, topImpact: null };
+      cur.count += 1;
+      // critical (negative) > high (positive) > low — rough ordering for color
+      if (!cur.topImpact || rankImpact(a.impact) > rankImpact(cur.topImpact)) {
+        cur.topImpact = a.impact;
+      }
+      map.set(day, cur);
+    }
+    return map;
+  }, [articles]);
+
+  const today = new Date();
+  const days: { iso: string; label: number; count: number; topImpact: string | null }[] = [];
+  for (let i = 27; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const iso = d.toISOString().slice(0, 10);
+    const stat = byDate.get(iso);
+    days.push({
+      iso,
+      label: d.getDate(),
+      count: stat?.count ?? 0,
+      topImpact: stat?.topImpact ?? null,
+    });
+  }
+
+  return (
+    <div>
+      <div className="mb-2 flex items-baseline justify-between">
+        <div className="eyebrow">DENSITY · 28D</div>
+        <span className="font-mono text-[9px] tracking-[0.1em] text-[var(--ink-faint)]">
+          {articles.length} hits
+        </span>
+      </div>
+      <div className="grid grid-cols-7 gap-[3px]">
+        {days.map((d) => (
+          <button
+            key={d.iso}
+            type="button"
+            onClick={() => d.count > 0 && onPickDate(d.iso)}
+            disabled={d.count === 0}
+            title={`${d.iso} — ${d.count} 篇`}
+            className={cn(
+              "group relative aspect-square rounded-[3px] border transition-all",
+              d.count === 0
+                ? "border-[var(--line)] bg-[var(--surface)] opacity-40"
+                : "border-[var(--line-strong)] hover:scale-110 cursor-pointer",
+            )}
+            style={
+              d.count > 0
+                ? {
+                    backgroundColor: densityColor(d.count, d.topImpact),
+                  }
+                : undefined
+            }
+          >
+            <span className="absolute inset-0 flex items-center justify-center font-mono text-[8px] tracking-[0.02em] text-[var(--ink-faint)] group-hover:text-[var(--ink-soft)]">
+              {d.label}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function rankImpact(impact: string | null): number {
+  if (impact === "negative") return 3;
+  if (impact === "positive") return 2;
+  if (impact === "neutral") return 1;
+  return 0;
+}
+
+function densityColor(count: number, impact: string | null): string {
+  // Hue from impact, alpha from count.
+  const base =
+    impact === "negative"
+      ? "176, 82, 74"
+      : impact === "positive"
+        ? "111, 175, 141"
+        : "109, 164, 199";
+  const alpha = Math.min(0.18 + count * 0.18, 0.65);
+  return `rgba(${base}, ${alpha})`;
 }

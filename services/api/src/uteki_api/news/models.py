@@ -96,3 +96,17 @@ class TriggerHit(SQLModel, table=True):
         foreign_key="news_article.id", index=True, max_length=64
     )
     fired_at: datetime = Field(index=True)
+
+
+class NewsFeedback(SQLModel, table=True):
+    __tablename__ = "news_feedback"
+    __table_args__ = (UniqueConstraint("user_id", "article_id"),)
+
+    id: str = Field(primary_key=True, max_length=64)
+    user_id: str = Field(foreign_key="user.id", index=True, max_length=64)
+    article_id: str = Field(
+        foreign_key="news_article.id", index=True, max_length=64
+    )
+    kind: str = Field(max_length=8)  # like | dislike
+    created_at: datetime
+    updated_at: datetime

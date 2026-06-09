@@ -12,6 +12,7 @@ applied to articles via the ArticleTag join.
 from uteki_api.news.models import (
     ArticleTag,
     NewsArticle,
+    NewsFeedback,
     Tag,
     TagGroup,
     TriggerHit,
@@ -21,6 +22,7 @@ from uteki_api.news.store import NewsStore, default_news_store
 __all__ = [
     "ArticleTag",
     "NewsArticle",
+    "NewsFeedback",
     "NewsStore",
     "Tag",
     "TagGroup",

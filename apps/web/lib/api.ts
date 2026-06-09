@@ -326,6 +326,28 @@ export type NewsAnalyzeEvent =
  * Caller pattern is identical to ``streamChat`` — for-await-of the
  * generator, abort via the passed AbortSignal.
  */
+export interface NewsFeedbackResponse {
+  article_id: string;
+  my_feedback: "like" | "dislike" | null;
+  like_count: number;
+  dislike_count: number;
+}
+
+/** Toggle / set / clear a user's feedback on a news article.
+ *  Pass null as kind to clear. */
+export async function setNewsFeedback(
+  articleId: string,
+  kind: "like" | "dislike" | null,
+): Promise<NewsFeedbackResponse> {
+  const r = await authedFetch(`${API_BASE}/api/news/${articleId}/feedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind }),
+  });
+  if (!r.ok) throw new Error((await r.text()) || `feedback failed: ${r.status}`);
+  return (await r.json()) as NewsFeedbackResponse;
+}
+
 export async function* streamNewsAnalyze(
   articleId: string,
   signal?: AbortSignal,

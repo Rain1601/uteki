@@ -31,8 +31,9 @@ from uteki_api.core.db import get_db
 from uteki_api.llm.router import default_router
 from uteki_api.llm.usage import UsageDelta
 from uteki_api.schemas.chat import ChatMessage
-from uteki_api.news.models import NewsArticle
+from uteki_api.news.models import NewsArticle, NewsFeedback
 from uteki_api.news.store import default_news_store
+from sqlmodel import select as sql_select
 from uteki_api.users.models import User
 
 logger = logging.getLogger(__name__)
@@ -77,6 +78,7 @@ class ArticleSummary(BaseModel):
     like_count: int
     dislike_count: int
     tag_ids: list[str]
+    my_feedback: str | None = None  # "like" | "dislike" | null per the calling user
 
 
 class ArticleDetail(ArticleSummary):
@@ -97,7 +99,11 @@ def _split_csv(raw: str) -> list[str]:
     return [s.strip() for s in raw.split(",") if s.strip()]
 
 
-def _summary(article: NewsArticle, tag_ids: list[str]) -> ArticleSummary:
+def _summary(
+    article: NewsArticle,
+    tag_ids: list[str],
+    my_feedback: str | None = None,
+) -> ArticleSummary:
     return ArticleSummary(
         id=article.id,
         title=article.title,
@@ -114,6 +120,7 @@ def _summary(article: NewsArticle, tag_ids: list[str]) -> ArticleSummary:
         like_count=article.like_count,
         dislike_count=article.dislike_count,
         tag_ids=tag_ids,
+        my_feedback=my_feedback,
     )
 
 
@@ -153,6 +160,20 @@ async def list_tag_groups_public(
     return result
 
 
+def _my_feedback_map(
+    db: Session, user_id: str, article_ids: list[str]
+) -> dict[str, str]:
+    if not article_ids:
+        return {}
+    rows = db.exec(
+        sql_select(NewsFeedback).where(
+            NewsFeedback.user_id == user_id,
+            NewsFeedback.article_id.in_(article_ids),  # type: ignore[attr-defined]
+        )
+    ).all()
+    return {row.article_id: row.kind for row in rows}
+
+
 @router.get(
     "/api/triggers/{trigger_id}/news",
     response_model=ArticleListResponse,
@@ -162,7 +183,7 @@ async def list_articles_for_trigger(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     tag_ids: str = Query("", description="CSV of tag IDs to AND-filter"),
-    _user: User = Depends(current_user),
+    user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> ArticleListResponse:
     tag_filter = _split_csv(tag_ids) or None
@@ -173,9 +194,14 @@ async def list_articles_for_trigger(
         offset=offset,
         tag_ids=tag_filter,
     )
+    fb_map = _my_feedback_map(db, user.id, [r.id for r in rows])
     return ArticleListResponse(
         items=[
-            _summary(article, default_news_store.article_tags(db, article.id))
+            _summary(
+                article,
+                default_news_store.article_tags(db, article.id),
+                fb_map.get(article.id),
+            )
             for article in rows
         ],
         total=total,
@@ -322,19 +348,68 @@ async def analyze_article(
 @router.get("/api/news/{article_id}", response_model=ArticleDetail)
 async def get_article(
     article_id: str,
-    _user: User = Depends(current_user),
+    user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> ArticleDetail:
     article = default_news_store.get_article(db, article_id)
     if article is None:
         raise HTTPException(404, detail=f"article {article_id} not found")
     tag_ids = default_news_store.article_tags(db, article_id)
+    feedback = default_news_store.get_feedback(
+        db, user_id=user.id, article_id=article_id
+    )
     return ArticleDetail(
-        **_summary(article, tag_ids).model_dump(),
+        **_summary(article, tag_ids, feedback.kind if feedback else None).model_dump(),
         content=article.content,
         content_zh=article.content_zh,
         ai_analysis=article.ai_analysis,
         ai_analyzed_at=(
             article.ai_analyzed_at.isoformat() if article.ai_analyzed_at else None
         ),
+    )
+
+
+# ─── Feedback ────────────────────────────────────────────────────────
+
+
+class FeedbackBody(BaseModel):
+    kind: str | None  # "like" | "dislike" | null (clear)
+
+
+class FeedbackResponse(BaseModel):
+    article_id: str
+    my_feedback: str | None
+    like_count: int
+    dislike_count: int
+
+
+@router.post("/api/news/{article_id}/feedback", response_model=FeedbackResponse)
+async def set_feedback(
+    article_id: str,
+    body: FeedbackBody,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> FeedbackResponse:
+    """Set / toggle / clear the calling user's feedback on an article.
+
+    Body shape: ``{"kind": "like" | "dislike" | null}``. Null clears.
+    A user can only ever have one feedback row per article — toggling
+    swaps the kind rather than stacking, and the denormalized counters
+    on the article are kept in sync atomically with the feedback row.
+    """
+    if body.kind not in {"like", "dislike", None}:
+        raise HTTPException(
+            422, detail="kind must be 'like', 'dislike', or null"
+        )
+    try:
+        article, feedback = default_news_store.set_feedback(
+            db, user_id=user.id, article_id=article_id, kind=body.kind
+        )
+    except KeyError as e:
+        raise HTTPException(404, detail=f"article {article_id} not found") from e
+    return FeedbackResponse(
+        article_id=article.id,
+        my_feedback=feedback.kind if feedback else None,
+        like_count=article.like_count,
+        dislike_count=article.dislike_count,
     )

@@ -18,6 +18,7 @@ from sqlmodel import Session, select
 from uteki_api.news.models import (
     ArticleTag,
     NewsArticle,
+    NewsFeedback,
     Tag,
     TagGroup,
     TriggerHit,
@@ -138,6 +139,23 @@ class NewsStore(ABC):
         article_id: str,
         fired_at: datetime | None = None,
     ) -> TriggerHit: ...
+
+    # ─── Feedback ─────────────────────────────────────────────────────
+    @abstractmethod
+    def get_feedback(
+        self, db: Session, *, user_id: str, article_id: str
+    ) -> NewsFeedback | None: ...
+
+    @abstractmethod
+    def set_feedback(
+        self, db: Session, *, user_id: str, article_id: str, kind: str | None
+    ) -> tuple[NewsArticle, NewsFeedback | None]:
+        """Set / toggle / clear a user's feedback on an article.
+
+        Returns the updated ``NewsArticle`` (with refreshed counters) and
+        the resulting feedback row (None if cleared).
+        """
+        ...
 
 
 class SqlNewsStore(NewsStore):
@@ -401,6 +419,68 @@ class SqlNewsStore(NewsStore):
         db.commit()
         db.refresh(hit)
         return hit
+
+    # ─── Feedback ─────────────────────────────────────────────────────
+    def get_feedback(
+        self, db: Session, *, user_id: str, article_id: str
+    ) -> NewsFeedback | None:
+        return db.exec(
+            select(NewsFeedback).where(
+                NewsFeedback.user_id == user_id,
+                NewsFeedback.article_id == article_id,
+            )
+        ).first()
+
+    def set_feedback(
+        self, db: Session, *, user_id: str, article_id: str, kind: str | None
+    ) -> tuple[NewsArticle, NewsFeedback | None]:
+        existing = self.get_feedback(db, user_id=user_id, article_id=article_id)
+        article = db.get(NewsArticle, article_id)
+        if article is None:
+            raise KeyError(article_id)
+
+        previous_kind = existing.kind if existing else None
+        now = _utcnow()
+
+        # Determine the resulting feedback row (or absence).
+        result: NewsFeedback | None
+        if kind is None:
+            # Clear feedback.
+            if existing is not None:
+                db.delete(existing)
+            result = None
+        elif existing is None:
+            result = NewsFeedback(
+                id=_new_id(),
+                user_id=user_id,
+                article_id=article_id,
+                kind=kind,
+                created_at=now,
+                updated_at=now,
+            )
+            db.add(result)
+        else:
+            existing.kind = kind
+            existing.updated_at = now
+            db.add(existing)
+            result = existing
+
+        # Adjust the article's denormalized counters.
+        if previous_kind == "like":
+            article.like_count = max(0, article.like_count - 1)
+        elif previous_kind == "dislike":
+            article.dislike_count = max(0, article.dislike_count - 1)
+        if kind == "like":
+            article.like_count += 1
+        elif kind == "dislike":
+            article.dislike_count += 1
+        db.add(article)
+
+        db.commit()
+        db.refresh(article)
+        if result is not None:
+            db.refresh(result)
+        return article, result
 
 
 default_news_store: NewsStore = SqlNewsStore()
