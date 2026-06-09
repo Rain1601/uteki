@@ -13,6 +13,7 @@ import {
   Pin,
   PinOff,
   Users,
+  Tags,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { canAdmin, canOperate, type AuthUser } from "@/lib/auth";
@@ -63,6 +64,7 @@ const SECTIONS: NavSection[] = [
     gate: "admin",
     items: [
       { href: "/admin/users", label: "用户", icon: Users },
+      { href: "/admin/tags", label: "标签", icon: Tags },
     ],
   },
 ];
