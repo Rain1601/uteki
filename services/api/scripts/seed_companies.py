@@ -33,6 +33,7 @@ SEED: list[dict] = [
         "sector": "Internet",
         "peers": ["META", "MSFT", "AMZN"],
         "cik": "0001652044",
+        "ir_rss_url": "https://blog.google/rss/",
         "verdict": "BUY",
         "conviction": 0.7,
     },
@@ -53,6 +54,7 @@ SEED: list[dict] = [
         "sector": "AI Chips",
         "peers": ["AMD", "AVGO", "INTC"],
         "cik": "0001045810",
+        "ir_rss_url": "https://blogs.nvidia.com/feed/",
         "verdict": "WATCH",
         "conviction": 0.55,
     },
@@ -63,6 +65,7 @@ SEED: list[dict] = [
         "sector": "Consumer Tech",
         "peers": ["MSFT", "GOOGL", "META"],
         "cik": "0000320193",
+        "ir_rss_url": "https://www.apple.com/newsroom/rss-feed.rss",
         "verdict": "WATCH",
         "conviction": 0.5,
     },
@@ -73,6 +76,8 @@ SEED: list[dict] = [
         "sector": "Cloud",
         "peers": ["GOOGL", "AMZN", "ORCL"],
         "cik": "0000789019",
+        # MSFT IR RSS at news.microsoft.com/feed/ returns 403 — anti-bot.
+        # Skip until we find a working URL.
         "verdict": "UNRATED",
     },
     {
@@ -82,6 +87,7 @@ SEED: list[dict] = [
         "sector": "Auto",
         "peers": ["GM", "F", "RIVN"],
         "cik": "0001318605",
+        # Tesla doesn't publish a public IR RSS.
         "verdict": "AVOID",
         "conviction": 0.35,
     },
