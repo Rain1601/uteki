@@ -540,6 +540,49 @@ export default function CompanyAgentPage() {
         </aside>
 
         <main className="min-h-0 overflow-y-auto px-6 py-8 xl:px-10">
+          {/* Inline K线 panel. Renders ABOVE the form when the user clicks
+              the chart icon on a watchlist row. Uses an outer grid wrapper
+              with `chart-grow` (0fr → 1fr) so the rest of the work area
+              slides down smoothly; inner section runs `chart-reveal`
+              (fade + lift + blur) so the chart fades into place. The
+              `key={chartItem.symbol}` re-mounts the TradingView widget
+              cleanly when the user opens a different ticker. */}
+          {chartItem && (
+            <div
+              className="mb-7 grid overflow-hidden"
+              style={{ animation: "chart-grow 380ms var(--ease-out) both" }}
+            >
+              <section
+                key={chartItem.symbol}
+                className="min-h-0 overflow-hidden border border-[var(--line-strong)] bg-[color-mix(in_srgb,var(--surface)_70%,transparent)] shadow-[0_8px_28px_rgba(0,0,0,0.18)]"
+                style={{ animation: "chart-reveal 420ms var(--ease-out) both" }}
+              >
+                <div className="flex flex-wrap items-baseline gap-3 border-b border-[var(--line)] px-5 py-3">
+                  <div className="font-display text-[22px] italic leading-none text-[var(--ink)]">
+                    {chartItem.symbol}
+                  </div>
+                  <div className="font-display text-[13px] italic text-[var(--ink-muted)]">
+                    {chartItem.name}
+                  </div>
+                  <span className="font-mono text-[10px] tracking-[0.10em] text-[var(--ink-faint)]">
+                    {toTradingViewSymbol(chartItem)} · EMA20 · SMA50
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setChartItem(null)}
+                    className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded border border-[var(--line-strong)] text-[var(--ink-muted)] transition-colors hover:border-[var(--accent-line)] hover:text-[var(--accent)]"
+                    aria-label="关闭 K 线"
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+                <div className="h-[460px]">
+                  <TradingViewChart symbol={toTradingViewSymbol(chartItem)} />
+                </div>
+              </section>
+            </div>
+          )}
+
           {/* Flex-wrap form bar: SYMBOL is fixed width, PEERS flexes, buttons
               hug right. Below xl (~14" laptops with two side asides) the
               buttons may wrap to the next row — which is fine, the form
@@ -719,72 +762,6 @@ export default function CompanyAgentPage() {
         </aside>
       </div>
 
-      {/* TradingView K线 modal — opens when user clicks the chart icon on
-          any watchlist card. ESC / click-backdrop / × button to close.
-          We unmount the chart on close (TradingView widget owns its DOM,
-          re-mounting is the only clean way to swap symbols). */}
-      {chartItem && (
-        <ChartModal item={chartItem} onClose={() => setChartItem(null)} />
-      )}
-    </div>
-  );
-}
-
-function ChartModal({
-  item,
-  onClose,
-}: {
-  item: CompanyWatchItem;
-  onClose: () => void;
-}) {
-  const tvSymbol = toTradingViewSymbol(item);
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", onKey);
-    // Lock body scroll while modal is open
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prev;
-    };
-  }, [onClose]);
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div
-        className="relative flex h-[640px] max-h-[88vh] w-[1080px] max-w-[92vw] flex-col overflow-hidden rounded-[var(--r-lg)] border border-[var(--line-strong)] bg-[var(--surface)] shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex shrink-0 items-baseline gap-3 border-b border-[var(--line)] px-5 py-3">
-          <div className="font-display text-[22px] italic leading-none text-[var(--ink)]">
-            {item.symbol}
-          </div>
-          <div className="font-display text-[13px] italic text-[var(--ink-muted)]">
-            {item.name}
-          </div>
-          <span className="font-mono text-[10px] tracking-[0.10em] text-[var(--ink-faint)]">
-            {tvSymbol} · EMA20 · SMA50
-          </span>
-          <button
-            type="button"
-            onClick={onClose}
-            className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded border border-[var(--line-strong)] text-[var(--ink-muted)] hover:border-[var(--accent-line)] hover:text-[var(--accent)] transition-colors"
-            aria-label="关闭 K 线"
-          >
-            <X size={13} />
-          </button>
-        </div>
-        <div className="min-h-0 flex-1">
-          <TradingViewChart symbol={tvSymbol} />
-        </div>
-      </div>
     </div>
   );
 }
