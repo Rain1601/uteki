@@ -311,3 +311,66 @@ export async function reloadSkills(): Promise<{
   });
   return r.json();
 }
+
+// ─── News analysis SSE ─────────────────────────────────────────────
+
+export type NewsAnalyzeEvent =
+  | { type: "delta"; content: string }
+  | { type: "done"; impact: string | null; analysis: string }
+  | { type: "error"; message: string };
+
+/**
+ * Stream an AI analysis for a news article. The backend POSTs to
+ * /api/news/{id}/analyze and returns SSE frames of the shape above.
+ *
+ * Caller pattern is identical to ``streamChat`` — for-await-of the
+ * generator, abort via the passed AbortSignal.
+ */
+export async function* streamNewsAnalyze(
+  articleId: string,
+  signal?: AbortSignal,
+): AsyncGenerator<NewsAnalyzeEvent> {
+  const token = getAccessToken();
+  const headers: Record<string, string> = {
+    Accept: "text/event-stream",
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const resp = await fetch(`${API_BASE}/api/news/${articleId}/analyze`, {
+    method: "POST",
+    headers,
+    signal,
+    credentials: "include",
+  });
+  if (!resp.ok || !resp.body) {
+    const detail = await resp.text().catch(() => "");
+    throw new Error(detail || `analyze stream failed: ${resp.status}`);
+  }
+
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    let idx: number;
+    while ((idx = buffer.indexOf("\n\n")) !== -1) {
+      const raw = buffer.slice(0, idx);
+      buffer = buffer.slice(idx + 2);
+
+      let dataLine = "";
+      for (const line of raw.split("\n")) {
+        if (line.startsWith("data:")) dataLine += line.slice(5).trim();
+      }
+      if (!dataLine) continue;
+      try {
+        yield JSON.parse(dataLine) as NewsAnalyzeEvent;
+      } catch {
+        // malformed frame
+      }
+    }
+  }
+}

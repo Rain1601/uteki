@@ -8,6 +8,8 @@ import {
   ExternalLink,
   Loader2,
   RefreshCw,
+  Sparkles,
+  Square,
   XCircle,
 } from "lucide-react";
 import { PageContainer, PageHeader } from "@/components/ui/PageHeader";
@@ -15,6 +17,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { API_BASE } from "@/lib/api-base";
+import { streamNewsAnalyze } from "@/lib/api";
 import { authedFetch } from "@/lib/auth";
 import { getTrigger, KIND_ICON, KIND_LABEL } from "@/lib/triggers";
 import { cn } from "@/lib/cn";
@@ -401,6 +404,44 @@ function ArticleCard({
     .map((id) => tagById.get(id))
     .filter((t): t is Tag => Boolean(t));
 
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeText, setAnalyzeText] = useState("");
+  const [analyzeImpact, setAnalyzeImpact] = useState<string | null>(article.impact);
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+  const [aborter, setAborter] = useState<AbortController | null>(null);
+  const expanded = analyzing || analyzeText.length > 0 || analyzeError !== null;
+
+  async function runAnalyze() {
+    setAnalyzeText("");
+    setAnalyzeError(null);
+    setAnalyzing(true);
+    const controller = new AbortController();
+    setAborter(controller);
+    try {
+      for await (const event of streamNewsAnalyze(article.id, controller.signal)) {
+        if (event.type === "delta") {
+          setAnalyzeText((prev) => prev + event.content);
+        } else if (event.type === "done") {
+          setAnalyzeImpact(event.impact);
+          if (event.analysis) setAnalyzeText(event.analysis);
+        } else if (event.type === "error") {
+          setAnalyzeError(event.message);
+        }
+      }
+    } catch (e) {
+      if ((e as Error).name !== "AbortError") {
+        setAnalyzeError(e instanceof Error ? e.message : "stream failed");
+      }
+    } finally {
+      setAnalyzing(false);
+      setAborter(null);
+    }
+  }
+
+  function stopAnalyze() {
+    aborter?.abort();
+  }
+
   return (
     <Card className="overflow-hidden">
       <CardHeader>
@@ -486,7 +527,52 @@ function ArticleCard({
               {t.name}
             </span>
           ))}
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => (analyzing ? stopAnalyze() : runAnalyze())}
+          >
+            {analyzing ? (
+              <>
+                <Square size={11} /> 中止
+              </>
+            ) : analyzeText ? (
+              <>
+                <Sparkles size={11} /> 重新分析
+              </>
+            ) : (
+              <>
+                <Sparkles size={11} /> AI 分析
+              </>
+            )}
+          </Button>
         </div>
+
+        {expanded && (
+          <div
+            className="mt-4 overflow-hidden border-t border-[var(--line)] pt-3"
+            style={{ animation: "label-in 220ms var(--ease-out) both" }}
+          >
+            <div className="mb-2 flex items-center gap-2">
+              <span className="eyebrow">AI ANALYSIS</span>
+              {analyzing && (
+                <Loader2 size={11} className="animate-spin text-[var(--ink-muted)]" />
+              )}
+              {!analyzing && analyzeImpact && (
+                <Badge tone={impactTone(analyzeImpact)}>{analyzeImpact}</Badge>
+              )}
+            </div>
+            {analyzeError ? (
+              <div className="font-mono text-[11px] text-[var(--loss)]">
+                {analyzeError}
+              </div>
+            ) : (
+              <div className="whitespace-pre-wrap text-[12.5px] leading-relaxed text-[var(--ink-soft)]">
+                {analyzeText || (analyzing ? "…" : "")}
+              </div>
+            )}
+          </div>
+        )}
       </CardBody>
     </Card>
   );
