@@ -19,7 +19,13 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { API_BASE } from "@/lib/api-base";
-import { setNewsFeedback, streamNewsAnalyze } from "@/lib/api";
+import {
+  listEarningsNext,
+  setNewsFeedback,
+  streamNewsAnalyze,
+  type EarningsEvent,
+} from "@/lib/api";
+import { EarningsCountdown } from "@/components/EarningsCountdown";
 import { authedFetch } from "@/lib/auth";
 import { getTrigger, KIND_ICON, KIND_LABEL } from "@/lib/triggers";
 import { cn } from "@/lib/cn";
@@ -123,6 +129,18 @@ export default function TriggerDetailPage() {
   }, []);
 
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+  const [earningsBySymbol, setEarningsBySymbol] = useState<
+    Record<string, EarningsEvent>
+  >({});
+
+  // Per-ticker mode only: pull the earnings countdown map so the rail
+  // can show "AAPL 7d" next to each ticker.
+  useEffect(() => {
+    if (triggerId !== "trg-news-002") return;
+    listEarningsNext()
+      .then(setEarningsBySymbol)
+      .catch(() => setEarningsBySymbol({}));
+  }, [triggerId]);
 
   // Re-fetch articles whenever the filter changes.
   const fetchArticles = useCallback(async () => {
@@ -305,6 +323,7 @@ export default function TriggerDetailPage() {
               <TickerRail
                 symbols={orderedSymbols}
                 selected={selectedSymbol}
+                earningsBySymbol={earningsBySymbol}
                 onPick={setSelectedSymbol}
               />
             )}
@@ -431,10 +450,12 @@ function Meta({ label, children }: { label: string; children: React.ReactNode })
 function TickerRail({
   symbols,
   selected,
+  earningsBySymbol,
   onPick,
 }: {
   symbols: [string, number][]; // [symbol, count]
   selected: string | null;
+  earningsBySymbol: Record<string, EarningsEvent>;
   onPick: (symbol: string) => void;
 }) {
   const total = symbols.reduce((sum, [, c]) => sum + c, 0);
@@ -455,7 +476,7 @@ function TickerRail({
                 type="button"
                 onClick={() => onPick(sym)}
                 className={cn(
-                  "flex w-full items-baseline justify-between rounded-sm border-l-2 px-2 py-1.5 transition-colors",
+                  "flex w-full items-center justify-between gap-2 rounded-sm border-l-2 px-2 py-1.5 transition-colors",
                   active
                     ? "border-[var(--accent)] bg-[var(--accent-soft)]"
                     : "border-transparent hover:bg-[var(--surface-hover)]",
@@ -469,8 +490,11 @@ function TickerRail({
                 >
                   {sym}
                 </span>
-                <span className="font-mono text-[10px] tracking-[0.05em] text-[var(--ink-faint)]">
-                  {count}
+                <span className="flex items-center gap-1.5">
+                  <EarningsCountdown event={earningsBySymbol[sym]} size="sm" />
+                  <span className="font-mono text-[10px] tracking-[0.05em] text-[var(--ink-faint)]">
+                    {count}
+                  </span>
                 </span>
               </button>
             </li>

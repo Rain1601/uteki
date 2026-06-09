@@ -18,11 +18,14 @@ import {
 import {
   createCompany,
   listCompanies,
+  listEarningsNext,
   listRuns,
   streamChat,
   type Company as ApiCompany,
+  type EarningsEvent,
   type RunSummary,
 } from "@/lib/api";
+import { EarningsCountdown } from "@/components/EarningsCountdown";
 import { canOperate, fetchMe, type AuthUser } from "@/lib/auth";
 import type { AgentEvent, ChatMessage } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
@@ -177,6 +180,9 @@ export default function CompanyAgentPage() {
   const [peerTags, setPeerTags] = useState<string[]>(["META", "MSFT", "AMZN"]);
   const [watchItems, setWatchItems] = useState<CompanyWatchItem[]>([]);
   const [loadingWatch, setLoadingWatch] = useState(true);
+  const [earningsBySymbol, setEarningsBySymbol] = useState<
+    Record<string, EarningsEvent>
+  >({});
   const [watchSearch, setWatchSearch] = useState("");
   const [verdictFilter, setVerdictFilter] = useState<"ALL" | WatchVerdict>("ALL");
   const [marketFilter, setMarketFilter] = useState<"ALL" | WatchMarket>("ALL");
@@ -241,8 +247,12 @@ export default function CompanyAgentPage() {
   const refreshWatchlist = useCallback(async () => {
     setLoadingWatch(true);
     try {
-      const rows = await listCompanies(true);
+      const [rows, nextMap] = await Promise.all([
+        listCompanies(true),
+        listEarningsNext(),
+      ]);
       setWatchItems(rows.map(fromApi));
+      setEarningsBySymbol(nextMap);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -468,6 +478,10 @@ export default function CompanyAgentPage() {
                         </span>
                       )}
                       {item.runs != null && <span>{item.runs}x</span>}
+                      <EarningsCountdown
+                        event={earningsBySymbol[item.symbol]}
+                        size="sm"
+                      />
                     </div>
                   </button>
                   {/* Action row — absolute-positioned so it sits on the right

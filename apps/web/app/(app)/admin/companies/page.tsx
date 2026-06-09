@@ -18,10 +18,13 @@ import {
   createCompany,
   deleteCompany,
   listCompanies,
+  listEarningsNext,
   patchCompany,
   type Company,
   type CompanyCreate,
+  type EarningsEvent,
 } from "@/lib/api";
+import { EarningsCountdown } from "@/components/EarningsCountdown";
 import { cn } from "@/lib/cn";
 
 const MARKETS = ["US", "CN", "HK", "TW"] as const;
@@ -37,6 +40,9 @@ function verdictTone(v: string): "gain" | "loss" | "warn" | "neutral" {
 export default function AdminCompaniesPage() {
   // Auth + redirect handled by /admin layout.
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [earningsBySymbol, setEarningsBySymbol] = useState<
+    Record<string, EarningsEvent>
+  >({});
   const [includeArchived, setIncludeArchived] = useState(false);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -47,7 +53,12 @@ export default function AdminCompaniesPage() {
     setLoading(true);
     setError(null);
     try {
-      setCompanies(await listCompanies(!includeArchived));
+      const [rows, nextMap] = await Promise.all([
+        listCompanies(!includeArchived),
+        listEarningsNext(),
+      ]);
+      setCompanies(rows);
+      setEarningsBySymbol(nextMap);
     } catch (e) {
       setError(e instanceof Error ? e.message : "load failed");
     } finally {
@@ -186,6 +197,7 @@ export default function AdminCompaniesPage() {
                 <th className="px-5 py-3">Market</th>
                 <th className="px-5 py-3">Sector / Peers</th>
                 <th className="px-5 py-3">Verdict</th>
+                <th className="px-5 py-3">下次财报</th>
                 <th className="px-5 py-3">CIK / IR</th>
                 <th className="px-5 py-3 text-right">Actions</th>
               </tr>
@@ -195,6 +207,7 @@ export default function AdminCompaniesPage() {
                 <CompanyRow
                   key={c.symbol}
                   company={c}
+                  nextEarnings={earningsBySymbol[c.symbol]}
                   expanded={expandedId === c.symbol}
                   onToggle={() =>
                     setExpandedId(expandedId === c.symbol ? null : c.symbol)
@@ -206,7 +219,7 @@ export default function AdminCompaniesPage() {
               ))}
               {companies.length === 0 && !loading && (
                 <tr>
-                  <td colSpan={6} className="px-5 py-12 text-center text-[12px] text-[var(--ink-muted)]">
+                  <td colSpan={7} className="px-5 py-12 text-center text-[12px] text-[var(--ink-muted)]">
                     还没有公司。点右上"添加公司"开始，或运行 `uv run python services/api/scripts/seed_companies.py` 灌入默认 6 家。
                   </td>
                 </tr>
@@ -229,6 +242,7 @@ export default function AdminCompaniesPage() {
 
 function CompanyRow({
   company,
+  nextEarnings,
   expanded,
   onToggle,
   onPatch,
@@ -236,6 +250,7 @@ function CompanyRow({
   onHardDelete,
 }: {
   company: Company;
+  nextEarnings: EarningsEvent | undefined;
   expanded: boolean;
   onToggle: () => void;
   onPatch: (p: Partial<Company>) => void;
@@ -305,6 +320,15 @@ function CompanyRow({
           </div>
         </td>
         <td className="px-5 py-3.5">
+          {nextEarnings ? (
+            <EarningsCountdown event={nextEarnings} />
+          ) : (
+            <span className="font-mono text-[10px] italic text-[var(--ink-faint)]">
+              —
+            </span>
+          )}
+        </td>
+        <td className="px-5 py-3.5">
           <div className="space-y-0.5 font-mono text-[10px] text-[var(--ink-muted)]">
             <div>{company.cik || <span className="italic text-[var(--ink-faint)]">no CIK</span>}</div>
             {company.ir_rss_url && (
@@ -344,7 +368,7 @@ function CompanyRow({
       </tr>
       {expanded && (
         <tr className="bg-[var(--surface)]">
-          <td colSpan={6} className="px-5 py-4">
+          <td colSpan={7} className="px-5 py-4">
             <EditPanel company={company} onPatch={onPatch} />
           </td>
         </tr>
