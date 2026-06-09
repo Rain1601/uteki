@@ -11,9 +11,10 @@ import uuid
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 
+from sqlalchemy import func
 from sqlmodel import Session, select
 
-from uteki_api.users.models import User
+from uteki_api.users.models import AuthIdentity, User
 
 DEMO_USER_EMAIL = "demo@local"
 
@@ -43,6 +44,24 @@ class UserStore(ABC):
 
     @abstractmethod
     def get_by_email(self, db: Session, email: str) -> User | None: ...
+
+    @abstractmethod
+    def list(
+        self,
+        db: Session,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[User], int]: ...
+
+    @abstractmethod
+    def update_role(self, db: Session, user_id: str, role: str) -> User | None: ...
+
+    @abstractmethod
+    def count_admins(self, db: Session) -> int: ...
+
+    @abstractmethod
+    def providers_for(self, db: Session, user_id: str) -> list[str]: ...
 
 
 class SqlUserStore(UserStore):
@@ -75,6 +94,51 @@ class SqlUserStore(UserStore):
     def get_by_email(self, db: Session, email: str) -> User | None:
         statement = select(User).where(User.email == email.lower().strip())
         return db.exec(statement).first()
+
+    def list(
+        self,
+        db: Session,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[User], int]:
+        # Demo user is hidden from the admin console — it's an internal
+        # fallback identity, not a real account.
+        base = select(User).where(User.email != DEMO_USER_EMAIL)
+        total = db.exec(
+            select(func.count()).select_from(base.subquery())  # type: ignore[arg-type]
+        ).one()
+        rows = db.exec(
+            base.order_by(User.created_at.desc()).offset(offset).limit(limit)
+        ).all()
+        return list(rows), int(total)
+
+    def update_role(self, db: Session, user_id: str, role: str) -> User | None:
+        user = db.get(User, user_id)
+        if user is None:
+            return None
+        user.role = role
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        return user
+
+    def count_admins(self, db: Session) -> int:
+        return int(
+            db.exec(
+                select(func.count()).select_from(  # type: ignore[arg-type]
+                    select(User).where(User.role == "admin").subquery()
+                )
+            ).one()
+        )
+
+    def providers_for(self, db: Session, user_id: str) -> list[str]:
+        rows = db.exec(
+            select(AuthIdentity.provider).where(AuthIdentity.user_id == user_id)
+        ).all()
+        # Stable order for the UI: password first, then OAuth providers alpha.
+        unique = sorted(set(rows), key=lambda p: (p != "password", p))
+        return list(unique)
 
 
 default_user_store: UserStore = SqlUserStore()
