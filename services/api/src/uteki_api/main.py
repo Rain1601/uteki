@@ -15,7 +15,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from uteki_api import __version__
-from uteki_api.api import admin, agent, compare, health, triggers
+from uteki_api.api import admin, agent, compare, health, news, tag_groups, triggers
 from uteki_api.api import agents as agents_api
 from uteki_api.api import artifacts as artifacts_api
 from uteki_api.api import auth as auth_api
@@ -124,8 +124,10 @@ app.include_router(runs_api.router)
 app.include_router(artifacts_api.router)
 app.include_router(compare.router)
 app.include_router(triggers.router)
+app.include_router(news.router)
 app.include_router(eval_api.router)
 app.include_router(admin.router)
+app.include_router(tag_groups.router)
 
 
 @app.get("/")
