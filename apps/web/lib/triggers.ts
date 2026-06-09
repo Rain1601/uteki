@@ -42,15 +42,30 @@ const DAY = 86400;
 export const TRIGGERS: AgentTrigger[] = [
   {
     id: "trg-news-001",
-    name: "关注公司 · 重大新闻监听",
+    name: "宏观经济 · 非公司个体新闻",
     kind: "news",
-    watchlist_ids: ["us-aapl", "us-nvda", "us-msft", "us-tsla"],
+    watchlist_ids: [],
     skill: "uteki",
-    condition: "headline impact >= high OR source in trusted finance feeds",
+    condition:
+      "CNBC macro feed (jeff-cox) + Fed / CPI / GDP / 政策事件。明确不收公司个体新闻 — 公司流走 trg-news-002。",
     cadence: "每 30 分钟扫描",
     enabled: true,
     last_triggered_at: NOW - 5 * HOUR,
     next_check_at: NOW + 18 * 60,
+    last_status: "listening",
+  },
+  {
+    id: "trg-news-002",
+    name: "公司个体 · Yahoo per-ticker 新闻流",
+    kind: "news",
+    watchlist_ids: ["us-aapl", "us-nvda", "us-msft", "us-googl", "us-tsla"],
+    skill: "uteki",
+    condition:
+      "Yahoo Finance Search per-ticker；启发式相关度过滤（title 含 ticker / 公司主词 / Yahoo primary tag）。",
+    cadence: "每 60 分钟扫描",
+    enabled: true,
+    last_triggered_at: NOW - 1 * HOUR,
+    next_check_at: NOW + 8 * 60,
     last_status: "listening",
   },
   {
