@@ -326,6 +326,94 @@ export type NewsAnalyzeEvent =
  * Caller pattern is identical to ``streamChat`` — for-await-of the
  * generator, abort via the passed AbortSignal.
  */
+// ─── Earnings calendar ─────────────────────────────────────────────
+
+export interface EarningsEvent {
+  id: string;
+  symbol: string;
+  fiscal_period: string;
+  expected_date: string;
+  bmo_amc: "BMO" | "AMC" | "DURING" | string;
+  status: "scheduled" | "delivered" | "missed" | string;
+  delivered_at: string | null;
+  related_accession: string | null;
+  eps_estimate: number | null;
+  eps_actual: number | null;
+  revenue_estimate: number | null;
+  revenue_actual: number | null;
+  call_url: string | null;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EarningsCreate {
+  symbol: string;
+  fiscal_period: string;
+  expected_date: string; // ISO timestamp
+  bmo_amc?: "BMO" | "AMC" | "DURING";
+  status?: "scheduled" | "delivered" | "missed";
+  eps_estimate?: number | null;
+  eps_actual?: number | null;
+  revenue_estimate?: number | null;
+  revenue_actual?: number | null;
+  delivered_at?: string | null;
+  related_accession?: string | null;
+  call_url?: string | null;
+  notes?: string;
+}
+
+export type EarningsPatch = Partial<EarningsCreate>;
+
+export async function listEarnings(opts?: {
+  symbol?: string;
+  status?: "scheduled" | "delivered" | "missed";
+  upcomingOnly?: boolean;
+}): Promise<EarningsEvent[]> {
+  const qs = new URLSearchParams();
+  if (opts?.symbol) qs.set("symbol", opts.symbol);
+  if (opts?.status) qs.set("status", opts.status);
+  if (opts?.upcomingOnly) qs.set("upcoming_only", "true");
+  const url = `${API_BASE}/api/earnings${qs.toString() ? "?" + qs : ""}`;
+  const r = await authedFetch(url, { cache: "no-store" });
+  if (!r.ok) throw new Error((await r.text()) || `list earnings failed: ${r.status}`);
+  return (await r.json()) as EarningsEvent[];
+}
+
+export async function listEarningsNext(): Promise<Record<string, EarningsEvent>> {
+  const r = await authedFetch(`${API_BASE}/api/earnings/next`, { cache: "no-store" });
+  if (!r.ok) throw new Error((await r.text()) || `earnings/next failed: ${r.status}`);
+  return (await r.json()) as Record<string, EarningsEvent>;
+}
+
+export async function createEarnings(body: EarningsCreate): Promise<EarningsEvent> {
+  const r = await authedFetch(`${API_BASE}/api/earnings`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error((await r.text()) || `create earnings failed: ${r.status}`);
+  return (await r.json()) as EarningsEvent;
+}
+
+export async function patchEarnings(
+  id: string,
+  patch: EarningsPatch,
+): Promise<EarningsEvent> {
+  const r = await authedFetch(`${API_BASE}/api/earnings/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!r.ok) throw new Error((await r.text()) || `patch earnings failed: ${r.status}`);
+  return (await r.json()) as EarningsEvent;
+}
+
+export async function deleteEarnings(id: string): Promise<void> {
+  const r = await authedFetch(`${API_BASE}/api/earnings/${id}`, { method: "DELETE" });
+  if (!r.ok) throw new Error((await r.text()) || `delete earnings failed: ${r.status}`);
+}
+
 // ─── Companies (watchlist) ─────────────────────────────────────────
 
 export interface Company {

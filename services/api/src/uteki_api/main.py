@@ -20,6 +20,7 @@ from uteki_api.api import (
     agent,
     companies,
     compare,
+    earnings,
     health,
     news,
     tag_groups,
@@ -135,6 +136,7 @@ app.include_router(compare.router)
 app.include_router(triggers.router)
 app.include_router(news.router)
 app.include_router(companies.router)
+app.include_router(earnings.router)
 app.include_router(eval_api.router)
 app.include_router(admin.router)
 app.include_router(tag_groups.router)

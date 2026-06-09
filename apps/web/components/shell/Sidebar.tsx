@@ -14,6 +14,7 @@ import {
   PinOff,
   Users,
   Tags,
+  CalendarRange,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { canAdmin, canOperate, type AuthUser } from "@/lib/auth";
@@ -66,6 +67,7 @@ const SECTIONS: NavSection[] = [
       { href: "/admin/users", label: "用户", icon: Users },
       { href: "/admin/tags", label: "标签", icon: Tags },
       { href: "/admin/companies", label: "公司", icon: Building2 },
+      { href: "/admin/earnings", label: "财报", icon: CalendarRange },
     ],
   },
 ];
