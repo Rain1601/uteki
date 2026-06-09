@@ -15,7 +15,14 @@ import {
   Square,
   X,
 } from "lucide-react";
-import { streamChat, listRuns, type RunSummary } from "@/lib/api";
+import {
+  createCompany,
+  listCompanies,
+  listRuns,
+  streamChat,
+  type Company as ApiCompany,
+  type RunSummary,
+} from "@/lib/api";
 import { canOperate, fetchMe, type AuthUser } from "@/lib/auth";
 import type { AgentEvent, ChatMessage } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
@@ -24,8 +31,11 @@ import { TradingViewChart, toTradingViewSymbol } from "@/components/charts/Tradi
 import { cn } from "@/lib/cn";
 
 type WatchVerdict = "BUY" | "WATCH" | "AVOID" | "UNRATED";
-type WatchMarket = "US" | "TW" | "CN";
+type WatchMarket = "US" | "TW" | "CN" | "HK";
 
+/** UI-facing shape. ``last`` / ``changePct`` / ``runs`` are ephemeral
+ *  display fields fed by separate live sources (quotes feed, run count)
+ *  — not persisted on Company. */
 interface CompanyWatchItem {
   symbol: string;
   name: string;
@@ -39,78 +49,17 @@ interface CompanyWatchItem {
   runs?: number;
 }
 
-const INITIAL_WATCHLIST: CompanyWatchItem[] = [
-  {
-    symbol: "GOOGL",
-    name: "Alphabet Inc.",
-    market: "US",
-    sector: "Internet",
-    peers: ["META", "MSFT", "AMZN"],
-    verdict: "BUY",
-    conviction: 0.7,
-    last: 402.62,
-    changePct: -2.51,
-    runs: 37,
-  },
-  {
-    symbol: "TSM",
-    name: "Taiwan Semi.",
-    market: "TW",
-    sector: "Semiconductors",
-    peers: ["NVDA", "ASML", "AMD"],
-    verdict: "WATCH",
-    conviction: 0.45,
-    last: 198.4,
-    changePct: 0.72,
-    runs: 4,
-  },
-  {
-    symbol: "NVDA",
-    name: "NVIDIA Corp.",
-    market: "US",
-    sector: "AI Chips",
-    peers: ["AMD", "AVGO", "INTC"],
-    verdict: "WATCH",
-    conviction: 0.55,
-    last: 142.55,
-    changePct: -1.24,
-    runs: 6,
-  },
-  {
-    symbol: "AAPL",
-    name: "Apple Inc.",
-    market: "US",
-    sector: "Consumer Tech",
-    peers: ["MSFT", "GOOGL", "META"],
-    verdict: "WATCH",
-    conviction: 0.5,
-    last: 234.12,
-    changePct: 0.82,
-    runs: 2,
-  },
-  {
-    symbol: "MSFT",
-    name: "Microsoft",
-    market: "US",
-    sector: "Cloud",
-    peers: ["GOOGL", "AMZN", "ORCL"],
-    verdict: "UNRATED",
-    last: 442.18,
-    changePct: 0.35,
-  },
-  {
-    symbol: "TSLA",
-    name: "Tesla, Inc.",
-    market: "US",
-    sector: "Auto",
-    peers: ["GM", "F", "RIVN"],
-    verdict: "AVOID",
-    conviction: 0.35,
-    last: 359.92,
-    changePct: 2.14,
-    runs: 10,
-  },
-];
+function fromApi(company: ApiCompany): CompanyWatchItem {
+  return {
+    symbol: company.symbol,
+    name: company.name,
+    market: (company.market as WatchMarket) ?? "US",
+    sector: company.sector,
+    peers: company.peers,
+    verdict: (company.verdict as WatchVerdict) ?? "UNRATED",
+    conviction: company.conviction ?? undefined,
+  };
+}
 
 const COMMON_PEERS = [
   "META",
@@ -226,7 +175,8 @@ function runPrompt(symbol: string, peers: string): string {
 export default function CompanyAgentPage() {
   const [symbol, setSymbol] = useState("GOOGL");
   const [peerTags, setPeerTags] = useState<string[]>(["META", "MSFT", "AMZN"]);
-  const [watchItems, setWatchItems] = useState<CompanyWatchItem[]>(INITIAL_WATCHLIST);
+  const [watchItems, setWatchItems] = useState<CompanyWatchItem[]>([]);
+  const [loadingWatch, setLoadingWatch] = useState(true);
   const [watchSearch, setWatchSearch] = useState("");
   const [verdictFilter, setVerdictFilter] = useState<"ALL" | WatchVerdict>("ALL");
   const [marketFilter, setMarketFilter] = useState<"ALL" | WatchMarket>("ALL");
@@ -288,6 +238,22 @@ export default function CompanyAgentPage() {
     fetchMe().then(setUser).catch(() => setUser(null));
   }, []);
 
+  const refreshWatchlist = useCallback(async () => {
+    setLoadingWatch(true);
+    try {
+      const rows = await listCompanies(true);
+      setWatchItems(rows.map(fromApi));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoadingWatch(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshWatchlist();
+  }, [refreshWatchlist]);
+
   const latestRun = runs[0] ?? null;
   const currentStage = useMemo(() => stageFromEvents(events), [events]);
   const visibleEvents = useMemo(
@@ -308,7 +274,7 @@ export default function CompanyAgentPage() {
     }
   }
 
-  function addWatchItem() {
+  async function addWatchItem() {
     const cleanSymbol = newWatchSymbol.trim().toUpperCase();
     if (!cleanSymbol) return;
     const existing = watchItems.find((item) => item.symbol === cleanSymbol);
@@ -319,18 +285,22 @@ export default function CompanyAgentPage() {
       setNewWatchName("");
       return;
     }
-    const item: CompanyWatchItem = {
-      symbol: cleanSymbol,
-      name: newWatchName.trim() || cleanSymbol,
-      market: "US",
-      sector: "Custom",
-      peers: [],
-      verdict: "UNRATED",
-      runs: 0,
-    };
-    setWatchItems((prev) => [item, ...prev]);
-    setSymbol(item.symbol);
-    setPeerTags([]);
+    try {
+      const created = await createCompany({
+        symbol: cleanSymbol,
+        name: newWatchName.trim() || cleanSymbol,
+        market: "US",
+        sector: "",
+        peers: [],
+        verdict: "UNRATED",
+      });
+      const item = fromApi(created);
+      setWatchItems((prev) => [item, ...prev]);
+      setSymbol(item.symbol);
+      setPeerTags([]);
+    } catch (e) {
+      setError((e as Error).message);
+    }
     setShowAddWatch(false);
     setNewWatchSymbol("");
     setNewWatchName("");

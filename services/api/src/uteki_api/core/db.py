@@ -78,6 +78,7 @@ def init_db() -> None:
     """Create tables if missing. Idempotent. Imports models for side-effects."""
     # Import here so SQLModel metadata picks up every table-bearing class
     # without circular imports at module load time.
+    from uteki_api.companies.models import Company  # noqa: F401
     from uteki_api.news.models import (  # noqa: F401
         ArticleTag,
         NewsArticle,

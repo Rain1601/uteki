@@ -65,6 +65,7 @@ const SECTIONS: NavSection[] = [
     items: [
       { href: "/admin/users", label: "用户", icon: Users },
       { href: "/admin/tags", label: "标签", icon: Tags },
+      { href: "/admin/companies", label: "公司", icon: Building2 },
     ],
   },
 ];

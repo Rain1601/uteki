@@ -326,6 +326,81 @@ export type NewsAnalyzeEvent =
  * Caller pattern is identical to ``streamChat`` — for-await-of the
  * generator, abort via the passed AbortSignal.
  */
+// ─── Companies (watchlist) ─────────────────────────────────────────
+
+export interface Company {
+  symbol: string;
+  name: string;
+  market: "US" | "CN" | "HK" | "TW" | string;
+  sector: string;
+  peers: string[];
+  cik: string | null;
+  ir_rss_url: string | null;
+  watch: boolean;
+  verdict: "BUY" | "WATCH" | "AVOID" | "UNRATED" | string;
+  conviction: number | null;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CompanyCreate {
+  symbol: string;
+  name: string;
+  market?: "US" | "CN" | "HK" | "TW";
+  sector?: string;
+  peers?: string[];
+  cik?: string | null;
+  ir_rss_url?: string | null;
+  verdict?: "BUY" | "WATCH" | "AVOID" | "UNRATED";
+  conviction?: number | null;
+  notes?: string;
+}
+
+export type CompanyPatch = Partial<CompanyCreate & { watch: boolean }>;
+
+export async function listCompanies(
+  watchOnly = true,
+): Promise<Company[]> {
+  const qs = new URLSearchParams({ watch_only: String(watchOnly) }).toString();
+  const r = await authedFetch(`${API_BASE}/api/companies?${qs}`, {
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error((await r.text()) || `list companies failed: ${r.status}`);
+  return (await r.json()) as Company[];
+}
+
+export async function createCompany(body: CompanyCreate): Promise<Company> {
+  const r = await authedFetch(`${API_BASE}/api/companies`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error((await r.text()) || `create company failed: ${r.status}`);
+  return (await r.json()) as Company;
+}
+
+export async function patchCompany(
+  symbol: string,
+  patch: CompanyPatch,
+): Promise<Company> {
+  const r = await authedFetch(`${API_BASE}/api/companies/${symbol}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!r.ok) throw new Error((await r.text()) || `patch company failed: ${r.status}`);
+  return (await r.json()) as Company;
+}
+
+export async function deleteCompany(symbol: string, hard = false): Promise<void> {
+  const qs = hard ? "?hard=true" : "";
+  const r = await authedFetch(`${API_BASE}/api/companies/${symbol}${qs}`, {
+    method: "DELETE",
+  });
+  if (!r.ok) throw new Error((await r.text()) || `delete company failed: ${r.status}`);
+}
+
 export interface NewsFeedbackResponse {
   article_id: string;
   my_feedback: "like" | "dislike" | null;
