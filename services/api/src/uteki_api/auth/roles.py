@@ -25,8 +25,19 @@ def _csv_set(raw: str) -> set[str]:
     return {item.strip().lower() for item in raw.split(",") if item.strip()}
 
 
+def _admin_emails_set() -> set[str]:
+    """Union of admin_emails and owner_emails (010). Both env vars feed the
+    same allowlist — owner_emails is the preferred name going forward, but
+    legacy admin_emails configs keep working."""
+    return _csv_set(settings.admin_emails) | _csv_set(settings.owner_emails)
+
+
+def _admin_github_logins_set() -> set[str]:
+    return _csv_set(settings.admin_github_logins) | _csv_set(settings.owner_github_logins)
+
+
 def role_for_email(email: str | None) -> str:
-    if email and email.lower().strip() in _csv_set(settings.admin_emails):
+    if email and email.lower().strip() in _admin_emails_set():
         return "admin"
     return "reader"
 
@@ -41,7 +52,7 @@ def role_for_identity(
     if role_for_email(email) == "admin":
         return "admin"
     if provider == "github":
-        if username and username.lower().strip() in _csv_set(settings.admin_github_logins):
+        if username and username.lower().strip() in _admin_github_logins_set():
             return "admin"
         if provider_user_id and provider_user_id.lower().strip() in _csv_set(settings.admin_github_ids):
             return "admin"
@@ -76,6 +87,17 @@ def can_operate(user: object) -> bool:
 
 def can_admin(user: object) -> bool:
     return PERM_ADMIN_TOOLS in permissions_for_user(user)
+
+
+def is_owner(user: object) -> bool:
+    """010 — single-owner deployment: owner == the one admin account.
+
+    Aliased to can_admin so route signatures can read with product
+    vocabulary (``if not is_owner(...)``) without introducing a parallel
+    permission system. If the product later supports multiple admins
+    distinct from the sole owner, this is where they diverge.
+    """
+    return can_admin(user)
 
 
 def required_permission_for_agent(agent_name: str | None) -> str:

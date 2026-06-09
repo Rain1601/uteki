@@ -104,6 +104,13 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
     with Session(engine) as db:
         ensure_demo_user(db)
+        # 010 — pre-create the owner record from settings.owner_emails so
+        # data partitioning under owner.id works from the very first request,
+        # before the owner has ever OAuth'd in. No-op if owner_emails is
+        # unset (acceptable in dev / tests).
+        from uteki_api.users import ensure_owner_user
+
+        ensure_owner_user(db)
 
     await _seed_evolution_versions()
     yield

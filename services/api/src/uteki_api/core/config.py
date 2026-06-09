@@ -96,6 +96,13 @@ class Settings(BaseSettings):
     admin_emails: str = ""
     admin_github_logins: str = ""
     admin_github_ids: str = ""
+    # 010 — owner allowlist for the single-owner public-readonly model.
+    # In practice owner == admin for this deployment shape; these names
+    # exist so route signatures and env config read with the right product
+    # vocabulary. Values are unioned with admin_emails / admin_github_logins
+    # at role-resolution time, so legacy ADMIN_* env vars keep working.
+    owner_emails: str = ""
+    owner_github_logins: str = ""
     # OAuth: blank = button disabled in UI.
     github_client_id: str = ""
     github_client_secret: str = ""
@@ -180,6 +187,16 @@ settings = Settings(
     admin_github_ids=(
         os.getenv("UTEKI_ADMIN_GITHUB_IDS")
         or os.getenv("UTEKI_ADMIN_GITHUB_ID")
+        or ""
+    ),
+    owner_emails=(
+        os.getenv("UTEKI_OWNER_EMAILS")
+        or os.getenv("UTEKI_OWNER_EMAIL")
+        or ""
+    ),
+    owner_github_logins=(
+        os.getenv("UTEKI_OWNER_GITHUB_LOGINS")
+        or os.getenv("UTEKI_OWNER_GITHUB_LOGIN")
         or ""
     ),
     github_client_id=os.getenv("GITHUB_CLIENT_ID") or "",
