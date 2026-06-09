@@ -19,7 +19,7 @@ from fastapi import Depends, HTTPException, Request, status
 from sqlmodel import Session
 
 from uteki_api.auth.jwt import decode_access
-from uteki_api.auth.roles import can_admin
+from uteki_api.auth.roles import can_admin, is_owner
 from uteki_api.core.config import settings
 from uteki_api.core.db import get_db
 from uteki_api.users import default_user_store, ensure_demo_user
@@ -80,6 +80,24 @@ async def require_admin(user: User = Depends(current_user)) -> User:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="permission required: admin:*",
+        )
+    return user
+
+
+async def require_owner(user: User = Depends(current_user)) -> User:
+    """010 — gate mutation routes to the single product owner.
+
+    Currently a thin alias over the admin role check (see
+    ``auth/roles.is_owner``). The dependency exists as its own symbol so
+    write-route signatures self-document — ``Depends(require_owner)`` on
+    POST /api/runs/:id/visibility says "this requires the product owner",
+    not "this requires the legacy admin role" — even though right now they
+    resolve to the same allowlist.
+    """
+    if not is_owner(user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="owner only",
         )
     return user
 

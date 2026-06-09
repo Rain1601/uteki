@@ -10,6 +10,7 @@ from uteki_api.users.store import (
     UserStore,
     default_user_store,
     ensure_demo_user,
+    ensure_owner_user,
 )
 
 __all__ = [
@@ -21,6 +22,7 @@ __all__ = [
     "UserStore",
     "default_user_store",
     "ensure_demo_user",
+    "ensure_owner_user",
     "hash_password",
     "verify_password",
 ]
