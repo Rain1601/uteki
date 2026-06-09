@@ -1,17 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  Calendar,
   Check,
   Clock,
-  Loader2,
   Plus,
   RefreshCw,
   Trash2,
-  TriangleAlert,
   X,
 } from "lucide-react";
 import { PageContainer, PageHeader } from "@/components/ui/PageHeader";
@@ -27,7 +23,6 @@ import {
   type Company,
   type EarningsEvent,
 } from "@/lib/api";
-import { canAdmin, fetchMe, type AuthUser } from "@/lib/auth";
 import { cn } from "@/lib/cn";
 
 const BMO_AMC = ["BMO", "DURING", "AMC"] as const;
@@ -60,22 +55,12 @@ function shortDate(iso: string): string {
 }
 
 export default function AdminEarningsPage() {
-  const router = useRouter();
-  const [me, setMe] = useState<AuthUser | null>(null);
-  const [checkedAuth, setCheckedAuth] = useState(false);
+  // Auth + redirect handled by /admin layout.
   const [companies, setCompanies] = useState<Company[]>([]);
   const [events, setEvents] = useState<EarningsEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetchMe().then((u) => {
-      setMe(u);
-      setCheckedAuth(true);
-      if (!canAdmin(u)) router.replace("/");
-    });
-  }, [router]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -95,8 +80,8 @@ export default function AdminEarningsPage() {
   }, []);
 
   useEffect(() => {
-    if (canAdmin(me)) void refresh();
-  }, [me, refresh]);
+    void refresh();
+  }, [refresh]);
 
   // Group events by symbol so we can show one row per company.
   const bySymbol = useMemo(() => {
@@ -176,18 +161,6 @@ export default function AdminEarningsPage() {
       setError(e instanceof Error ? e.message : "delete failed");
     }
   }
-
-  if (!checkedAuth) {
-    return (
-      <PageContainer>
-        <div className="flex h-64 items-center justify-center text-[12px] text-[var(--ink-muted)]">
-          <Loader2 size={14} className="mr-2 animate-spin" />
-          loading…
-        </div>
-      </PageContainer>
-    );
-  }
-  if (!canAdmin(me)) return null;
 
   return (
     <PageContainer>

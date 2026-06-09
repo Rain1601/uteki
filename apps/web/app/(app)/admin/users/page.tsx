@@ -1,14 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Loader2, RefreshCw, ShieldCheck, ShieldOff } from "lucide-react";
 import { PageContainer, PageHeader } from "@/components/ui/PageHeader";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { API_BASE } from "@/lib/api-base";
-import { authedFetch, canAdmin, fetchMe, type AuthUser } from "@/lib/auth";
+import { authedFetch, fetchMe, type AuthUser } from "@/lib/auth";
 
 interface UserRow {
   id: string;
@@ -43,9 +42,9 @@ function formatDate(iso: string): string {
 }
 
 export default function AdminUsersPage() {
-  const router = useRouter();
+  // Auth + redirect handled by /admin layout — we just need `me` for
+  // self-row disable logic.
   const [me, setMe] = useState<AuthUser | null>(null);
-  const [checkedAuth, setCheckedAuth] = useState(false);
   const [rows, setRows] = useState<UserRow[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -53,14 +52,8 @@ export default function AdminUsersPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchMe().then((u) => {
-      setMe(u);
-      setCheckedAuth(true);
-      if (!canAdmin(u)) {
-        router.replace("/");
-      }
-    });
-  }, [router]);
+    fetchMe().then(setMe);
+  }, []);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -81,8 +74,8 @@ export default function AdminUsersPage() {
   }, []);
 
   useEffect(() => {
-    if (canAdmin(me)) void refresh();
-  }, [me, refresh]);
+    void refresh();
+  }, [refresh]);
 
   async function toggleRole(row: UserRow) {
     const nextRole = row.role === "admin" ? "reader" : "admin";
@@ -112,22 +105,6 @@ export default function AdminUsersPage() {
     } finally {
       setPendingId(null);
     }
-  }
-
-  if (!checkedAuth) {
-    return (
-      <PageContainer>
-        <div className="flex h-64 items-center justify-center text-[12px] text-[var(--ink-muted)]">
-          <Loader2 size={14} className="mr-2 animate-spin" />
-          loading…
-        </div>
-      </PageContainer>
-    );
-  }
-
-  if (!canAdmin(me)) {
-    // router.replace will swap us out; this is a one-frame fallback.
-    return null;
   }
 
   return (

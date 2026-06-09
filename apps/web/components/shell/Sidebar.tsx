@@ -12,9 +12,7 @@ import {
   Building2,
   Pin,
   PinOff,
-  Users,
-  Tags,
-  CalendarRange,
+  Shield,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { canAdmin, canOperate, type AuthUser } from "@/lib/auth";
@@ -64,10 +62,10 @@ const SECTIONS: NavSection[] = [
     label: "Admin",
     gate: "admin",
     items: [
-      { href: "/admin/users", label: "用户", icon: Users },
-      { href: "/admin/tags", label: "标签", icon: Tags },
-      { href: "/admin/companies", label: "公司", icon: Building2 },
-      { href: "/admin/earnings", label: "财报", icon: CalendarRange },
+      // One entry now — the /admin layout owns sub-tab navigation
+      // (用户 / 标签 / 公司 / 财报). Keeps the sidebar dense even as
+      // we add more domains.
+      { href: "/admin", label: "管理", icon: Shield },
     ],
   },
 ];

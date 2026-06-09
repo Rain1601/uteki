@@ -1,12 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   Archive,
   ArchiveRestore,
   ExternalLink,
-  Loader2,
   Plus,
   RefreshCw,
   Trash2,
@@ -24,7 +22,6 @@ import {
   type Company,
   type CompanyCreate,
 } from "@/lib/api";
-import { canAdmin, fetchMe, type AuthUser } from "@/lib/auth";
 import { cn } from "@/lib/cn";
 
 const MARKETS = ["US", "CN", "HK", "TW"] as const;
@@ -38,23 +35,13 @@ function verdictTone(v: string): "gain" | "loss" | "warn" | "neutral" {
 }
 
 export default function AdminCompaniesPage() {
-  const router = useRouter();
-  const [me, setMe] = useState<AuthUser | null>(null);
-  const [checkedAuth, setCheckedAuth] = useState(false);
+  // Auth + redirect handled by /admin layout.
   const [companies, setCompanies] = useState<Company[]>([]);
   const [includeArchived, setIncludeArchived] = useState(false);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetchMe().then((u) => {
-      setMe(u);
-      setCheckedAuth(true);
-      if (!canAdmin(u)) router.replace("/");
-    });
-  }, [router]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -69,8 +56,8 @@ export default function AdminCompaniesPage() {
   }, [includeArchived]);
 
   useEffect(() => {
-    if (canAdmin(me)) void refresh();
-  }, [me, refresh]);
+    void refresh();
+  }, [refresh]);
 
   async function handleCreate(body: CompanyCreate) {
     setError(null);
@@ -136,18 +123,6 @@ export default function AdminCompaniesPage() {
       setError(e instanceof Error ? e.message : "delete failed");
     }
   }
-
-  if (!checkedAuth) {
-    return (
-      <PageContainer>
-        <div className="flex h-64 items-center justify-center text-[12px] text-[var(--ink-muted)]">
-          <Loader2 size={14} className="mr-2 animate-spin" />
-          loading…
-        </div>
-      </PageContainer>
-    );
-  }
-  if (!canAdmin(me)) return null;
 
   return (
     <PageContainer>

@@ -1,10 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   Check,
-  Loader2,
   Plus,
   RefreshCw,
   Trash2,
@@ -15,7 +13,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { API_BASE } from "@/lib/api-base";
-import { authedFetch, canAdmin, fetchMe, type AuthUser } from "@/lib/auth";
+import { authedFetch } from "@/lib/auth";
 
 interface Tag {
   id: string;
@@ -37,21 +35,11 @@ interface TagGroup {
 }
 
 export default function AdminTagsPage() {
-  const router = useRouter();
-  const [me, setMe] = useState<AuthUser | null>(null);
-  const [checkedAuth, setCheckedAuth] = useState(false);
+  // Auth + redirect handled by /admin layout.
   const [groups, setGroups] = useState<TagGroup[]>([]);
   const [loading, setLoading] = useState(false);
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetchMe().then((u) => {
-      setMe(u);
-      setCheckedAuth(true);
-      if (!canAdmin(u)) router.replace("/");
-    });
-  }, [router]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -70,8 +58,8 @@ export default function AdminTagsPage() {
   }, []);
 
   useEffect(() => {
-    if (canAdmin(me)) void refresh();
-  }, [me, refresh]);
+    void refresh();
+  }, [refresh]);
 
   async function createGroup(name: string, mode: "single" | "multi") {
     setError(null);
@@ -191,18 +179,6 @@ export default function AdminTagsPage() {
       setError(e instanceof Error ? e.message : "delete tag failed");
     }
   }
-
-  if (!checkedAuth) {
-    return (
-      <PageContainer>
-        <div className="flex h-64 items-center justify-center text-[12px] text-[var(--ink-muted)]">
-          <Loader2 size={14} className="mr-2 animate-spin" />
-          loading…
-        </div>
-      </PageContainer>
-    );
-  }
-  if (!canAdmin(me)) return null;
 
   return (
     <PageContainer>
