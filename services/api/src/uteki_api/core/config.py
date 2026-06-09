@@ -69,6 +69,10 @@ class Settings(BaseSettings):
     google_search_api_key: str = ""
     google_search_engine_id: str = ""
 
+    # SEC EDGAR requires a User-Agent with contact email (Fair Access).
+    # Format: "<app name> <admin email>" (e.g. "uteki research a@b.com").
+    sec_user_agent: str = ""
+
     # ── M4: auth + storage ───────────────────────────────────────────────
     # SQLite by default; flip to postgresql://... for prod.
     db_url: str = "sqlite:///data/uteki.db"
@@ -147,6 +151,7 @@ settings = Settings(
     deepseek_api_key=os.getenv("DEEPSEEK_API_KEY") or "",
     deepseek_base_url=os.getenv("DEEPSEEK_BASE_URL") or "",
     fmp_api_key=os.getenv("FMP_API_KEY") or "",
+    sec_user_agent=os.getenv("UTEKI_SEC_USER_AGENT") or "",
     google_search_api_key=(
         os.getenv("GOOGLE_SEARCH_API_KEY") or os.getenv("GOOGLE_CUSTOM_SEARCH_API_KEY") or ""
     ),
