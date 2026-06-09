@@ -12,6 +12,7 @@ const TABS: { href: string; label: string }[] = [
   { href: "/admin/tags", label: "标签" },
   { href: "/admin/companies", label: "公司" },
   { href: "/admin/earnings", label: "财报" },
+  { href: "/admin/triggers", label: "触发器" },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

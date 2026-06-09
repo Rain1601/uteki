@@ -1,15 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { PageContainer, PageHeader } from "@/components/ui/PageHeader";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { WATCHLIST, formatRelativeFromNow } from "@/lib/demo";
 import {
   AlertTriangle,
   ChevronRight,
+  Loader2,
   MoreHorizontal,
   Pause,
   Play,
@@ -17,22 +17,49 @@ import {
   Radio,
 } from "lucide-react";
 import {
+  AgentTrigger,
   KIND_ICON as kindIcon,
   KIND_LABEL as kindLabel,
-  TRIGGERS,
+  loadTriggers,
   type TriggerKind,
 } from "@/lib/triggers";
 
 type TriggerFilter = "all" | TriggerKind;
 type StatusFilter = "all" | "enabled" | "paused";
 
+function formatRelative(iso: string | null): string {
+  if (!iso) return "—";
+  const seconds = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  if (seconds < 60) return "刚刚";
+  if (seconds < 3600) return `${Math.round(seconds / 60)} 分钟前`;
+  if (seconds < 86400) return `${Math.round(seconds / 3600)} 小时前`;
+  return `${Math.round(seconds / 86400)} 天前`;
+}
+
+function formatRelativeFuture(iso: string | null): string {
+  if (!iso) return "—";
+  const seconds = Math.max(0, (new Date(iso).getTime() - Date.now()) / 1000);
+  if (seconds < 60) return "马上";
+  if (seconds < 3600) return `${Math.round(seconds / 60)} 分钟后`;
+  if (seconds < 86400) return `${Math.round(seconds / 3600)} 小时后`;
+  return `${Math.round(seconds / 86400)} 天后`;
+}
+
 export default function TasksPage() {
+  const [allTriggers, setAllTriggers] = useState<AgentTrigger[]>([]);
+  const [loading, setLoading] = useState(true);
   const [kind, setKind] = useState<TriggerFilter>("all");
   const [status, setStatus] = useState<StatusFilter>("all");
 
+  useEffect(() => {
+    loadTriggers()
+      .then(setAllTriggers)
+      .finally(() => setLoading(false));
+  }, []);
+
   const triggers = useMemo(
     () =>
-      TRIGGERS.filter((trigger) => {
+      allTriggers.filter((trigger) => {
         const matchesKind = kind === "all" || trigger.kind === kind;
         const matchesStatus =
           status === "all" ||
@@ -40,7 +67,7 @@ export default function TasksPage() {
           (status === "paused" && !trigger.enabled);
         return matchesKind && matchesStatus;
       }),
-    [kind, status],
+    [allTriggers, kind, status],
   );
 
   return (
@@ -84,16 +111,21 @@ export default function TasksPage() {
           ]}
         />
         <div className="ml-auto font-mono text-[11px] tracking-[0.08em] text-[var(--ink-faint)]">
-          {triggers.length} / {TRIGGERS.length} triggers
+          {loading ? (
+            <span className="inline-flex items-center gap-1">
+              <Loader2 size={11} className="animate-spin" /> loading
+            </span>
+          ) : (
+            <>
+              {triggers.length} / {allTriggers.length} triggers
+            </>
+          )}
         </div>
       </div>
 
       <div className="space-y-3">
         {triggers.map((trigger) => {
-          const targets = trigger.watchlist_ids
-            .map((id) => WATCHLIST.find((w) => w.id === id))
-            .filter(Boolean);
-          const Icon = kindIcon[trigger.kind];
+          const Icon = kindIcon[trigger.kind as TriggerKind] ?? Radio;
           return (
             <Card key={trigger.id} className="overflow-hidden">
               <div className="grid gap-4 p-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1.2fr)_minmax(0,0.8fr)]">
@@ -113,7 +145,7 @@ export default function TasksPage() {
                         <Badge tone={trigger.enabled ? "gain" : "neutral"}>
                           {trigger.enabled ? "listening" : "paused"}
                         </Badge>
-                        <Badge tone="accent">{kindLabel[trigger.kind]}</Badge>
+                        <Badge tone="accent">{kindLabel[trigger.kind as TriggerKind] ?? trigger.kind}</Badge>
                       </div>
                       <div className="mt-2 font-display text-[21px] italic leading-tight text-[var(--ink)]">
                         {trigger.name}
@@ -132,19 +164,22 @@ export default function TasksPage() {
                     </div>
                   </Field>
                   <div className="mt-3 flex flex-wrap gap-1.5">
-                    {targets.map((target) => (
-                      <span
-                        key={target!.id}
-                        className="inline-flex items-center gap-1.5 rounded-sm border border-[var(--line)] bg-[var(--surface-2)] px-2 py-1"
-                      >
-                        <span className="numeric text-[11px] text-[var(--ink)]">
-                          {target!.symbol}
-                        </span>
-                        <span className="font-mono text-[9px] tracking-[0.1em] text-[var(--ink-faint)]">
-                          {target!.market}
-                        </span>
+                    {trigger.watchlist_symbols.length === 0 ? (
+                      <span className="font-mono text-[9px] tracking-[0.1em] text-[var(--ink-faint)]">
+                        全 watchlist
                       </span>
-                    ))}
+                    ) : (
+                      trigger.watchlist_symbols.map((sym) => (
+                        <span
+                          key={sym}
+                          className="inline-flex items-center gap-1.5 rounded-sm border border-[var(--line)] bg-[var(--surface-2)] px-2 py-1"
+                        >
+                          <span className="numeric text-[11px] text-[var(--ink)]">
+                            {sym}
+                          </span>
+                        </span>
+                      ))
+                    )}
                   </div>
                 </div>
 
@@ -155,7 +190,7 @@ export default function TasksPage() {
                   <Field label="CADENCE">
                     <div className="flex items-center gap-1.5 text-[12px] text-[var(--ink-soft)]">
                       <Radio size={13} className="text-[var(--ink-muted)]" />
-                      {trigger.cadence}
+                      {trigger.cadence_text || `每 ${trigger.cadence_minutes} 分钟`}
                     </div>
                   </Field>
                 </div>
@@ -163,10 +198,10 @@ export default function TasksPage() {
 
               <div className="flex flex-wrap items-center gap-3 border-t border-[var(--line)] bg-[var(--surface)]/60 px-5 py-2">
                 <span className="font-mono text-[10px] tracking-[0.08em] text-[var(--ink-faint)]">
-                  last: {formatRelativeFromNow(trigger.last_triggered_at)}
+                  last: {formatRelative(trigger.last_triggered_at)}
                 </span>
                 <span className="font-mono text-[10px] tracking-[0.08em] text-[var(--ink-faint)]">
-                  next check: {trigger.enabled ? formatRelativeFromNow(trigger.next_check_at) : "paused"}
+                  next check: {trigger.enabled ? formatRelativeFuture(trigger.next_check_at) : "paused"}
                 </span>
                 {trigger.last_status === "error" && (
                   <span className="inline-flex items-center gap-1 font-mono text-[10px] text-[var(--loss)]">

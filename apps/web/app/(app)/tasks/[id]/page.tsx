@@ -27,7 +27,13 @@ import {
 } from "@/lib/api";
 import { EarningsCountdown } from "@/components/EarningsCountdown";
 import { authedFetch } from "@/lib/auth";
-import { getTrigger, KIND_ICON, KIND_LABEL } from "@/lib/triggers";
+import {
+  AgentTrigger,
+  getTrigger,
+  KIND_ICON,
+  KIND_LABEL,
+  type TriggerKind,
+} from "@/lib/triggers";
 import { cn } from "@/lib/cn";
 
 // ─── Types ──────────────────────────────────────────────────────────
@@ -101,7 +107,14 @@ function relativeFromNow(iso: string): string {
 export default function TriggerDetailPage() {
   const params = useParams<{ id: string }>();
   const triggerId = params.id;
-  const trigger = getTrigger(triggerId);
+  const [trigger, setTrigger] = useState<AgentTrigger | null | undefined>(undefined);
+  // undefined = still loading, null = not found, object = loaded
+
+  useEffect(() => {
+    getTrigger(triggerId)
+      .then((t) => setTrigger(t ?? null))
+      .catch(() => setTrigger(null));
+  }, [triggerId]);
 
   const [groups, setGroups] = useState<TagGroup[]>([]);
   const [articles, setArticles] = useState<ArticleSummary[]>([]);
@@ -236,6 +249,15 @@ export default function TriggerDetailPage() {
     }
   }, [isPerTicker, orderedSymbols, selectedSymbol]);
 
+  if (trigger === undefined) {
+    return (
+      <div className="flex h-screen items-center justify-center text-[12px] text-[var(--ink-muted)]">
+        <Loader2 size={14} className="mr-2 animate-spin" />
+        loading trigger…
+      </div>
+    );
+  }
+
   if (!trigger) {
     return (
       <PageContainer>
@@ -255,7 +277,8 @@ export default function TriggerDetailPage() {
     );
   }
 
-  const Icon = KIND_ICON[trigger.kind];
+  const triggerKind = trigger.kind as TriggerKind;
+  const Icon = KIND_ICON[triggerKind] ?? KIND_ICON.news;
 
   // Viewport-locked layout: header strip at top stays put, left aside is
   // fixed in viewport (filter + calendar always visible), only the right
@@ -269,7 +292,7 @@ export default function TriggerDetailPage() {
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="min-w-0">
             <div className="eyebrow mb-2">
-              TRIGGER · {KIND_LABEL[trigger.kind].toUpperCase()}
+              TRIGGER · {(KIND_LABEL[triggerKind] ?? trigger.kind).toUpperCase()}
             </div>
             <div className="flex items-center gap-3">
               <span
@@ -291,7 +314,10 @@ export default function TriggerDetailPage() {
               <Badge>{trigger.skill}</Badge>
             </div>
             <div className="mt-2 max-w-3xl text-[12px] leading-relaxed text-[var(--ink-muted)]">
-              {trigger.condition} · <span className="text-[var(--ink-faint)]">{trigger.cadence}</span>
+              {trigger.condition} ·{" "}
+              <span className="text-[var(--ink-faint)]">
+                {trigger.cadence_text || `每 ${trigger.cadence_minutes} 分钟`}
+              </span>
             </div>
           </div>
           <div className="flex items-center gap-2">

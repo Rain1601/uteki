@@ -326,6 +326,83 @@ export type NewsAnalyzeEvent =
  * Caller pattern is identical to ``streamChat`` — for-await-of the
  * generator, abort via the passed AbortSignal.
  */
+// ─── Triggers (persisted in DB; replaces hardcoded fixture) ────────
+
+export interface ApiTrigger {
+  id: string;
+  name: string;
+  kind: "news" | "earnings" | "event" | "price" | "schedule" | string;
+  skill: string;
+  condition: string;
+  watchlist_symbols: string[];
+  cadence_minutes: number;
+  cadence_text: string;
+  earnings_window_hours: number;
+  boost_in_earnings_window_minutes: number;
+  enabled: boolean;
+  last_check_at: string | null;
+  last_triggered_at: string | null;
+  next_check_at: string | null;
+  last_status: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ApiTriggerUpsert {
+  id: string;
+  name: string;
+  kind: "news" | "earnings" | "event" | "price" | "schedule";
+  skill?: string;
+  condition?: string;
+  watchlist_symbols?: string[];
+  cadence_minutes?: number;
+  cadence_text?: string;
+  earnings_window_hours?: number;
+  boost_in_earnings_window_minutes?: number;
+  enabled?: boolean;
+  sort_order?: number;
+}
+
+export type ApiTriggerPatch = Partial<Omit<ApiTriggerUpsert, "id">>;
+
+export async function listTriggers(enabledOnly = false): Promise<ApiTrigger[]> {
+  const qs = enabledOnly ? "?enabled_only=true" : "";
+  const r = await authedFetch(`${API_BASE}/api/triggers${qs}`, {
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error((await r.text()) || `list triggers failed: ${r.status}`);
+  return (await r.json()) as ApiTrigger[];
+}
+
+export async function upsertTrigger(body: ApiTriggerUpsert): Promise<ApiTrigger> {
+  const r = await authedFetch(`${API_BASE}/api/triggers`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error((await r.text()) || `upsert trigger failed: ${r.status}`);
+  return (await r.json()) as ApiTrigger;
+}
+
+export async function patchTrigger(
+  id: string,
+  patch: ApiTriggerPatch,
+): Promise<ApiTrigger> {
+  const r = await authedFetch(`${API_BASE}/api/triggers/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!r.ok) throw new Error((await r.text()) || `patch trigger failed: ${r.status}`);
+  return (await r.json()) as ApiTrigger;
+}
+
+export async function deleteTrigger(id: string): Promise<void> {
+  const r = await authedFetch(`${API_BASE}/api/triggers/${id}`, { method: "DELETE" });
+  if (!r.ok) throw new Error((await r.text()) || `delete trigger failed: ${r.status}`);
+}
+
 // ─── Earnings calendar ─────────────────────────────────────────────
 
 export interface EarningsEvent {
