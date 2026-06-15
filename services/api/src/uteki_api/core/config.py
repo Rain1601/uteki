@@ -103,6 +103,12 @@ class Settings(BaseSettings):
     # at role-resolution time, so legacy ADMIN_* env vars keep working.
     owner_emails: str = ""
     owner_github_logins: str = ""
+    # Shared secret for HMAC-SHA256 signature on POST /api/triggers/event.
+    # Required in production (auth_required=True). In dev (auth_required=False)
+    # an unset secret still allows anonymous webhook firing so a local curl
+    # smoke-test stays one-liner; ops MUST set this before exposing the API
+    # to the public internet.
+    webhook_secret: str = ""
     # OAuth: blank = button disabled in UI.
     github_client_id: str = ""
     github_client_secret: str = ""
@@ -193,6 +199,7 @@ settings = Settings(
         or os.getenv("UTEKI_ADMIN_GITHUB_ID")
         or ""
     ),
+    webhook_secret=os.getenv("UTEKI_WEBHOOK_SECRET") or "",
     owner_emails=(
         os.getenv("UTEKI_OWNER_EMAILS")
         or os.getenv("UTEKI_OWNER_EMAIL")

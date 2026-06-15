@@ -11,16 +11,21 @@ webhook event matching (POST /event) until P11 unifies the two.
   trigger_hit rows pointing at the deleted ID get orphaned (the news
   detail page will simply skip them); we don't cascade because the
   hits are historic facts worth keeping.
-- ``POST /api/triggers/event`` — webhook ingestion (legacy registry).
+- ``POST /api/triggers/event`` — webhook ingestion, HMAC-signed.
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+import hashlib
+import hmac
+import json
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field, ValidationError
 from sqlmodel import Session
 
 from uteki_api.auth.deps import current_user, require_admin
+from uteki_api.core.config import settings
 from uteki_api.core.db import get_db
 from uteki_api.triggers import default_triggers, default_trigger_store
 from uteki_api.triggers.persisted_models import Trigger
@@ -185,14 +190,61 @@ class EventIngest(BaseModel):
     payload: dict
 
 
+def _verify_webhook_signature(raw_body: bytes, signature_header: str | None) -> None:
+    """HMAC-SHA256 over the raw request body, GitHub-style header.
+
+    Header format: ``X-Webhook-Signature: sha256=<hex>``. The comparison
+    is constant-time. We deliberately don't include a timestamp in v1 —
+    the trigger registry is idempotent enough that replay isn't
+    catastrophic, and the simpler shape matches what most off-the-shelf
+    webhook producers send out of the box.
+
+    Dev escape hatch: if ``settings.webhook_secret`` is unset AND
+    ``settings.auth_required`` is False, anonymous calls are allowed so
+    ``curl -d '{...}' /api/triggers/event`` still works on a fresh
+    checkout. Production (``auth_required=True``) requires the secret.
+    """
+    secret = settings.webhook_secret
+    if not secret:
+        if not settings.auth_required:
+            return
+        raise HTTPException(
+            status_code=503,
+            detail="webhook secret not configured (set UTEKI_WEBHOOK_SECRET)",
+        )
+
+    if not signature_header or not signature_header.startswith("sha256="):
+        raise HTTPException(
+            status_code=401,
+            detail="missing or malformed X-Webhook-Signature header",
+        )
+    provided = signature_header[len("sha256=") :].strip()
+    expected = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(provided, expected):
+        raise HTTPException(status_code=401, detail="signature mismatch")
+
+
 @router.post("/event")
-async def ingest_event(body: EventIngest) -> dict:
+async def ingest_event(request: Request) -> dict:
     """Hook for external webhooks (legacy registry; pre-DB).
+
+    Auth: HMAC-SHA256 signature in ``X-Webhook-Signature: sha256=<hex>``
+    computed over the raw request body using ``UTEKI_WEBHOOK_SECRET`` as
+    the key. See ``_verify_webhook_signature`` for the dev-mode escape.
 
     Looks up matching in-memory EventTriggers and returns the prompts
     that would fire. The DB-persisted triggers above don't participate
     yet — P10.2 scheduler will own the dispatch from there.
     """
+    raw_body = await request.body()
+    _verify_webhook_signature(raw_body, request.headers.get("X-Webhook-Signature"))
+
+    try:
+        parsed = json.loads(raw_body or b"{}")
+        body = EventIngest.model_validate(parsed)
+    except (json.JSONDecodeError, ValidationError) as e:
+        raise HTTPException(status_code=422, detail=f"invalid body: {e}") from e
+
     matches = default_triggers.by_topic(body.topic)
     fired = []
     for t in matches:
