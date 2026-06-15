@@ -195,8 +195,9 @@ export function canOperate(user: AuthUser | null | undefined, agent?: string): b
 }
 
 /** True iff the user has admin tools (user management, system settings).
- *  Stricter than `canOperate` — dev demo with local_all_permissions still
- *  passes, but a vanilla reader does not. */
+ *  Stricter than `canOperate` — a vanilla reader does not pass. In dev mode
+ *  (UTEKI_AUTH_REQUIRED=false) the demo user is promoted to role=admin on
+ *  startup, so this returns true locally without needing to log in. */
 export function canAdmin(user: AuthUser | null | undefined): boolean {
   if (!user) return false;
   return user.role === "admin" || user.permissions?.includes("admin:*") === true;

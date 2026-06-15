@@ -169,10 +169,14 @@ settings = Settings(
     run_store=(os.getenv("UTEKI_RUN_STORE") or "sqlite").lower(),
     jwt_secret=os.getenv("UTEKI_JWT_SECRET") or "dev-secret-change-me",
     auth_required=_envflag("UTEKI_AUTH_REQUIRED", True),
-    local_all_permissions=_envflag(
-        "UTEKI_LOCAL_ALL_PERMISSIONS",
-        not _envflag("UTEKI_AUTH_REQUIRED", True),
-    ),
+    # Default OFF — previously this defaulted to true whenever auth was
+    # disabled, which produced a confusing "reader role with admin:*
+    # permissions" cached on demo@local. The honest equivalent is now baked
+    # into ensure_demo_user (it promotes the dev demo user to role=admin
+    # when auth_required=false), so role-based gating works the same way
+    # locally and in prod. The flag is still respected if explicitly set —
+    # the e2e suite uses it to verify reader-with-elevated-perms behaviour.
+    local_all_permissions=_envflag("UTEKI_LOCAL_ALL_PERMISSIONS", False),
     admin_emails=(
         os.getenv("UTEKI_ADMIN_EMAILS")
         or os.getenv("UTEKI_ADMIN_EMAIL")

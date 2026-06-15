@@ -31,7 +31,7 @@ import {
   type SymbolHit,
 } from "@/lib/api";
 import { EarningsCountdown } from "@/components/EarningsCountdown";
-import { canOperate, fetchMe, type AuthUser } from "@/lib/auth";
+import { canAdmin, canOperate, fetchMe, type AuthUser } from "@/lib/auth";
 import type { AgentEvent, ChatMessage } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -222,6 +222,16 @@ export default function CompanyAgentPage() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [chartItem, setChartItem] = useState<CompanyWatchItem | null>(null);
   const canRunCompanyAgent = canOperate(user, "company_research_pipeline");
+  // Mutating the shared watchlist (POST/PATCH/DELETE /api/companies) is
+  // admin-only on the server. Keep this distinct from canRunCompanyAgent —
+  // a "reader" with operate permission can still START runs but cannot
+  // edit the watchlist itself.
+  const isAdmin = canAdmin(user);
+  const watchlistGateTitle = !user
+    ? "请先登录"
+    : !isAdmin
+      ? "需要 admin 权限才能修改关注列表"
+      : "";
   const peerSuggestions = useMemo(
     () =>
       Array.from(
@@ -346,6 +356,10 @@ export default function CompanyAgentPage() {
 
   async function addFromHit(hit: SymbolHit) {
     if (addingFromHit) return;
+    if (!isAdmin) {
+      setError("需要 admin 权限才能添加公司");
+      return;
+    }
     setAddingFromHit(hit.symbol);
     try {
       const created = await createCompany({
@@ -391,6 +405,10 @@ export default function CompanyAgentPage() {
   async function addWatchItem() {
     const cleanSymbol = newWatchSymbol.trim().toUpperCase();
     if (!cleanSymbol) return;
+    if (!isAdmin) {
+      setError("需要 admin 权限才能添加公司");
+      return;
+    }
     const existing = watchItems.find((item) => item.symbol === cleanSymbol);
     if (existing) {
       chooseCompany(existing);
@@ -497,7 +515,8 @@ export default function CompanyAgentPage() {
                 size="sm"
                 variant="ghost"
                 onClick={() => setShowAddWatch((v) => !v)}
-                disabled={!canRunCompanyAgent}
+                disabled={!isAdmin}
+                title={watchlistGateTitle || "添加新公司"}
               >
                 <Plus size={12} /> 添加
               </Button>
@@ -540,7 +559,13 @@ export default function CompanyAgentPage() {
                   className="h-9 w-full border border-[var(--line)] bg-[var(--surface)] px-3 text-[12px] text-[var(--ink-soft)] outline-none focus:border-[var(--accent)]"
                   placeholder="Company name"
                 />
-                <Button size="sm" variant="primary" onClick={addWatchItem} disabled={!newWatchSymbol.trim()}>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  onClick={addWatchItem}
+                  disabled={!newWatchSymbol.trim() || !isAdmin}
+                  title={watchlistGateTitle}
+                >
                   添加到研究台
                 </Button>
               </div>
@@ -641,9 +666,9 @@ export default function CompanyAgentPage() {
                         <button
                           type="button"
                           onClick={() => void addFromHit(hit)}
-                          disabled={!canRunCompanyAgent || !!addingFromHit}
+                          disabled={!isAdmin || !!addingFromHit}
                           className="group flex w-full items-center gap-3 px-5 py-2.5 text-left transition-colors hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-60"
-                          title={canRunCompanyAgent ? `添加 ${hit.symbol} 到关注列表` : "需要 operator 权限"}
+                          title={isAdmin ? `添加 ${hit.symbol} 到关注列表` : watchlistGateTitle}
                         >
                           <div className="min-w-0 flex-1">
                             <div className="flex items-baseline gap-2">

@@ -149,15 +149,36 @@ def ensure_demo_user(db: Session) -> User:
 
     Called at startup and by ``current_user`` when AUTH_REQUIRED is false.
     Cheap (single index lookup); guaranteed to return a persisted ``User``.
+
+    Role selection follows the auth mode:
+    - ``auth_required=False`` (dev/anonymous): the demo user is effectively
+      "the local developer" — promoted to ``admin`` so role-based gates
+      match production gates. This replaces the previous
+      ``local_all_permissions`` magic that returned a ``reader`` with
+      ``admin:*`` perms (truthful but confusing).
+    - ``auth_required=True``: ``reader`` — never relied upon directly in
+      tests/prod, but kept consistent in case a code path exercises it.
+
+    Existing demo users are upgraded in place when the mode demands a
+    higher role, never downgraded — toggling AUTH_REQUIRED back and forth
+    must not lock the developer out of work they did under admin.
     """
+    from uteki_api.core.config import settings
+
+    desired_role = "admin" if not settings.auth_required else "reader"
     existing = default_user_store.get_by_email(db, DEMO_USER_EMAIL)
     if existing is not None:
+        if desired_role == "admin" and existing.role != "admin":
+            existing.role = "admin"
+            db.add(existing)
+            db.commit()
+            db.refresh(existing)
         return existing
     return default_user_store.create(
         db,
         email=DEMO_USER_EMAIL,
         display_name="Demo (dev)",
-        role="reader",
+        role=desired_role,
     )
 
 
