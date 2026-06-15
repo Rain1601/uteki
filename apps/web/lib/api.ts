@@ -9,6 +9,9 @@ export interface ChatStreamRequest {
   session_id?: string;
   agent?: string;
   model?: string;
+  /** Origin label for the LOG list: "user" → MANUAL, "test" → TEST,
+   *  "cron"/"event" → AGENT. Defaults to "user" server-side. */
+  origin?: "user" | "cron" | "event" | "eval" | "compare" | "test";
 }
 
 /**
@@ -100,6 +103,18 @@ export async function getRun(id: string): Promise<RunDetail> {
     cache: "no-store",
   });
   return r.json();
+}
+
+/** Owner-scoped delete. Drops the Run row + its artifact dir. 204 on success;
+ *  404 if the run isn't owned by the caller (same shape as "doesn't exist"). */
+export async function deleteRun(id: string): Promise<void> {
+  const r = await authedFetch(`${API_BASE}/api/runs/${id}`, {
+    method: "DELETE",
+  });
+  if (!r.ok && r.status !== 204) {
+    const detail = await r.text().catch(() => "");
+    throw new Error(detail || `delete failed: ${r.status}`);
+  }
 }
 
 export async function listAgents(): Promise<{ items: AgentInfo[] }> {
@@ -564,6 +579,29 @@ export async function deleteCompany(symbol: string, hard = false): Promise<void>
     method: "DELETE",
   });
   if (!r.ok) throw new Error((await r.text()) || `delete company failed: ${r.status}`);
+}
+
+export interface SymbolHit {
+  symbol: string;
+  name: string;
+  cik: string;
+  source: string;
+}
+
+/** Search the SEC EDGAR ticker universe (NASDAQ + NYSE + AMEX, incl. S&P 500).
+ *  Pass an AbortSignal so the UI can cancel stale requests as the user types. */
+export async function searchSymbols(
+  q: string,
+  limit = 10,
+  signal?: AbortSignal,
+): Promise<SymbolHit[]> {
+  const qs = new URLSearchParams({ q, limit: String(limit) }).toString();
+  const r = await authedFetch(`${API_BASE}/api/symbols/search?${qs}`, {
+    cache: "no-store",
+    signal,
+  });
+  if (!r.ok) throw new Error((await r.text()) || `symbol search failed: ${r.status}`);
+  return (await r.json()) as SymbolHit[];
 }
 
 export interface NewsFeedbackResponse {

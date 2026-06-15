@@ -6,6 +6,7 @@ import {
   Activity,
   ArrowRight,
   CandlestickChart,
+  Check,
   FileText,
   Loader2,
   Play,
@@ -13,17 +14,21 @@ import {
   RefreshCw,
   Search,
   Square,
+  Trash2,
   X,
 } from "lucide-react";
 import {
   createCompany,
+  deleteRun,
   listCompanies,
   listEarningsNext,
   listRuns,
+  searchSymbols,
   streamChat,
   type Company as ApiCompany,
   type EarningsEvent,
   type RunSummary,
+  type SymbolHit,
 } from "@/lib/api";
 import { EarningsCountdown } from "@/components/EarningsCountdown";
 import { canOperate, fetchMe, type AuthUser } from "@/lib/auth";
@@ -115,6 +120,16 @@ function verdictTone(verdict: WatchVerdict | string): "gain" | "loss" | "warn" |
   return "neutral";
 }
 
+/** Bucket a run's triggered_by into the three operator-facing origins. */
+function originBucket(triggeredBy: string | undefined | null): {
+  label: "MANUAL" | "AGENT" | "TEST";
+  tone: "neutral" | "warn" | "gain";
+} {
+  if (triggeredBy === "test") return { label: "TEST", tone: "gain" };
+  if (triggeredBy === "cron" || triggeredBy === "event") return { label: "AGENT", tone: "warn" };
+  return { label: "MANUAL", tone: "neutral" };
+}
+
 function inferSymbol(run: RunSummary): string {
   const text = `${run.user_input ?? ""} ${run.summary ?? ""}`;
   const match = text.match(/\b[A-Z]{1,5}(?:\.[A-Z]{2})?\b|\b\d{6}\.(?:SH|SZ)\b/);
@@ -184,6 +199,9 @@ export default function CompanyAgentPage() {
     Record<string, EarningsEvent>
   >({});
   const [watchSearch, setWatchSearch] = useState("");
+  const [remoteHits, setRemoteHits] = useState<SymbolHit[]>([]);
+  const [searchingRemote, setSearchingRemote] = useState(false);
+  const [addingFromHit, setAddingFromHit] = useState<string | null>(null);
   const [verdictFilter, setVerdictFilter] = useState<"ALL" | WatchVerdict>("ALL");
   const [marketFilter, setMarketFilter] = useState<"ALL" | WatchMarket>("ALL");
   const [showAddWatch, setShowAddWatch] = useState(false);
@@ -194,6 +212,11 @@ export default function CompanyAgentPage() {
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Two-step delete: clicking the trash arms the row (deleteArmed = run.id).
+  // A second click on the same row commits. Clicking anywhere else, or the
+  // explicit X, disarms. Avoids a modal for what's still a routine cleanup.
+  const [deleteArmed, setDeleteArmed] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
   const [loadingRuns, setLoadingRuns] = useState(false);
   const [aborter, setAborter] = useState<AbortController | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -236,6 +259,29 @@ export default function CompanyAgentPage() {
     }
   }, []);
 
+  // Two-step delete: trash icon arms the row; a second click on the same
+  // row's "确认" cell calls DELETE then trims the row from local state
+  // (avoids a full refetch — the new list is the same minus one row).
+  const handleDelete = useCallback(
+    async (runId: string) => {
+      if (deleting) return;
+      setDeleting(runId);
+      try {
+        await deleteRun(runId);
+        setRuns((prev) => prev.filter((r) => r.id !== runId));
+        // If the run currently active in the work area is the one we just
+        // deleted, drop the active link so the "查看档案 →" doesn't 404.
+        if (activeRunId === runId) setActiveRunId(null);
+      } catch (e) {
+        setError((e as Error).message);
+      } finally {
+        setDeleting(null);
+        setDeleteArmed(null);
+      }
+    },
+    [activeRunId, deleting],
+  );
+
   useEffect(() => {
     refreshRuns();
   }, [refreshRuns]);
@@ -263,6 +309,64 @@ export default function CompanyAgentPage() {
   useEffect(() => {
     void refreshWatchlist();
   }, [refreshWatchlist]);
+
+  // Live SEC ticker search. Debounce 250ms, abort stale requests on each
+  // keystroke. Filter out symbols already in the watchlist so suggestions
+  // are pure "add new" candidates. SEC universe is US-only (NASDAQ/NYSE/
+  // AMEX) — TW/HK/CN tickers won't surface here.
+  useEffect(() => {
+    const q = watchSearch.trim();
+    if (q.length < 1) {
+      setRemoteHits([]);
+      setSearchingRemote(false);
+      return;
+    }
+    const watched = new Set(watchItems.map((it) => it.symbol));
+    const controller = new AbortController();
+    const handle = setTimeout(async () => {
+      setSearchingRemote(true);
+      try {
+        const hits = await searchSymbols(q, 12, controller.signal);
+        setRemoteHits(hits.filter((h) => !watched.has(h.symbol.toUpperCase())));
+      } catch (e) {
+        if ((e as Error).name !== "AbortError") {
+          // Soft-fail: leave existing hits or empty. Don't block the page on
+          // SEC outages — the local watchlist filter still works.
+          setRemoteHits([]);
+        }
+      } finally {
+        setSearchingRemote(false);
+      }
+    }, 250);
+    return () => {
+      clearTimeout(handle);
+      controller.abort();
+    };
+  }, [watchSearch, watchItems]);
+
+  async function addFromHit(hit: SymbolHit) {
+    if (addingFromHit) return;
+    setAddingFromHit(hit.symbol);
+    try {
+      const created = await createCompany({
+        symbol: hit.symbol,
+        name: hit.name,
+        market: "US",
+        cik: hit.cik,
+        verdict: "UNRATED",
+      });
+      const item = fromApi(created);
+      setWatchItems((prev) => [item, ...prev]);
+      setSymbol(item.symbol);
+      setPeerTags([]);
+      setWatchSearch("");
+      setRemoteHits([]);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setAddingFromHit(null);
+    }
+  }
 
   const latestRun = runs[0] ?? null;
   const currentStage = useMemo(() => stageFromEvents(events), [events]);
@@ -335,6 +439,7 @@ export default function CompanyAgentPage() {
           messages,
           agent: "company_research_pipeline",
           model: "deepseek/deepseek-chat",
+          origin: "user",
         },
         controller.signal,
       )) {
@@ -515,9 +620,59 @@ export default function CompanyAgentPage() {
                 </div>
               </li>
             ))}
-            {filteredWatchItems.length === 0 && (
+            {filteredWatchItems.length === 0 && remoteHits.length === 0 && !searchingRemote && (
               <li className="px-5 py-6 text-[12px] leading-relaxed text-[var(--ink-muted)]">
                 没有匹配的公司。可以清空筛选，或添加一个新的 ticker。
+              </li>
+            )}
+            {watchSearch.trim() && (searchingRemote || remoteHits.length > 0) && (
+              <li className="bg-[color-mix(in_srgb,var(--surface)_60%,transparent)]">
+                <div className="flex items-baseline justify-between px-5 pt-4 pb-2">
+                  <div className="eyebrow text-[var(--ink-faint)]">FROM SEC EDGAR · US</div>
+                  {searchingRemote && (
+                    <Loader2 size={11} className="animate-spin text-[var(--ink-faint)]" />
+                  )}
+                </div>
+                <ul className="divide-y divide-[var(--line)]">
+                  {remoteHits.map((hit) => {
+                    const busy = addingFromHit === hit.symbol;
+                    return (
+                      <li key={hit.symbol}>
+                        <button
+                          type="button"
+                          onClick={() => void addFromHit(hit)}
+                          disabled={!canRunCompanyAgent || !!addingFromHit}
+                          className="group flex w-full items-center gap-3 px-5 py-2.5 text-left transition-colors hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-60"
+                          title={canRunCompanyAgent ? `添加 ${hit.symbol} 到关注列表` : "需要 operator 权限"}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-baseline gap-2">
+                              <span className="font-display text-[15px] italic leading-none text-[var(--ink)]">
+                                {hit.symbol}
+                              </span>
+                              <span className="min-w-0 truncate font-display text-[11px] italic text-[var(--ink-muted)]">
+                                {hit.name}
+                              </span>
+                            </div>
+                            <div className="mt-1 font-mono text-[9px] tracking-[0.10em] text-[var(--ink-faint)]">
+                              CIK {hit.cik.replace(/^0+/, "") || "0"}
+                            </div>
+                          </div>
+                          {busy ? (
+                            <Loader2 size={12} className="animate-spin text-[var(--ink-muted)]" />
+                          ) : (
+                            <Plus size={12} className="text-[var(--ink-muted)] group-hover:text-[var(--accent)]" />
+                          )}
+                        </button>
+                      </li>
+                    );
+                  })}
+                  {!searchingRemote && remoteHits.length === 0 && filteredWatchItems.length === 0 && (
+                    <li className="px-5 py-3 font-mono text-[10px] text-[var(--ink-faint)]">
+                      SEC 也没找到。试试公司全名,或换 CN/HK/TW 时手动添加。
+                    </li>
+                  )}
+                </ul>
               </li>
             )}
           </ul>
@@ -700,27 +855,96 @@ export default function CompanyAgentPage() {
             </div>
           ) : (
             <ul className="divide-y divide-[var(--line)]">
-              {runs.slice(0, 18).map((run) => (
-                <li key={run.id}>
-                  <Link href={`/company-agent/${run.id}`} className="block py-4 hover:bg-[var(--surface-hover)]">
-                    <div className="flex items-baseline gap-3">
-                      <span className="w-24 shrink-0 font-mono text-[10px] text-[var(--ink-faint)]">
-                        {formatTs(run.started_at)}
-                      </span>
-                      <span className="font-display text-[16px] italic text-[var(--ink)]">
-                        {inferSymbol(run)}
-                      </span>
-                      <span className="ml-auto font-mono text-[10px] uppercase text-[var(--ink-muted)]">
-                        {run.status}
-                      </span>
+              {runs.slice(0, 18).map((run) => {
+                const origin = originBucket(run.triggered_by);
+                const isArmed = deleteArmed === run.id;
+                const isDeleting = deleting === run.id;
+                return (
+                  <li key={run.id} className="group relative">
+                    <Link
+                      href={`/company-agent/${run.id}`}
+                      className={cn(
+                        "block py-4 pr-10 transition-colors",
+                        isArmed
+                          ? "bg-[color-mix(in_srgb,var(--loss)_8%,transparent)]"
+                          : "hover:bg-[var(--surface-hover)]",
+                      )}
+                    >
+                      <div className="flex items-baseline gap-3">
+                        <span className="w-24 shrink-0 font-mono text-[10px] text-[var(--ink-faint)]">
+                          {formatTs(run.started_at)}
+                        </span>
+                        <span
+                          className="min-w-0 flex-1 truncate font-display text-[16px] italic text-[var(--ink)]"
+                          title={inferSymbol(run)}
+                        >
+                          {inferSymbol(run)}
+                        </span>
+                        <span className="ml-2 shrink-0 font-mono text-[10px] uppercase text-[var(--ink-muted)]">
+                          {run.status}
+                        </span>
+                      </div>
+                      <div className="mt-1 flex items-center gap-2 pl-24 font-mono text-[10px] text-[var(--ink-faint)]">
+                        <Badge tone={origin.tone}>{origin.label}</Badge>
+                        <span>{run.primary_artifact?.display_name ?? "investment memo"}</span>
+                        <span>{duration(run)}</span>
+                      </div>
+                    </Link>
+                    {/* Right-edge action stack — same absolute-positioned
+                        pattern as the watchlist row. Two-state UI: default
+                        shows a single trash icon on hover; once armed, the
+                        trash is replaced by an explicit Confirm + Cancel
+                        pair so the destructive intent is unambiguous. */}
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                      {isDeleting ? (
+                        <Loader2 size={13} className="animate-spin text-[var(--ink-muted)]" />
+                      ) : isArmed ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              void handleDelete(run.id);
+                            }}
+                            className="inline-flex h-6 items-center gap-1 border border-[var(--loss)] bg-[color-mix(in_srgb,var(--loss)_15%,transparent)] px-2 font-mono text-[9px] uppercase tracking-[0.10em] text-[var(--loss)] hover:bg-[color-mix(in_srgb,var(--loss)_22%,transparent)] transition-colors"
+                            title="确认删除"
+                          >
+                            <Check size={11} /> 删除
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setDeleteArmed(null);
+                            }}
+                            className="inline-flex h-6 w-6 items-center justify-center border border-[var(--line-strong)] text-[var(--ink-muted)] hover:border-[var(--accent-line)] hover:text-[var(--accent)] transition-colors"
+                            title="取消"
+                            aria-label="取消"
+                          >
+                            <X size={11} />
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setDeleteArmed(run.id);
+                          }}
+                          className="inline-flex h-6 w-6 items-center justify-center border border-transparent text-[var(--ink-faint)] opacity-0 group-hover:opacity-100 hover:border-[var(--loss)] hover:text-[var(--loss)] transition-all"
+                          title="删除该 run"
+                          aria-label="删除该 run"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      )}
                     </div>
-                    <div className="mt-1 flex items-center gap-3 pl-24 font-mono text-[10px] text-[var(--ink-faint)]">
-                      <span>{run.primary_artifact?.display_name ?? "investment memo"}</span>
-                      <span>{duration(run)}</span>
-                    </div>
-                  </Link>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
           )}
 
