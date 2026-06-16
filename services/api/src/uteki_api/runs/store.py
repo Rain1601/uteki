@@ -68,6 +68,23 @@ class RunStore(ABC):
     ) -> list[Run]: ...
 
     @abstractmethod
+    async def update_score(
+        self,
+        run_id: str,
+        *,
+        auto_score: float | None,
+        score_breakdown: dict | None,
+    ) -> None:
+        """013 — write the async judge result onto an already-finished run.
+
+        Called by ``eval/judges/dispatcher.py`` after the LLM judge returns.
+        Idempotent: re-running the dispatcher for the same run overwrites
+        prior scores in place. Doesn't touch any other Run field — the
+        dispatcher knows nothing about events, status, etc.
+        """
+        ...
+
+    @abstractmethod
     async def set_visibility(
         self, run_id: str, user_id: str, visibility: RunVisibility
     ) -> None:
@@ -151,6 +168,19 @@ class InMemoryRunStore(RunStore):
         if run is None or run.user_id != user_id:
             raise KeyError(f"Unknown run: {run_id}")
         run.visibility = visibility
+
+    async def update_score(
+        self,
+        run_id: str,
+        *,
+        auto_score: float | None,
+        score_breakdown: dict | None,
+    ) -> None:
+        run = self._runs.get(run_id)
+        if run is None:
+            return  # dispatcher fired for a deleted run; silently no-op
+        run.auto_score = auto_score
+        run.score_breakdown = score_breakdown
 
     async def delete(self, run_id: str, user_id: str) -> None:
         run = self._runs.get(run_id)
@@ -327,6 +357,11 @@ class SqliteRunStore(RunStore):
                     "trigger_reason", "started_at", "ended_at", "status",
                     "harness_status", "evaluator_decision", "overall_assessment",
                     "user_input", "summary", "visibility",
+                    # 013 — judge fields. finish() flushes whatever's on
+                    # the Run object; the async dispatcher (started here as
+                    # fire-and-forget) updates them later via a separate
+                    # store.update_score() call.
+                    "auto_score", "score_breakdown_json",
                     "events_json", "tags_json", "usage_summary_json",
                 ):
                     setattr(existing, col, getattr(fresh, col))
@@ -396,6 +431,33 @@ class SqliteRunStore(RunStore):
             if row is None or row.user_id != user_id:
                 raise KeyError(f"Unknown run: {run_id}")
             row.visibility = str(visibility)
+            db.add(row)
+            db.commit()
+
+    async def update_score(
+        self,
+        run_id: str,
+        *,
+        auto_score: float | None,
+        score_breakdown: dict | None,
+    ) -> None:
+        # 013 — written by the async judge dispatcher. No owner check:
+        # the dispatcher is a platform-internal caller that already knows
+        # the run id from finish()'s asyncio.create_task argument.
+        score_json = json.dumps(score_breakdown) if score_breakdown is not None else None
+        live = self._active.get(run_id)
+        if live is not None:
+            live.auto_score = auto_score
+            live.score_breakdown = score_breakdown
+        with Session(self._engine) as db:
+            row = db.get(RunRow, run_id)
+            if row is None:
+                # Run got deleted between finish() and the judge returning.
+                # Drop the result on the floor — there's no row to attach
+                # it to and recreating one would be wrong.
+                return
+            row.auto_score = auto_score
+            row.score_breakdown_json = score_json
             db.add(row)
             db.commit()
 

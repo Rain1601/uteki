@@ -109,6 +109,10 @@ class Settings(BaseSettings):
     # smoke-test stays one-liner; ops MUST set this before exposing the API
     # to the public internet.
     webhook_secret: str = ""
+    # 013 — async post-run LLM judge. Disabled by default so e2e + first
+    # local boot don't fire LLM calls; flip to True in prod once a judge
+    # model is configured. mock-LLM mode short-circuits even when True.
+    run_eval_enabled: bool = False
     # OAuth: blank = button disabled in UI.
     github_client_id: str = ""
     github_client_secret: str = ""
@@ -200,6 +204,7 @@ settings = Settings(
         or ""
     ),
     webhook_secret=os.getenv("UTEKI_WEBHOOK_SECRET") or "",
+    run_eval_enabled=_envflag("UTEKI_RUN_EVAL_ENABLED", False),
     owner_emails=(
         os.getenv("UTEKI_OWNER_EMAILS")
         or os.getenv("UTEKI_OWNER_EMAIL")

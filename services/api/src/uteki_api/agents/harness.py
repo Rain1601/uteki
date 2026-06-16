@@ -403,6 +403,21 @@ class AgentHarness:
 
         await self.run_store.finish(run_id, status, summary)
 
+        # 013 — fire-and-forget post-run LLM judge. Dispatcher decides
+        # whether it actually runs (settings.run_eval_enabled, skill
+        # whitelist, mock-LLM mode all short-circuit it). Wrapped in a
+        # broad except so a judge crash NEVER bubbles back into the
+        # harness — the user-facing run is already done at this point.
+        try:
+            from uteki_api.eval.judges.dispatcher import default_judge_dispatcher
+
+            asyncio.create_task(default_judge_dispatcher.score(run_id))
+        except Exception:  # noqa: BLE001 — defense in depth; never leak into harness
+            import logging
+            logging.getLogger(__name__).exception(
+                "judge dispatch failed for run_id=%s", run_id
+            )
+
     def _check_budget(
         self,
         usage_totals: dict[str, int],
