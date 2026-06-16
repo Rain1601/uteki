@@ -43,6 +43,10 @@ class ResearchAgent(BaseAgent):
         "financials",
         "news_search",
         "report_analysis",
+        "macro_fred",
+        "macro_rates",
+        "company_intel",
+        "sec_fundamentals",
     ]
     DEFAULT_MODEL = "anthropic/claude-sonnet-4-6"
 

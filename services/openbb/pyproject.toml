@@ -1,0 +1,33 @@
+[project]
+name = "uteki-openbb-sidecar"
+version = "0.0.1"
+description = "OpenBB Platform API run as a sidecar process — kept isolated from the uteki backend so the OpenBB AGPL-3.0 license does not contaminate the main API."
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+# OpenBB Platform pins to Python 3.11/3.12 (1.6.x doesn't ship 3.13 wheels yet).
+# Running in its own venv lets us keep the main backend on 3.13.
+dependencies = [
+    "openbb-platform-api>=1.3.6",
+    "openbb-core>=1.6",
+    # Routers — provider plugins register endpoints under these. Without
+    # the routers, /equity/* and /news/* paths don't appear in the API.
+    "openbb-economy>=1.6",
+    "openbb-fixedincome>=1.6",
+    "openbb-equity>=1.6",
+    "openbb-news>=1.6",
+    # Macro providers (C.1 → C.3)
+    "openbb-fred>=1.6",
+    "openbb-federal-reserve>=1.6",
+    "openbb-ecb>=1.6",
+    # Companies / earnings / ratings / insider (C.4)
+    "openbb-fmp>=1.6",
+    # SEC extension (C.5) — adds endpoints beyond our hand-rolled EDGAR layer
+    "openbb-sec>=1.6",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+include = ["run.py"]
