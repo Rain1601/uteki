@@ -40,7 +40,7 @@ from pydantic import BaseModel, Field
 
 from uteki_api.schemas.events import AgentEvent
 
-TriggeredBy = Literal["user", "cron", "event", "eval", "compare"]
+TriggeredBy = Literal["user", "cron", "event", "eval", "compare", "test"]
 RunStatus = Literal["running", "ok", "error", "timeout"]
 EvaluatorDecision = Literal["approve", "revise", "reject"]
 OverallAssessment = Literal[

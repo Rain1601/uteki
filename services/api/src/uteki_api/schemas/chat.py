@@ -41,3 +41,8 @@ class ChatRequest(BaseModel):
     # news/financials filtering) instead of pulling current data only to have
     # the SourceCatalog reject future-dated points after the fact.
     as_of: date | None = None
+    # Operator-facing origin label for the LOG list. Maps 1:1 to the Run's
+    # triggered_by. Defaults to "user" (= MANUAL). Callers pass "test" when
+    # running through Claude Code / Codex automation, "cron"/"event" when a
+    # scheduled trigger fires.
+    origin: Literal["user", "cron", "event", "eval", "compare", "test"] | None = None

@@ -47,6 +47,7 @@ async def _build_harness(
     session_id: str | None,
     user_id: str,
     as_of: date | None = None,
+    origin: str | None = None,
 ) -> AgentHarness:
     try:
         skill = default_skills.get(agent_name)
@@ -68,7 +69,7 @@ async def _build_harness(
 
     return AgentHarness(
         skill=skill,
-        triggered_by="user",
+        triggered_by=origin or "user",
         trigger_reason=f"chat:{session_id or 'adhoc'}",
         run_store=default_run_store,
         skill_version=skill_version,
@@ -88,7 +89,9 @@ async def chat(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"permission required: {required_permission_for_agent(req.agent)}",
         )
-    harness = await _build_harness(req.agent, req.model, req.session_id, user.id, req.as_of)
+    harness = await _build_harness(
+        req.agent, req.model, req.session_id, user.id, req.as_of, req.origin
+    )
 
     async def event_source() -> AsyncIterator[dict]:
         # Hold a reference to the underlying async generator so we can
@@ -128,7 +131,9 @@ async def start(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"permission required: {required_permission_for_agent(req.agent)}",
         )
-    harness = await _build_harness(req.agent, req.model, req.session_id, user.id, req.as_of)
+    harness = await _build_harness(
+        req.agent, req.model, req.session_id, user.id, req.as_of, req.origin
+    )
     agen = harness.run(req.messages, session_id=req.session_id)
 
     # First yield is run_start — happens after harness creates the Run
