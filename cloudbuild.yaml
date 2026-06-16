@@ -88,49 +88,45 @@ steps:
       - --tag=rev-$SHORT_SHA
     waitFor: [push-web]
 
-  # ── Smoke test the staged revisions (TODO PR ε wires this up) ────────────
-  # The tagged revision is reachable at:
-  #   https://rev-$SHORT_SHA---uteki-api-<hash>-uc.a.run.app
-  #   https://rev-$SHORT_SHA---uteki-web-<hash>-uc.a.run.app
-  # smoke_test.sh should: GET /healthz on each, assert 200 + expected body,
-  # and exit non-zero on failure. Until that lands, this step is a no-op so
-  # the build is green but traffic is NOT flipped (the next step is gated on
-  # this and is currently commented out).
+  # ── Smoke test the staged revisions ───────────────────────────────────────
+  # scripts/smoke_test.sh probes the tagged ``rev-${SHORT_SHA}`` URL of each
+  # service (reachable even at --no-traffic) and exits non-zero on any check
+  # failure. The two promote-* steps below are gated on this.
   - id: smoke
     name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: bash
+    env:
+      - PROJECT_ID=$PROJECT_ID
+      - SHORT_SHA=$SHORT_SHA
+      - REGION=us-central1
     args:
-      - -c
-      - 'echo "[smoke] not yet wired up — TODO PR ε implements scripts/smoke_test.sh"; exit 0'
+      - scripts/smoke_test.sh
     waitFor: [deploy-api, deploy-web]
 
-  # ── Flip 100% traffic to the new revisions (gated on smoke) ──────────────
-  # Disabled until smoke_test.sh exists. Re-enable by un-commenting and the
-  # build will auto-promote on green smoke.
-  #
-  # - id: promote-api
-  #   name: gcr.io/google.com/cloudsdktool/cloud-sdk
-  #   entrypoint: gcloud
-  #   args:
-  #     - run
-  #     - services
-  #     - update-traffic
-  #     - uteki-api
-  #     - --region=us-central1
-  #     - --to-latest
-  #   waitFor: [smoke]
-  #
-  # - id: promote-web
-  #   name: gcr.io/google.com/cloudsdktool/cloud-sdk
-  #   entrypoint: gcloud
-  #   args:
-  #     - run
-  #     - services
-  #     - update-traffic
-  #     - uteki-web
-  #     - --region=us-central1
-  #     - --to-latest
-  #   waitFor: [smoke]
+  # ── Flip 100% traffic to the new revisions (gated on green smoke) ─────────
+  - id: promote-api
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - services
+      - update-traffic
+      - uteki-api
+      - --region=us-central1
+      - --to-latest
+    waitFor: [smoke]
+
+  - id: promote-web
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - services
+      - update-traffic
+      - uteki-web
+      - --region=us-central1
+      - --to-latest
+    waitFor: [smoke]
 
 images:
   - us-central1-docker.pkg.dev/$PROJECT_ID/uteki/api:$COMMIT_SHA
