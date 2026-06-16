@@ -3,43 +3,41 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import {
-  ArrowRight,
   CalendarClock,
   ExternalLink,
   Loader2,
-  RefreshCw,
   TrendingUp,
 } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
 import { Card, CardBody } from "@/components/ui/Card";
 import {
   fetchNewsStats,
   type NewsStatsResponse,
   type ArticleSummaryDTO,
 } from "@/lib/api";
-import { canAdmin, fetchMe, type AuthUser } from "@/lib/auth";
 import { cn } from "@/lib/cn";
 
 /**
  * /tasks — overview dashboard.
  *
  * Layout:
- *   ┌─────────── header (eyebrow + h-display + stats + refresh) ──────────┐
- *   ├─ TILES ─────────────────────────────────────────────────────────────┤
+ *   ┌─ TILES ─────────────────────────────────────────────────────────────┐
  *   │  [total]  [24h]  [7d]  [impact distribution]                        │
  *   ├─ STATISTICS (2 columns) ─────────────────────────────────────────────┤
  *   │ TOP CRITICAL (≤10)            │ TRIGGER ACTIVITY (last 7d)          │
  *   │ TOP SYMBOLS (≤10)             │ UPCOMING EARNINGS (next ≤10)        │
  *   └──────────────────────────────────────────────────────────────────────┘
  *
- * The left trigger sidebar is owned by ``tasks/layout.tsx``.
+ * The full-width header (eyebrow + h-display + stats + 刷新 + 管理 trigger)
+ * and the left trigger sidebar are owned by ``tasks/layout.tsx``. When the
+ * layout's 刷新 button fires, it dispatches a ``tasks-refresh`` window
+ * event that this page subscribes to so the stats re-fetch in lockstep
+ * with the trigger-list reload.
  */
 export default function TasksOverviewPage() {
   const [stats, setStats] = useState<NewsStatsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [user, setUser] = useState<AuthUser | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -58,42 +56,15 @@ export default function TasksOverviewPage() {
     void refresh();
   }, [refresh]);
 
+  // Re-fetch when the layout-level 刷新 button fires the broadcast event.
   useEffect(() => {
-    fetchMe().then(setUser).catch(() => setUser(null));
-  }, []);
+    const handler = () => void refresh();
+    window.addEventListener("tasks-refresh", handler);
+    return () => window.removeEventListener("tasks-refresh", handler);
+  }, [refresh]);
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      {/* ─── Header strip (mirrors /company-agent style) ───────────────── */}
-      <div className="shrink-0 border-b border-[var(--line)] px-8 py-5">
-        <div className="flex flex-wrap items-end gap-5">
-          <div>
-            <div className="eyebrow mb-1.5">TASKS · OVERVIEW</div>
-            <h1 className="h-display text-[32px] text-[var(--ink)]">监听台</h1>
-          </div>
-          <div className="mb-1 font-mono text-[10px] tracking-[0.18em] text-[var(--ink-faint)]">
-            {stats
-              ? `${stats.total_articles} articles · ${stats.articles_7d} in 7d · ${stats.articles_24h} in 24h`
-              : "loading…"}
-            {user ? ` · ${user.role.toUpperCase()}` : ""}
-          </div>
-          <div className="ml-auto mb-1 flex items-center gap-2">
-            <Button variant="ghost" onClick={refresh} disabled={loading}>
-              <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
-              刷新
-            </Button>
-            {canAdmin(user) && (
-              <Link href="/admin/triggers" className="inline-block">
-                <Button variant="primary">
-                  <ArrowRight size={13} /> 管理 trigger
-                </Button>
-              </Link>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* ─── Scrolling body ───────────────────────────────────────────── */}
       <div className="min-h-0 flex-1 overflow-y-auto px-8 py-6">
         {error && (
           <div className="mb-4 border border-[color-mix(in_srgb,var(--loss)_40%,transparent)] bg-[color-mix(in_srgb,var(--loss)_8%,transparent)] px-4 py-3 font-mono text-[11px] text-[var(--loss)]">

@@ -196,6 +196,16 @@ export function TaskFeedView({ triggerId }: TaskFeedViewProps) {
     void fetchArticles();
   }, [fetchArticles]);
 
+  // The layout's 刷新 button (tasks/layout.tsx) dispatches a window-level
+  // ``tasks-refresh`` CustomEvent. Re-fetch the feed in lockstep so the
+  // toolbar refresh covers everything visible, not just the trigger list
+  // in the sidebar.
+  useEffect(() => {
+    const handler = () => void fetchArticles();
+    window.addEventListener("tasks-refresh", handler);
+    return () => window.removeEventListener("tasks-refresh", handler);
+  }, [fetchArticles]);
+
   function toggleTag(tag: Tag, group: TagGroup) {
     setSelectedTagIds((prev) => {
       const next = new Set(prev);
