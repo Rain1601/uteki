@@ -113,5 +113,12 @@ class Run(BaseModel):
     events: list[AgentEvent] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
     usage_summary: UsageSummary = Field(default_factory=UsageSummary)
+    # 013 — async LLM judge writes back here after the run finishes.
+    # NULL = judge hasn't run yet / doesn't apply to this skill / disabled.
+    # Aggregate (0.0–5.0) is the weighted blend of `score_breakdown`'s
+    # per-axis values. The API masks both fields for callers without the
+    # ``runs:annotate`` permission — see 013 design "reveal-after-label".
+    auto_score: float | None = None
+    score_breakdown: dict | None = None  # {"outcome": 4.2, "cost": 5.0, ...}
     # 010 — owner gates per-run visibility for the public surface.
     visibility: RunVisibility = "private"

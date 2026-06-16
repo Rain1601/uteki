@@ -1,18 +1,28 @@
 """Run inspection endpoints — user-scoped (M4).
 
 GET    /api/runs                       list — current user's runs
+                                        ``?flagged=1`` → only runs I've 🚩-flagged (013)
 GET    /api/runs/{run_id}              full Run including events (404 if not yours)
 GET    /api/runs/{run_id}/events       events only (404 if not yours)
 DELETE /api/runs/{run_id}              drop the row + its artifact dir (owner only)
+GET    /api/runs/{run_id}/feedback     my rating + (auto_score only after I've labelled)
+POST   /api/runs/{run_id}/feedback     upsert my rating + reveals auto_score
 """
 
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
+from sqlmodel import Session
 
 from uteki_api.artifacts import Artifact, default_artifact_store
-from uteki_api.auth.deps import current_user
+from uteki_api.auth.deps import current_user, require_perm
+from uteki_api.auth.roles import PERM_ANNOTATE_RUNS, can_annotate_runs
+from uteki_api.core.db import get_db
 from uteki_api.runs import default_run_store
+from uteki_api.runs.feedback_store import default_run_feedback_store
 from uteki_api.runs.models import Run
 from uteki_api.users.models import User
 
@@ -82,17 +92,36 @@ async def _summary(run: Run) -> dict:
 async def list_runs(
     skill: str | None = None,
     triggered_by: str | None = None,
+    flagged: int = 0,
     limit: int = 50,
     user: User = Depends(current_user),
+    db: Session = Depends(get_db),
 ) -> dict:
+    """List the calling user's runs.
+
+    013: ``?flagged=1`` AND-filters to runs the caller has 🚩-flagged for
+    re-review (which is just RunFeedback rows where ``flagged=True`` and
+    ``user_id == caller``). Anyone without ``runs:annotate`` calling this
+    will simply see an empty list — they can't have flagged anything to
+    begin with, so no separate 403 is required.
+    """
     runs = await default_run_store.list(
         user_id=user.id, skill=skill, triggered_by=triggered_by, limit=limit
     )
+    if flagged:
+        flagged_ids = set(
+            default_run_feedback_store.list_flagged_run_ids(db, user_id=user.id)
+        )
+        runs = [r for r in runs if r.id in flagged_ids]
     return {"items": [await _summary(r) for r in runs]}
 
 
 @router.get("/{run_id}")
-async def get_run(run_id: str, user: User = Depends(current_user)) -> dict:
+async def get_run(
+    run_id: str,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict:
     try:
         run = await default_run_store.get(run_id, user.id)
     except KeyError as e:
@@ -104,6 +133,20 @@ async def get_run(run_id: str, user: User = Depends(current_user)) -> dict:
     payload["primary_artifact"] = _artifact_ref(primary) if primary is not None else None
     payload["artifact_count"] = len(artifacts)
     payload["events_summary"] = _events_summary(run)
+    # 013 — reveal-after-label: the auto-judge's score is on the Run, but
+    # we hide it from the wire unless the caller has BOTH the
+    # runs:annotate permission AND an existing feedback row on this run.
+    # That guarantees the annotator's first impression isn't anchored by
+    # the model's number, which would taint the calibration set.
+    show_score = False
+    if can_annotate_runs(user):
+        existing = default_run_feedback_store.get(
+            db, user_id=user.id, run_id=run_id
+        )
+        show_score = existing is not None
+    if not show_score:
+        payload["auto_score"] = None
+        payload["score_breakdown"] = None
     return payload
 
 
@@ -138,3 +181,87 @@ async def delete_run(run_id: str, user: User = Depends(current_user)) -> None:
         pass
 
     await default_run_store.delete(run_id, user.id)
+
+
+# ─── 013 · Feedback endpoints ────────────────────────────────────────
+
+
+class FeedbackBody(BaseModel):
+    rating: Literal["up", "down"]
+    notes: str = Field(default="", max_length=4096)
+    flagged: bool = False
+
+
+class FeedbackOut(BaseModel):
+    run_id: str
+    rating: str
+    notes: str
+    flagged: bool
+    created_at: str
+    updated_at: str
+    # 013 — populated only after the caller has labelled this run. Pre-
+    # label GET returns nulls so the annotator sees the run "blind".
+    auto_score: float | None = None
+    score_breakdown: dict | None = None
+
+
+async def _build_feedback_out(
+    db: Session,
+    run: Run,
+    feedback,
+) -> FeedbackOut:
+    return FeedbackOut(
+        run_id=run.id,
+        rating=feedback.rating if feedback else "",
+        notes=feedback.notes if feedback else "",
+        flagged=feedback.flagged if feedback else False,
+        created_at=(feedback.created_at.isoformat() if feedback else ""),
+        updated_at=(feedback.updated_at.isoformat() if feedback else ""),
+        # Only reveal the auto-score once the caller has actually
+        # submitted a label.
+        auto_score=run.auto_score if feedback else None,
+        score_breakdown=run.score_breakdown if feedback else None,
+    )
+
+
+@router.get("/{run_id}/feedback", response_model=FeedbackOut)
+async def get_feedback(
+    run_id: str,
+    user: User = Depends(require_perm(PERM_ANNOTATE_RUNS)),
+    db: Session = Depends(get_db),
+) -> FeedbackOut:
+    """My rating on this run.
+
+    Returns a row of empty fields if I haven't labelled yet — and crucially
+    the auto-score stays null in that case (reveal-after-label).
+    """
+    try:
+        run = await default_run_store.get(run_id, user.id)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    feedback = default_run_feedback_store.get(db, user_id=user.id, run_id=run_id)
+    return await _build_feedback_out(db, run, feedback)
+
+
+@router.post("/{run_id}/feedback", response_model=FeedbackOut)
+async def upsert_feedback(
+    run_id: str,
+    body: FeedbackBody,
+    user: User = Depends(require_perm(PERM_ANNOTATE_RUNS)),
+    db: Session = Depends(get_db),
+) -> FeedbackOut:
+    """Upsert my rating on this run. Reveals the auto-score on the response
+    body so the caller can immediately compare their label to the judge's."""
+    try:
+        run = await default_run_store.get(run_id, user.id)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    feedback = default_run_feedback_store.upsert(
+        db,
+        user_id=user.id,
+        run_id=run_id,
+        rating=body.rating,
+        notes=body.notes,
+        flagged=body.flagged,
+    )
+    return await _build_feedback_out(db, run, feedback)

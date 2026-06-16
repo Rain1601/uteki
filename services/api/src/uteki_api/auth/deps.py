@@ -19,7 +19,7 @@ from fastapi import Depends, HTTPException, Request, status
 from sqlmodel import Session
 
 from uteki_api.auth.jwt import decode_access
-from uteki_api.auth.roles import can_admin, is_owner
+from uteki_api.auth.roles import can_admin, is_owner, permissions_for_user
 from uteki_api.core.config import settings
 from uteki_api.core.db import get_db
 from uteki_api.users import default_user_store, ensure_demo_user
@@ -73,6 +73,28 @@ async def current_user(
     if not getattr(user, "role", None):
         user.role = "reader"
     return user
+
+
+def require_perm(permission: str):
+    """Build a dependency that 403s unless the caller has ``permission``.
+
+    Generalisation of ``require_admin`` — admin happens to map to
+    ``admin:*`` but the same machinery handles ``runs:annotate`` (013) and
+    whatever else gets added. Use as ``Depends(require_perm("runs:annotate"))``.
+
+    Returns the caller's ``User`` so the handler can use it without a
+    second injection.
+    """
+
+    async def _checker(user: User = Depends(current_user)) -> User:
+        if permission not in permissions_for_user(user):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"permission required: {permission}",
+            )
+        return user
+
+    return _checker
 
 
 async def require_admin(user: User = Depends(current_user)) -> User:

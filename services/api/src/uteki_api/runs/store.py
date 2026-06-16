@@ -224,6 +224,11 @@ class SqliteRunStore(RunStore):
             user_input=run.user_input,
             summary=run.summary,
             visibility=str(run.visibility),
+            # 013 — async LLM judge result. Both NULL until dispatcher writes.
+            auto_score=run.auto_score,
+            score_breakdown_json=(
+                json.dumps(run.score_breakdown) if run.score_breakdown is not None else None
+            ),
             events_json=json.dumps([e.model_dump() for e in events]),
             tags_json=json.dumps(list(run.tags)),
             usage_summary_json=run.usage_summary.model_dump_json(),
@@ -264,6 +269,12 @@ class SqliteRunStore(RunStore):
             tags=tags,
             usage_summary=usage,
             visibility=visibility,  # type: ignore[arg-type]
+            # 013 — judge scores; NULL on pre-013 rows and on runs that
+            # haven't been scored yet.
+            auto_score=row.auto_score,
+            score_breakdown=(
+                json.loads(row.score_breakdown_json) if row.score_breakdown_json else None
+            ),
         )
 
     # ── RunStore impl ───────────────────────────────────────────────

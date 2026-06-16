@@ -15,6 +15,12 @@ PERM_VIEW_TRACE = "trace:view"
 PERM_OPERATE_AGENT = "agent:operate"
 PERM_OPERATE_COMPANY_RESEARCH = "agent:company_research"
 PERM_ADMIN_TOOLS = "admin:*"
+# 013 — gates the human-feedback / annotation surface on runs.
+# Phase 1: granted to ``admin`` role only (so the single product owner
+# can label production runs to seed the calibration set). Phase 2: a
+# parallel ``User.extra_permissions`` field will let admins single out
+# trusted readers as annotators without elevating them to admin.
+PERM_ANNOTATE_RUNS = "runs:annotate"
 
 AGENT_PERMISSION_MAP = {
     "company_research_pipeline": PERM_OPERATE_COMPANY_RESEARCH,
@@ -73,8 +79,13 @@ def permissions_for_role(role: str) -> list[str]:
             PERM_OPERATE_AGENT,
             PERM_OPERATE_COMPANY_RESEARCH,
             PERM_ADMIN_TOOLS,
+            PERM_ANNOTATE_RUNS,
         ]
     return [PERM_VIEW_RESULTS, PERM_VIEW_TRACE]
+
+
+def can_annotate_runs(user: object) -> bool:
+    return PERM_ANNOTATE_RUNS in permissions_for_user(user)
 
 
 def permissions_for_user(user: object) -> list[str]:

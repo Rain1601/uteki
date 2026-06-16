@@ -96,6 +96,7 @@ def init_db() -> None:
     _ensure_user_role_column(engine)
     _ensure_run_assessment_columns(engine)
     _ensure_run_visibility_column(engine)
+    _ensure_run_score_columns(engine)
 
 
 def _ensure_user_role_column(db_engine: Engine) -> None:
@@ -186,6 +187,28 @@ def _ensure_run_visibility_column(db_engine: Engine) -> None:
         conn.execute(text(
             "CREATE INDEX IF NOT EXISTS ix_run_visibility ON run (visibility)"
         ))
+
+
+def _ensure_run_score_columns(db_engine: Engine) -> None:
+    """013: add ``auto_score`` + ``score_breakdown_json`` to existing
+    ``run`` tables. NULL on pre-013 rows — the dispatcher just hasn't
+    seen them. UI treats NULL as "unrated" which is the right read.
+    """
+    inspector = inspect(db_engine)
+    try:
+        columns = {column["name"] for column in inspector.get_columns("run")}
+    except Exception:
+        return  # run table doesn't exist yet — create_all will handle it
+    additions: list[str] = []
+    if "auto_score" not in columns:
+        additions.append("ALTER TABLE run ADD COLUMN auto_score FLOAT")
+    if "score_breakdown_json" not in columns:
+        additions.append("ALTER TABLE run ADD COLUMN score_breakdown_json TEXT")
+    if not additions:
+        return
+    with db_engine.begin() as conn:
+        for stmt in additions:
+            conn.execute(text(stmt))
 
 
 def get_db() -> Iterator[Session]:

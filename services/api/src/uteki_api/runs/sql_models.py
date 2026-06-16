@@ -50,6 +50,12 @@ class RunRow(SQLModel, table=True):
     # filter by it on every anon read (~majority of public traffic).
     # Pre-010 DBs need ALTER TABLE — handled by core.db._ensure_run_visibility_column.
     visibility: str = Field(default="private", index=True)
+    # 013 — async LLM judge result; both NULL until dispatcher writes.
+    # ``score_breakdown_json`` is the serialized dict form on Run; the
+    # store round-trips via json.dumps / json.loads. Pre-013 DBs need
+    # ALTER TABLE — handled in core.db._ensure_run_score_columns.
+    auto_score: float | None = None
+    score_breakdown_json: str | None = None
     # JSON-encoded blobs; deserialized by SqliteRunStore.
     events_json: str = "[]"
     tags_json: str = "[]"
