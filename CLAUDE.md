@@ -18,7 +18,7 @@ make lint         # ruff (api) + next lint (web)
 Backend tests (the load-bearing chain — start here when changing anything in `services/api/`):
 
 ```bash
-./scripts/e2e.sh                              # 14 hermetic E2E chains, ~8s, mock LLM
+./scripts/e2e.sh                              # 20 hermetic E2E chains, ~8s, mock LLM
 ./scripts/e2e.sh -k auth                      # filter by chain
 ./scripts/e2e.sh -k pipeline -x               # stop on first fail (tight iteration loop)
 set -a; source services/api/.env; set +a; \
