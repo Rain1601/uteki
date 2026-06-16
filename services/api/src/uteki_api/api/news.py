@@ -221,6 +221,54 @@ async def list_articles_for_trigger(
     )
 
 
+@router.get("/api/news", response_model=ArticleListResponse)
+async def list_articles_all(
+    limit: int = Query(50, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    tag_ids: str = Query("", description="CSV of tag IDs to AND-filter"),
+    symbol: str = Query("", description="Filter articles whose symbols CSV contains this ticker"),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ArticleListResponse:
+    """Cross-trigger article feed (the "全部" view on /tasks).
+
+    Dedups articles across triggers (a piece touched by N triggers shows
+    once). Same tag-filter semantics as
+    ``GET /api/triggers/{id}/news``: within-group OR, across-group AND.
+    """
+    tag_filter = _split_csv(tag_ids) or None
+    rows, total = default_news_store.list_articles_all(
+        db,
+        # Same widen-then-paginate trick as the per-trigger path when a
+        # post-DB symbol filter is needed.
+        limit=limit if not symbol else 1000,
+        offset=offset if not symbol else 0,
+        tag_ids=tag_filter,
+    )
+    if symbol:
+        tk = symbol.strip().upper()
+        rows = [
+            r for r in rows
+            if tk in {s.strip().upper() for s in r.symbols.split(",") if s.strip()}
+        ]
+        total = len(rows)
+        rows = rows[offset : offset + limit]
+    fb_map = _my_feedback_map(db, user.id, [r.id for r in rows])
+    return ArticleListResponse(
+        items=[
+            _summary(
+                article,
+                default_news_store.article_tags(db, article.id),
+                fb_map.get(article.id),
+            )
+            for article in rows
+        ],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
 # ─── AI analysis SSE ─────────────────────────────────────────────────
 
 

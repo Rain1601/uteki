@@ -114,6 +114,16 @@ class NewsStore(ABC):
     ) -> tuple[list[NewsArticle], int]: ...
 
     @abstractmethod
+    def list_articles_all(
+        self,
+        db: Session,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+        tag_ids: list[str] | None = None,
+    ) -> tuple[list[NewsArticle], int]: ...
+
+    @abstractmethod
     def article_tags(self, db: Session, article_id: str) -> list[str]: ...
 
     @abstractmethod
@@ -333,6 +343,51 @@ class SqlNewsStore(NewsStore):
             return [], 0
 
         stmt = select(NewsArticle).where(NewsArticle.id.in_(article_ids))  # type: ignore[attr-defined]
+
+        if tag_ids:
+            tags = list(
+                db.exec(select(Tag).where(Tag.id.in_(tag_ids))).all()  # type: ignore[attr-defined]
+            )
+            by_group: dict[str, list[str]] = {}
+            for tag in tags:
+                by_group.setdefault(tag.group_id, []).append(tag.id)
+            for group_tag_ids in by_group.values():
+                in_group_articles = select(ArticleTag.article_id).where(
+                    ArticleTag.tag_id.in_(group_tag_ids)  # type: ignore[attr-defined]
+                )
+                stmt = stmt.where(NewsArticle.id.in_(in_group_articles))  # type: ignore[attr-defined]
+
+        total = db.exec(
+            select(func.count()).select_from(stmt.subquery())  # type: ignore[arg-type]
+        ).one()
+
+        rows = db.exec(
+            stmt.order_by(NewsArticle.published_at.desc())  # type: ignore[attr-defined]
+            .offset(offset)
+            .limit(limit)
+        ).all()
+        return list(rows), int(total)
+
+    def list_articles_all(
+        self,
+        db: Session,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+        tag_ids: list[str] | None = None,
+    ) -> tuple[list[NewsArticle], int]:
+        """Cross-trigger feed: every article that any trigger ever hit, dedup'd.
+
+        Used by the "全部" view in the /tasks UI. The dedup is implicit: we
+        select directly from ``NewsArticle`` filtered by ``id IN (SELECT
+        article_id FROM trigger_hit)``, so an article hit by N triggers
+        appears once.
+
+        Tag-filter semantics mirror ``list_articles_for_trigger``:
+        within-group OR, across-group AND.
+        """
+        hit_subq = select(TriggerHit.article_id)
+        stmt = select(NewsArticle).where(NewsArticle.id.in_(hit_subq))  # type: ignore[attr-defined]
 
         if tag_ids:
             tags = list(
