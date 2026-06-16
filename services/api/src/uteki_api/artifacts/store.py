@@ -138,6 +138,13 @@ class ArtifactStore(ABC):
         self, run_id: str, name: str, user_id: str | None = None
     ) -> bool: ...
 
+    async def delete_run(self, run_id: str, user_id: str | None = None) -> None:
+        """Drop every artifact + manifest for a run. Default impl is a no-op
+        so backends that haven't implemented physical cleanup (e.g. some
+        ephemeral test stubs) don't break callers — but the API DELETE
+        endpoint relies on the concrete LocalFile / GCS impls below."""
+        return
+
 
 class LocalFileArtifactStore(ArtifactStore):
     """File-backed artifact store with optional per-user partitioning.
@@ -294,6 +301,12 @@ class LocalFileArtifactStore(ArtifactStore):
             return self._artifact_path(run_id, name, user_id).exists()
         except ValueError:
             return False
+
+    async def delete_run(self, run_id: str, user_id: str | None = None) -> None:
+        import shutil
+        run_dir = self._run_dir(run_id, user_id)
+        if run_dir.exists():
+            shutil.rmtree(run_dir, ignore_errors=True)
 
 
 class RunArtifacts:

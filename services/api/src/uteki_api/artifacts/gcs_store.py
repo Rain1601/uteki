@@ -215,3 +215,8 @@ class GCSArtifactStore(ArtifactStore):
         except ValueError:
             return False
         return self._bucket.blob(key).exists()
+
+    async def delete_run(self, run_id: str, user_id: str | None = None) -> None:
+        prefix = f"{self._run_prefix(run_id, user_id)}/"
+        for blob in self._bucket.list_blobs(prefix=prefix):
+            blob.delete()

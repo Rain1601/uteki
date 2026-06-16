@@ -1,13 +1,14 @@
 """Run inspection endpoints — user-scoped (M4).
 
-GET /api/runs                       list — current user's runs
-GET /api/runs/{run_id}              full Run including events (404 if not yours)
-GET /api/runs/{run_id}/events       events only (404 if not yours)
+GET    /api/runs                       list — current user's runs
+GET    /api/runs/{run_id}              full Run including events (404 if not yours)
+GET    /api/runs/{run_id}/events       events only (404 if not yours)
+DELETE /api/runs/{run_id}              drop the row + its artifact dir (owner only)
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from uteki_api.artifacts import Artifact, default_artifact_store
 from uteki_api.auth.deps import current_user
@@ -113,3 +114,27 @@ async def get_run_events(run_id: str, user: User = Depends(current_user)) -> dic
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     return {"items": [e.model_dump() for e in run.events]}
+
+
+@router.delete("/{run_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_run(run_id: str, user: User = Depends(current_user)) -> None:
+    """Owner-scoped delete: drops the Run row, evicts in-flight cache, wipes the
+    artifact directory. Cross-user attempts return 404 (same shape as
+    "doesn't exist" — deliberately avoids leaking existence)."""
+    # Resolve user partition before purging artifacts. ``get`` raises KeyError
+    # for both unknown ids and cross-user reads, which we map to 404.
+    try:
+        run = await default_run_store.get(run_id, user.id)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+    # Artifacts first — if the run row goes away but artifacts remain, the
+    # files become unreferenceable. Failure here is logged but doesn't block
+    # the row delete; better to have orphan files than an orphan row that
+    # blocks the UI.
+    try:
+        await default_artifact_store.delete_run(run_id, run.user_id)
+    except Exception:  # noqa: BLE001 — best-effort cleanup
+        pass
+
+    await default_run_store.delete(run_id, user.id)

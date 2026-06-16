@@ -76,6 +76,13 @@ class RunStore(ABC):
         the route on ``require_owner``)."""
         ...
 
+    @abstractmethod
+    async def delete(self, run_id: str, user_id: str) -> None:
+        """Owner-scoped delete. Raises KeyError when the run isn't owned by
+        ``user_id``. Drops the row and any in-process active cache entry;
+        callers are responsible for purging artifacts via the ArtifactStore."""
+        ...
+
 
 class InMemoryRunStore(RunStore):
     def __init__(self) -> None:
@@ -144,6 +151,16 @@ class InMemoryRunStore(RunStore):
         if run is None or run.user_id != user_id:
             raise KeyError(f"Unknown run: {run_id}")
         run.visibility = visibility
+
+    async def delete(self, run_id: str, user_id: str) -> None:
+        run = self._runs.get(run_id)
+        if run is None or run.user_id != user_id:
+            raise KeyError(f"Unknown run: {run_id}")
+        self._runs.pop(run_id, None)
+        try:
+            self._order.remove(run_id)
+        except ValueError:
+            pass
 
 
 def _viz_filter_to_set(
@@ -370,6 +387,18 @@ class SqliteRunStore(RunStore):
             row.visibility = str(visibility)
             db.add(row)
             db.commit()
+
+    async def delete(self, run_id: str, user_id: str) -> None:
+        # Drop the DB row first, then evict any active cache entry. If the
+        # row is owned by someone else the DB op raises KeyError before we
+        # touch the cache.
+        with Session(self._engine) as db:
+            row = db.get(RunRow, run_id)
+            if row is None or row.user_id != user_id:
+                raise KeyError(f"Unknown run: {run_id}")
+            db.delete(row)
+            db.commit()
+        self._active.pop(run_id, None)
 
 
 def _build_default_run_store() -> RunStore:
