@@ -149,5 +149,11 @@ substitutions:
 options:
   logging: CLOUD_LOGGING_ONLY
   machineType: E2_HIGHCPU_8
+  # Required so manual ``gcloud builds submit`` invocations can pass
+  # COMMIT_SHA + SHORT_SHA via --substitutions (they're reserved system
+  # variables otherwise; without ALLOW_LOOSE Cloud Build rejects the
+  # override). Trigger-based builds populate them automatically; either
+  # path produces identical behaviour.
+  substitution_option: ALLOW_LOOSE
 
 timeout: 1200s
