@@ -604,6 +604,65 @@ export async function searchSymbols(
   return (await r.json()) as SymbolHit[];
 }
 
+// ─── /tasks overview dashboard ───────────────────────────────────────
+
+export interface ArticleSummaryDTO {
+  id: string;
+  title: string;
+  title_zh: string | null;
+  summary: string;
+  summary_zh: string | null;
+  source: string;
+  author: string | null;
+  url: string;
+  symbols: string[];
+  published_at: string;
+  impact: string | null;
+  ai_analysis_status: string;
+  like_count: number;
+  dislike_count: number;
+  tag_ids: string[];
+  my_feedback: "like" | "dislike" | null;
+}
+
+export interface StatsTriggerActivity {
+  id: string;
+  name: string;
+  kind: string;
+  enabled: boolean;
+  count_7d: number;
+}
+
+export interface StatsSymbolMention {
+  symbol: string;
+  count_7d: number;
+}
+
+export interface StatsUpcomingEarning {
+  id: string;
+  symbol: string;
+  fiscal_period: string;
+  expected_date: string;
+  days_until: number;
+}
+
+export interface NewsStatsResponse {
+  total_articles: number;
+  articles_24h: number;
+  articles_7d: number;
+  by_impact: Record<string, number>;
+  top_critical: ArticleSummaryDTO[];
+  top_symbols: StatsSymbolMention[];
+  trigger_activity: StatsTriggerActivity[];
+  upcoming_earnings: StatsUpcomingEarning[];
+}
+
+export async function fetchNewsStats(): Promise<NewsStatsResponse> {
+  const r = await authedFetch(`${API_BASE}/api/news/stats`, { cache: "no-store" });
+  if (!r.ok) throw new Error((await r.text()) || `news stats failed: ${r.status}`);
+  return (await r.json()) as NewsStatsResponse;
+}
+
 export interface NewsFeedbackResponse {
   article_id: string;
   my_feedback: "like" | "dislike" | null;

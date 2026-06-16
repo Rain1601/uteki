@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
-import { Layers, Loader2 } from "lucide-react";
+import { BarChart3, Loader2 } from "lucide-react";
 import {
   KIND_ICON,
   KIND_LABEL,
@@ -59,13 +59,14 @@ export default function TasksLayout({
         </div>
 
         <nav className="min-h-0 flex-1 overflow-y-auto">
-          {/* "全部" — merged feed of every trigger's hits */}
+          {/* "Overview" — stats dashboard across all triggers. The active
+              trigger detail views live under the per-trigger entries below. */}
           <TriggerRow
             href="/tasks"
             active={isAllView}
-            icon={<Layers size={14} />}
-            name="全部"
-            sub="全部 trigger 合并"
+            icon={<BarChart3 size={14} />}
+            name="Overview"
+            sub="活动概览 · 统计"
           />
 
           {error && (
