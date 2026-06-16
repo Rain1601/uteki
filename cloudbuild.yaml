@@ -30,12 +30,19 @@ steps:
       - .
 
   # ── Build web ────────────────────────────────────────────────────────────
+  # NEXT_PUBLIC_API_BASE is baked into the client bundle at build time, so
+  # it must be passed as a docker --build-arg, not a runtime env on the
+  # Cloud Run service. The default below points at the Cloud Run-allocated
+  # api host for this project; override via substitution if/when a custom
+  # domain or LB fronts the api.
   - id: build-web
     name: gcr.io/cloud-builders/docker
     args:
       - build
       - -f
       - apps/web/Dockerfile
+      - --build-arg
+      - NEXT_PUBLIC_API_BASE=${_API_BASE_URL}
       - -t
       - us-central1-docker.pkg.dev/$PROJECT_ID/uteki/web:$COMMIT_SHA
       - -t
@@ -131,6 +138,13 @@ steps:
 images:
   - us-central1-docker.pkg.dev/$PROJECT_ID/uteki/api:$COMMIT_SHA
   - us-central1-docker.pkg.dev/$PROJECT_ID/uteki/web:$COMMIT_SHA
+
+substitutions:
+  # Default the web bundle to call the project's allocated api hostname.
+  # Override via:
+  #   gcloud builds submit --substitutions=_API_BASE_URL=https://api.example.com
+  # when a custom domain fronts the api.
+  _API_BASE_URL: https://uteki-api-723833029845.us-central1.run.app
 
 options:
   logging: CLOUD_LOGGING_ONLY

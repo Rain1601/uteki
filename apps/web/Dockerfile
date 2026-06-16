@@ -42,6 +42,11 @@ COPY --from=deps /repo/packages/shared-types/node_modules ./packages/shared-type
 # packages/ui has no current runtime deps but copy the marker dir if pnpm made one
 COPY . .
 
+# Next.js bakes NEXT_PUBLIC_* into the client bundle at build time.
+# Pass --build-arg NEXT_PUBLIC_API_BASE=https://<api-cloud-run-url> from
+# cloudbuild.yaml. Without it the bundle falls back to localhost:8000.
+ARG NEXT_PUBLIC_API_BASE
+ENV NEXT_PUBLIC_API_BASE=${NEXT_PUBLIC_API_BASE}
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm --filter @uteki/web build
 
