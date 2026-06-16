@@ -20,9 +20,9 @@
 #    the promote-* steps on this script's exit code.
 #
 # What this catches (real failure modes from past deploys):
-#   - container can't import / boots crashes        → /healthz never 200s
-#   - DB unreachable (Cloud SQL connector misset)   → /healthz 503
-#   - GCS bucket / IAM misconfigured                 → /healthz still 200 (intentional;
+#   - container can't import / boots crashes        → /api/healthz never 200s
+#   - DB unreachable (Cloud SQL connector misset)   → /api/healthz 503
+#   - GCS bucket / IAM misconfigured                 → /api/healthz still 200 (intentional;
 #                                                       artifact write is lazy, smoke can't
 #                                                       trigger without auth — caught at
 #                                                       first real chat run instead)
@@ -79,8 +79,8 @@ probe() {
   fi
 }
 
-step "api /healthz (liveness + DB)"
-probe "${API_URL}/healthz" "api healthz"
+step "api /api/healthz (liveness + DB)"
+probe "${API_URL}/api/healthz" "api healthz"
 grep -q '"db":"ok"' /tmp/smoke_body || {
   echo "[smoke] FAIL: api healthz missing db=ok marker" >&2
   cat /tmp/smoke_body >&2
@@ -94,30 +94,33 @@ grep -qi '<title>' /tmp/smoke_body || {
   exit 1
 }
 
-# Same-origin LB routing check: hitting /api/* on the WEB host must
-# reach the api container. If this returns HTML, the LB rule isn't
-# set up; if it returns 401, the LB is fine and auth is doing its job
-# (which is the expected prod behavior).
-step "lb: web /api/health → api"
+# Same-origin LB routing check: hitting /api/* on the WEB host should
+# reach the api container IF a load balancer is configured to do that.
+# Phase 1 deploys don't set up an LB yet — the web bundle calls the api
+# directly via its public Cloud Run URL (NEXT_PUBLIC_API_BASE baked in
+# at build time). In that mode ``${WEB_URL}/api/health`` is just the
+# web container's Next.js handler for an unknown path → typically 404,
+# and that's fine. So this check is informational only: print what we
+# saw, never fail.
+#
+# Once a real LB / custom domain fronts both services, flip this into a
+# hard check by ``exit 1``-ing in the non-200 case.
+step "lb: web /api/health → api (informational, no LB yet)"
 http_code=$(curl --silent --output /tmp/smoke_body --write-out '%{http_code}' \
   --max-time 8 "${WEB_URL}/api/health" || echo "000")
 case "$http_code" in
   200)
-    grep -q '"status":"ok"' /tmp/smoke_body || {
-      echo "[smoke] FAIL: /api/health via web returned 200 but wrong body" >&2
-      cat /tmp/smoke_body >&2
-      exit 1
-    }
+    if grep -q '"status":"ok"' /tmp/smoke_body; then
+      echo "[smoke] note: web /api/health → 200 + api body — LB routing wired"
+    else
+      echo "[smoke] note: web /api/health → 200 but not api body — web is handling the path itself (no LB)"
+    fi
     ;;
   401|403)
-    # If the LB-routed /api/health is auth-gated in prod, that's still proof
-    # routing works. Health is currently public so this branch is a safety net.
-    echo "[smoke] note: /api/health via web returned $http_code (LB routing OK)"
+    echo "[smoke] note: web /api/health → $http_code — LB routed it to api which auth-gated"
     ;;
   *)
-    echo "[smoke] FAIL: /api/health via web returned $http_code — LB routing broken" >&2
-    head -c 500 /tmp/smoke_body >&2
-    exit 1
+    echo "[smoke] note: web /api/health → $http_code — no LB; web bundle calls api directly via baked-in URL"
     ;;
 esac
 

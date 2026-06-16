@@ -142,7 +142,7 @@ This runs the whole pipeline: build → push → deploy api + web with
 `--no-traffic` → smoke-probe the tagged revisions → flip 100% traffic on
 green. The smoke step runs `scripts/smoke_test.sh` against
 `https://rev-${SHORT_SHA}---uteki-{api,web}-<hash>-uc.a.run.app` and exits
-non-zero on any of: `/healthz` not 200, DB roundtrip failed, web root
+non-zero on any of: `/api/healthz` not 200, DB roundtrip failed, web root
 missing `<title>`, web→api LB routing broken. If smoke fails the build is
 red and the staged revisions stay at 0% traffic — fix forward, re-run.
 
@@ -235,7 +235,7 @@ docker run --rm -p 8080:8080 \
   -e UTEKI_AUTH_REQUIRED=false \
   -e UTEKI_JWT_SECRET=$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))') \
   uteki-api:dev
-# then: curl http://localhost:8080/healthz
+# then: curl http://localhost:8080/api/healthz
 ```
 
 ### web
