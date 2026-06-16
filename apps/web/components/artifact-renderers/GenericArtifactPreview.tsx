@@ -269,6 +269,7 @@ type Block =
   | { type: "code"; text: string }
   | { type: "quote"; text: string }
   | { type: "hr" }
+  | { type: "table"; rows: string[][] }
   | { type: "p"; text: string };
 
 function renderBlock(block: Block, i: number): React.ReactNode {
@@ -340,6 +341,38 @@ function renderBlock(block: Block, i: number): React.ReactNode {
       );
     case "hr":
       return <hr key={i} className="my-6 border-[var(--line)]" />;
+    case "table": {
+      const [head, ...body] = block.rows;
+      return (
+        <div key={i} className="mb-4 overflow-x-auto">
+          <table className="w-full border-collapse text-[12px]">
+            <thead>
+              <tr className="border-b border-[var(--line-strong)]">
+                {head.map((cell, ci) => (
+                  <th
+                    key={ci}
+                    className="px-3 py-2 text-left font-mono text-[10px] tracking-[0.10em] uppercase text-[var(--ink-faint)]"
+                  >
+                    <InlineMd text={cell} />
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {body.map((row, ri) => (
+                <tr key={ri} className="border-b border-[var(--line)]">
+                  {row.map((cell, ci) => (
+                    <td key={ci} className="px-3 py-1.5 text-[var(--ink-soft)] leading-6">
+                      <InlineMd text={cell} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
     case "p":
     default:
       return (
@@ -383,6 +416,32 @@ function parseMarkdownBlocks(text: string): Block[] {
       blocks.push({ type: "hr" });
       i += 1;
       continue;
+    }
+
+    // GFM pipe tables — header `| col | col |`, separator `|---|---|`,
+    // then any number of `| ... |` rows. Tolerates blank lines between
+    // rows (LLMs frequently emit them), which would otherwise break the
+    // table into per-line paragraphs.
+    if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
+      let sepIdx = i + 1;
+      while (sepIdx < lines.length && lines[sepIdx].trim() === "") sepIdx += 1;
+      const sepRaw = lines[sepIdx]?.trim() ?? "";
+      if (/^\|[\s\-:|]+\|$/.test(sepRaw) && sepRaw.includes("-")) {
+        const splitCells = (raw: string): string[] =>
+          raw.replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
+        const rows: string[][] = [splitCells(trimmed)];
+        let j = sepIdx + 1;
+        while (j < lines.length) {
+          const l = lines[j].trim();
+          if (l === "") { j += 1; continue; }
+          if (!(l.startsWith("|") && l.endsWith("|"))) break;
+          rows.push(splitCells(l));
+          j += 1;
+        }
+        blocks.push({ type: "table", rows });
+        i = j;
+        continue;
+      }
     }
 
     const h1 = trimmed.match(/^#\s+(.+)$/);

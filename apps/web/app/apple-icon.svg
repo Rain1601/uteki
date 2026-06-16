@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" role="img" aria-label="uteki raindrop">
+  <!-- chiclet — warm dark background fills the canvas (iOS expects 180×180) -->
+  <path d="M34 11 L146 11 C158 11, 169 22, 169 34 L169 146 C169 158, 158 169, 146 169 L34 169 C22 169, 11 158, 11 146 L11 34 C11 22, 22 11, 34 11 Z"
+        fill="#1a1816"/>
+
+  <!-- raindrop body — same teardrop shape, scaled to 180 grid.
+       Long vertical handle out of the apex keeps the top sharp. -->
+  <path d="M90 18 C 90 64, 141 88, 141 117 C 141 148, 121 162, 90 162 C 59 162, 39 148, 39 117 C 39 88, 90 64, 90 18 Z"
+        fill="#d97757"/>
+
+  <!-- raindrop outline — confident cream stroke -->
+  <path d="M90 15 C 92 65, 144 88, 142 120 C 144 150, 122 165, 87 162 C 59 165, 35 150, 36 115 C 39 88, 88 64, 90 15 Z"
+        fill="none"
+        stroke="rgba(255,255,255,0.92)"
+        stroke-width="11"
+        stroke-linecap="round"
+        stroke-linejoin="round"/>
+
+  <!-- inner highlight — confident curve, hints at ripple / analysis -->
+  <path d="M67 80 C 60 95, 58 110, 67 122"
+        fill="none"
+        stroke="rgba(255,255,255,0.85)"
+        stroke-width="8"
+        stroke-linecap="round"/>
+</svg>

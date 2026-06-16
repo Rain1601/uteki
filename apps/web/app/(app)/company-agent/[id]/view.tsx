@@ -1203,41 +1203,118 @@ function RichMarkdown({
     list = [];
   }
 
-  lines.forEach((rawLine, index) => {
+  // GFM-style pipe tables. The LLM sometimes emits blank lines between rows;
+  // the consumer below tolerates those by scanning until the next non-blank
+  // non-pipe line. Returns the parsed cell matrix + the index AFTER the last
+  // line of the table, so the outer loop can resume.
+  function consumePipeTable(start: number): { rows: string[][]; nextIndex: number } | null {
+    const headerRaw = lines[start]?.trim() ?? "";
+    if (!headerRaw.startsWith("|") || !headerRaw.endsWith("|")) return null;
+    // Find the next non-blank line — that's the separator.
+    let sepIdx = start + 1;
+    while (sepIdx < lines.length && lines[sepIdx].trim() === "") sepIdx += 1;
+    const sepRaw = lines[sepIdx]?.trim() ?? "";
+    // Separator must be all pipes / dashes / colons / spaces.
+    if (!/^\|[\s\-:|]+\|$/.test(sepRaw) || !sepRaw.includes("-")) return null;
+    const splitCells = (raw: string): string[] =>
+      raw
+        .replace(/^\||\|$/g, "")
+        .split("|")
+        .map((c) => c.trim());
+    const rows: string[][] = [splitCells(headerRaw)];
+    let i = sepIdx + 1;
+    while (i < lines.length) {
+      const l = lines[i].trim();
+      if (l === "") { i += 1; continue; }
+      if (!(l.startsWith("|") && l.endsWith("|"))) break;
+      rows.push(splitCells(l));
+      i += 1;
+    }
+    return { rows, nextIndex: i };
+  }
+
+  let i = 0;
+  while (i < lines.length) {
+    const rawLine = lines[i];
     const line = rawLine.trim();
     if (!line) {
-      flushList(`list-${index}`);
-      return;
+      flushList(`list-${i}`);
+      i += 1;
+      continue;
+    }
+    // Tables — must check before paragraph fallback. Need closure access to
+    // `lines`, hence inline rather than a top-level helper.
+    if (line.startsWith("|") && line.endsWith("|")) {
+      const table = consumePipeTable(i);
+      if (table) {
+        flushList(`list-${i}`);
+        const [head, ...body] = table.rows;
+        nodes.push(
+          <div key={`table-${i}`} className="mb-4 overflow-x-auto">
+            <table className="w-full border-collapse text-[12px]">
+              <thead>
+                <tr className="border-b border-[var(--line-strong)]">
+                  {head.map((cell, ci) => (
+                    <th
+                      key={ci}
+                      className="px-3 py-2 text-left font-mono text-[10px] tracking-[0.10em] uppercase text-[var(--ink-faint)]"
+                    >
+                      <CitedText text={cell} catalog={catalog} />
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {body.map((row, ri) => (
+                  <tr key={ri} className="border-b border-[var(--line)]">
+                    {row.map((cell, ci) => (
+                      <td key={ci} className="px-3 py-1.5 text-[var(--ink-soft)] leading-6">
+                        <CitedText text={cell} catalog={catalog} />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>,
+        );
+        i = table.nextIndex;
+        continue;
+      }
     }
     const bullet = line.match(/^[-*]\s+(.+)$/);
     if (bullet) {
       list.push(bullet[1]);
-      return;
+      i += 1;
+      continue;
     }
-    flushList(`list-${index}`);
+    flushList(`list-${i}`);
 
     if (line.startsWith("# ")) {
       nodes.push(
-        <h3 key={index} className="mb-4 mt-1 font-display text-[24px] italic tracking-normal text-[var(--ink)]">
+        <h3 key={i} className="mb-4 mt-1 font-display text-[24px] italic tracking-normal text-[var(--ink)]">
           {line.replace(/^#\s+/, "")}
         </h3>,
       );
-      return;
+      i += 1;
+      continue;
     }
     if (line.startsWith("## ")) {
       nodes.push(
-        <h4 key={index} className="mb-3 mt-5 font-mono text-[10px] tracking-[0.18em] text-[var(--ink-faint)] uppercase">
+        <h4 key={i} className="mb-3 mt-5 font-mono text-[10px] tracking-[0.18em] text-[var(--ink-faint)] uppercase">
           {line.replace(/^##\s+/, "")}
         </h4>,
       );
-      return;
+      i += 1;
+      continue;
     }
     nodes.push(
-      <p key={index} className="mb-3 text-[13px] leading-7 text-[var(--ink-soft)]">
+      <p key={i} className="mb-3 text-[13px] leading-7 text-[var(--ink-soft)]">
         <CitedText text={line} catalog={catalog} />
       </p>,
     );
-  });
+    i += 1;
+  }
   flushList("list-final");
 
   return <div>{nodes}</div>;

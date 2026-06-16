@@ -32,6 +32,48 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     });
   }, [router]);
 
+  // ←/→ to cycle through admin tabs. Wraps at the ends so the user can
+  // hammer right and stay inside admin. Suppressed when:
+  //   - focus is in an input / textarea / select / contenteditable
+  //     (form editing — the arrow keys belong to the caret)
+  //   - any modifier key is held (Cmd/Ctrl/Alt are likely OS or browser
+  //     shortcuts we shouldn't shadow; Shift could be used by a11y tools)
+  useEffect(() => {
+    if (!canAdmin(me)) return;
+    // Only suppress arrow nav when focus is in a place where ←/→ would
+    // move a text caret. Date / number / checkbox / radio inputs also
+    // consume arrows but the user isn't typing — they expect the page
+    // shortcut to win.
+    const TEXT_INPUT_TYPES = new Set([
+      "text", "search", "url", "email", "password", "tel",
+    ]);
+    const isEditableTarget = (el: EventTarget | null): boolean => {
+      if (!(el instanceof HTMLElement)) return false;
+      if (el.isContentEditable) return true;
+      const tag = el.tagName;
+      if (tag === "TEXTAREA") return true;
+      if (tag === "INPUT") {
+        return TEXT_INPUT_TYPES.has((el as HTMLInputElement).type);
+      }
+      return false;
+    };
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+      if (isEditableTarget(e.target)) return;
+      const idx = TABS.findIndex(
+        (t) => pathname === t.href || pathname.startsWith(t.href + "/"),
+      );
+      if (idx === -1) return;
+      const step = e.key === "ArrowRight" ? 1 : -1;
+      const next = (idx + step + TABS.length) % TABS.length;
+      e.preventDefault();
+      router.push(TABS[next].href as never);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [me, pathname, router]);
+
   if (!checked) {
     return (
       <div className="flex h-64 items-center justify-center text-[12px] text-[var(--ink-muted)]">
