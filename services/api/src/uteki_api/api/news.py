@@ -33,6 +33,7 @@ from uteki_api.llm.usage import UsageDelta
 from uteki_api.schemas.chat import ChatMessage
 from uteki_api.news.models import NewsArticle, NewsFeedback
 from uteki_api.news.store import default_news_store
+from sqlalchemy import func
 from sqlmodel import select as sql_select
 from uteki_api.users.models import User
 
@@ -266,6 +267,168 @@ async def list_articles_all(
         total=total,
         limit=limit,
         offset=offset,
+    )
+
+
+class StatsTrigger(BaseModel):
+    id: str
+    name: str
+    kind: str
+    enabled: bool
+    count_7d: int
+
+
+class StatsSymbol(BaseModel):
+    symbol: str
+    count_7d: int
+
+
+class StatsEarning(BaseModel):
+    id: str
+    symbol: str
+    fiscal_period: str
+    expected_date: str
+    days_until: int
+
+
+class NewsStatsResponse(BaseModel):
+    total_articles: int
+    articles_24h: int
+    articles_7d: int
+    by_impact: dict[str, int]   # {"positive":N,"negative":N,"neutral":N,"unknown":N}
+    top_critical: list[ArticleSummary]
+    top_symbols: list[StatsSymbol]
+    trigger_activity: list[StatsTrigger]
+    upcoming_earnings: list[StatsEarning]
+
+
+@router.get("/api/news/stats", response_model=NewsStatsResponse)
+async def news_stats(
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> NewsStatsResponse:
+    """Aggregated stats for the /tasks overview dashboard.
+
+    All counts ``_7d`` cover ``now() - 7d`` to ``now()``. ``top_critical``
+    picks the 10 most-recent articles with a negative or "critical"
+    impact tag — that's the "what should I look at first" panel. Symbol
+    counts come from splitting the CSV ``symbols`` column in Python
+    (cheaper than a join table for our scale; revisit if articles cross
+    20k rows).
+    """
+    from datetime import timedelta
+
+    from uteki_api.earnings.store import default_earnings_store
+    from uteki_api.news.models import NewsArticle as NA
+    from uteki_api.news.models import TriggerHit as TH
+    from uteki_api.triggers.store import default_trigger_store
+
+    now = datetime.now(UTC).replace(tzinfo=None)
+    cutoff_7d = now - timedelta(days=7)
+    cutoff_24h = now - timedelta(hours=24)
+
+    total = int(db.exec(sql_select(func.count()).select_from(NA)).one())
+    count_24h = int(
+        db.exec(
+            sql_select(func.count())
+            .select_from(NA)
+            .where(NA.published_at >= cutoff_24h)
+        ).one()
+    )
+    count_7d = int(
+        db.exec(
+            sql_select(func.count())
+            .select_from(NA)
+            .where(NA.published_at >= cutoff_7d)
+        ).one()
+    )
+
+    impact_rows = db.exec(
+        sql_select(NA.impact, func.count()).group_by(NA.impact)  # type: ignore[arg-type]
+    ).all()
+    by_impact: dict[str, int] = {"positive": 0, "negative": 0, "neutral": 0, "unknown": 0}
+    for impact, n in impact_rows:
+        key = (impact or "unknown").lower()
+        by_impact[key] = by_impact.get(key, 0) + int(n)
+
+    critical_rows = list(
+        db.exec(
+            sql_select(NA)
+            .where(NA.impact.in_(["negative", "critical"]))  # type: ignore[attr-defined]
+            .where(NA.published_at >= cutoff_7d)
+            .order_by(NA.published_at.desc())  # type: ignore[attr-defined]
+            .limit(10)
+        ).all()
+    )
+    fb_map = _my_feedback_map(db, user.id, [r.id for r in critical_rows])
+    top_critical = [
+        _summary(
+            r,
+            default_news_store.article_tags(db, r.id),
+            fb_map.get(r.id),
+        )
+        for r in critical_rows
+    ]
+
+    sym_count: dict[str, int] = {}
+    sym_rows = db.exec(
+        sql_select(NA.symbols).where(NA.published_at >= cutoff_7d)
+    ).all()
+    for raw in sym_rows:
+        if not raw:
+            continue
+        for s in raw.split(","):
+            s = s.strip().upper()
+            if s:
+                sym_count[s] = sym_count.get(s, 0) + 1
+    top_symbols = [
+        StatsSymbol(symbol=s, count_7d=c)
+        for s, c in sorted(sym_count.items(), key=lambda kv: -kv[1])[:10]
+    ]
+
+    trigger_rows = default_trigger_store.list(db, enabled_only=False)
+    hit_rows = db.exec(
+        sql_select(TH.trigger_id, func.count())
+        .join(NA, TH.article_id == NA.id)  # type: ignore[arg-type]
+        .where(NA.published_at >= cutoff_7d)
+        .group_by(TH.trigger_id)
+    ).all()
+    hit_count_by_trigger: dict[str, int] = {tid: int(n) for tid, n in hit_rows}
+    trigger_activity = sorted(
+        [
+            StatsTrigger(
+                id=t.id,
+                name=t.name,
+                kind=t.kind,
+                enabled=t.enabled,
+                count_7d=hit_count_by_trigger.get(t.id, 0),
+            )
+            for t in trigger_rows
+        ],
+        key=lambda r: (-r.count_7d, r.name),
+    )
+
+    earnings = default_earnings_store.list(db, upcoming_only=True)[:10]
+    upcoming_earnings = [
+        StatsEarning(
+            id=e.id,
+            symbol=e.symbol,
+            fiscal_period=e.fiscal_period,
+            expected_date=e.expected_date.isoformat(),
+            days_until=max(0, (e.expected_date - now).days),
+        )
+        for e in earnings
+    ]
+
+    return NewsStatsResponse(
+        total_articles=total,
+        articles_24h=count_24h,
+        articles_7d=count_7d,
+        by_impact=by_impact,
+        top_critical=top_critical,
+        top_symbols=top_symbols,
+        trigger_activity=trigger_activity,
+        upcoming_earnings=upcoming_earnings,
     )
 
 
