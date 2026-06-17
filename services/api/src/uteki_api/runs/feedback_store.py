@@ -44,6 +44,7 @@ class RunFeedbackStore:
         rating: str,
         notes: str = "",
         flagged: bool = False,
+        rating_mode: str = "blind",
     ) -> RunFeedback:
         existing = self.get(db, user_id=user_id, run_id=run_id)
         now = _utcnow()
@@ -54,6 +55,7 @@ class RunFeedbackStore:
                 rating=rating,
                 notes=notes,
                 flagged=flagged,
+                rating_mode=rating_mode,
                 created_at=now,
                 updated_at=now,
             )
@@ -62,6 +64,7 @@ class RunFeedbackStore:
             existing.rating = rating
             existing.notes = notes
             existing.flagged = flagged
+            existing.rating_mode = rating_mode
             existing.updated_at = now
             db.add(existing)
             row = existing

@@ -210,16 +210,23 @@ export interface RunDetail extends RunSummary {
 
 // ─── 013 · Run feedback (annotator-only) ─────────────────────────────
 
+/** 013 δ.1 — which annotation workflow produced this feedback row.
+ *  Determines whether the auto-score was visible at label time, which
+ *  in turn determines whether the row is calibration-grade. */
+export type RatingMode = "blind" | "review";
+
 export interface RunFeedback {
   run_id: string;
   rating: "" | "up" | "down";  // "" when the caller hasn't labelled yet
   notes: string;
   flagged: boolean;
+  rating_mode: RatingMode;
   created_at: string;
   updated_at: string;
-  /** Only populated once the caller HAS labelled this run. The same
-   *  fields exist on RunDetail; both come from the same masking rule
-   *  on the server. */
+  /** Populated when the API's masking rule permits — for review-mode
+   *  callers it shows up immediately; for blind-mode it appears only
+   *  after the user has POSTed their first label. Same field on
+   *  RunDetail follows the same rule. */
   auto_score?: number | null;
   score_breakdown?: RunScoreBreakdown | null;
 }
@@ -228,12 +235,18 @@ export interface RunFeedbackPatch {
   rating: "up" | "down";
   notes?: string;
   flagged?: boolean;
+  rating_mode?: RatingMode;
 }
 
-/** GET my feedback row for a run. Returns rating="" + score=null when
- *  I haven't labelled yet (the API hides the auto-score until I do). */
-export async function getRunFeedback(runId: string): Promise<RunFeedback> {
-  const r = await authedFetch(`${API_BASE}/api/runs/${runId}/feedback`, {
+/** GET my feedback row for a run. ``intent_mode`` declares which
+ *  annotation workflow the caller is about to use so the server can
+ *  decide whether to reveal the auto-score on this read. */
+export async function getRunFeedback(
+  runId: string,
+  intent_mode: RatingMode = "blind",
+): Promise<RunFeedback> {
+  const qs = new URLSearchParams({ mode: intent_mode }).toString();
+  const r = await authedFetch(`${API_BASE}/api/runs/${runId}/feedback?${qs}`, {
     cache: "no-store",
   });
   if (!r.ok) {

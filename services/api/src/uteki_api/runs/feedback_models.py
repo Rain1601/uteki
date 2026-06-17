@@ -19,6 +19,17 @@ from sqlmodel import Field, SQLModel
 
 RunRating = Literal["up", "down"]
 
+# 013 δ.1 — two annotation modes coexist:
+#
+# - "blind"   — the API hides ``auto_score`` until the annotator submits
+#               a rating. Calibration-grade data: an annotator's label
+#               cannot be anchored by the model's score.
+# - "review"  — the API reveals ``auto_score`` immediately. Annotator
+#               functions as a reviewer of the judge's output: accept /
+#               reject / edit. Faster but contaminated for calibration
+#               (Phase 2's Cohen's-κ cron drops these rows).
+RatingMode = Literal["blind", "review"]
+
 
 class RunFeedback(SQLModel, table=True):
     """One annotator's rating on one run.
@@ -38,5 +49,11 @@ class RunFeedback(SQLModel, table=True):
     # queue. Today that queue is just ``GET /api/runs?flagged=1``; Phase 2
     # will hang a proper /admin/review page off the same column.
     flagged: bool = Field(default=False, index=True)
+    # 013 δ.1 — which annotation mode produced this row. Determines
+    # whether the auto-score was visible at label time.
+    # Default ``blind`` so existing rows (pre-δ.1) are treated as
+    # calibration-grade, which is the safer assumption when we don't
+    # know how the annotator was seeing the data.
+    rating_mode: str = Field(default="blind", max_length=8, index=True)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC).replace(tzinfo=None))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC).replace(tzinfo=None))

@@ -133,20 +133,31 @@ async def get_run(
     payload["primary_artifact"] = _artifact_ref(primary) if primary is not None else None
     payload["artifact_count"] = len(artifacts)
     payload["events_summary"] = _events_summary(run)
-    # 013 — reveal-after-label: the auto-judge's score is on the Run, but
-    # we hide it from the wire unless the caller has BOTH the
-    # runs:annotate permission AND an existing feedback row on this run.
-    # That guarantees the annotator's first impression isn't anchored by
-    # the model's number, which would taint the calibration set.
-    show_score = False
+    # 013 — reveal-after-label semantics. Default is conservative: hide
+    # the score until the annotator has submitted feedback ("blind"
+    # mode). Only when the existing feedback row is itself in "review"
+    # mode does the score become visible regardless of label — and the
+    # annotator's role in that case is to accept/reject the judge, not
+    # to produce calibration-grade data.
+    #
+    # Phase 1 wires the mode entirely through the feedback row's own
+    # ``rating_mode`` field; a query param could be added later for the
+    # UI to pre-toggle before the first POST. The masked default keeps
+    # casual readers (incl. would-be annotators on a fresh run) from
+    # being anchored by the judge.
+    payload["auto_score"] = None
+    payload["score_breakdown"] = None
     if can_annotate_runs(user):
         existing = default_run_feedback_store.get(
             db, user_id=user.id, run_id=run_id
         )
-        show_score = existing is not None
-    if not show_score:
-        payload["auto_score"] = None
-        payload["score_breakdown"] = None
+        if existing is not None and existing.rating_mode == "review":
+            payload["auto_score"] = run.auto_score
+            payload["score_breakdown"] = run.score_breakdown
+        elif existing is not None:
+            # "blind" row that's been labelled already — score is revealed.
+            payload["auto_score"] = run.auto_score
+            payload["score_breakdown"] = run.score_breakdown
     return payload
 
 
@@ -190,6 +201,11 @@ class FeedbackBody(BaseModel):
     rating: Literal["up", "down"]
     notes: str = Field(default="", max_length=4096)
     flagged: bool = False
+    # 013 δ.1 — which annotation mode this submission used. ``blind``
+    # = the annotator did NOT see the auto-score before labelling
+    # (calibration-grade). ``review`` = the annotator saw the score
+    # and was reacting to it (review/accept/reject workflow).
+    rating_mode: Literal["blind", "review"] = "blind"
 
 
 class FeedbackOut(BaseModel):
@@ -197,10 +213,11 @@ class FeedbackOut(BaseModel):
     rating: str
     notes: str
     flagged: bool
+    rating_mode: str = "blind"
     created_at: str
     updated_at: str
-    # 013 — populated only after the caller has labelled this run. Pre-
-    # label GET returns nulls so the annotator sees the run "blind".
+    # 013 — populated when the caller is allowed to see the score under
+    # current masking rules. See ``_build_feedback_out`` for the matrix.
     auto_score: float | None = None
     score_breakdown: dict | None = None
 
@@ -209,38 +226,64 @@ async def _build_feedback_out(
     db: Session,
     run: Run,
     feedback,
+    *,
+    # The "intent" mode tells GET which masking rule to apply on a row
+    # that doesn't exist yet. Without it, a GET on a brand-new run can't
+    # know whether the annotator is about to label blind or review, so
+    # the safer default is "blind" (hide). The frontend passes
+    # ``?mode=review`` when the annotator toggles into review-mode
+    # BEFORE submitting their first label so the score appears.
+    intent_mode: str | None = None,
 ) -> FeedbackOut:
+    if feedback is not None:
+        # Submitted rows: reveal regardless of mode — the annotator has
+        # already provided their label, anchoring is moot.
+        return FeedbackOut(
+            run_id=run.id,
+            rating=feedback.rating,
+            notes=feedback.notes,
+            flagged=feedback.flagged,
+            rating_mode=feedback.rating_mode,
+            created_at=feedback.created_at.isoformat(),
+            updated_at=feedback.updated_at.isoformat(),
+            auto_score=run.auto_score,
+            score_breakdown=run.score_breakdown,
+        )
+    # No submitted row yet. Mask blind; reveal review (intent declared).
+    reveal = intent_mode == "review"
     return FeedbackOut(
         run_id=run.id,
-        rating=feedback.rating if feedback else "",
-        notes=feedback.notes if feedback else "",
-        flagged=feedback.flagged if feedback else False,
-        created_at=(feedback.created_at.isoformat() if feedback else ""),
-        updated_at=(feedback.updated_at.isoformat() if feedback else ""),
-        # Only reveal the auto-score once the caller has actually
-        # submitted a label.
-        auto_score=run.auto_score if feedback else None,
-        score_breakdown=run.score_breakdown if feedback else None,
+        rating="",
+        notes="",
+        flagged=False,
+        rating_mode=intent_mode or "blind",
+        created_at="",
+        updated_at="",
+        auto_score=run.auto_score if reveal else None,
+        score_breakdown=run.score_breakdown if reveal else None,
     )
 
 
 @router.get("/{run_id}/feedback", response_model=FeedbackOut)
 async def get_feedback(
     run_id: str,
+    mode: Literal["blind", "review"] = "blind",
     user: User = Depends(require_perm(PERM_ANNOTATE_RUNS)),
     db: Session = Depends(get_db),
 ) -> FeedbackOut:
     """My rating on this run.
 
-    Returns a row of empty fields if I haven't labelled yet — and crucially
-    the auto-score stays null in that case (reveal-after-label).
+    Returns a row of empty fields if I haven't labelled yet. The
+    ``?mode=`` query param declares which annotation mode the caller is
+    about to use; ``review`` reveals the auto-score immediately (review
+    workflow), ``blind`` keeps it hidden until POST (calibration-grade).
     """
     try:
         run = await default_run_store.get(run_id, user.id)
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     feedback = default_run_feedback_store.get(db, user_id=user.id, run_id=run_id)
-    return await _build_feedback_out(db, run, feedback)
+    return await _build_feedback_out(db, run, feedback, intent_mode=mode)
 
 
 @router.post("/{run_id}/feedback", response_model=FeedbackOut)
@@ -263,5 +306,6 @@ async def upsert_feedback(
         rating=body.rating,
         notes=body.notes,
         flagged=body.flagged,
+        rating_mode=body.rating_mode,
     )
     return await _build_feedback_out(db, run, feedback)

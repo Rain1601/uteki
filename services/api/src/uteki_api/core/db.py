@@ -97,6 +97,7 @@ def init_db() -> None:
     _ensure_run_assessment_columns(engine)
     _ensure_run_visibility_column(engine)
     _ensure_run_score_columns(engine)
+    _ensure_run_feedback_columns(engine)
 
 
 def _ensure_user_role_column(db_engine: Engine) -> None:
@@ -186,6 +187,29 @@ def _ensure_run_visibility_column(db_engine: Engine) -> None:
         # (ix_<table>_<col>) so create_all on fresh DBs is consistent.
         conn.execute(text(
             "CREATE INDEX IF NOT EXISTS ix_run_visibility ON run (visibility)"
+        ))
+
+
+def _ensure_run_feedback_columns(db_engine: Engine) -> None:
+    """013 δ.1: add ``rating_mode`` to ``run_feedback`` tables.
+
+    Default ``blind`` for pre-δ.1 rows — those were submitted under the
+    original behavior where the auto-score was hidden until labelling,
+    so treating them as calibration-grade is correct.
+    """
+    inspector = inspect(db_engine)
+    try:
+        columns = {column["name"] for column in inspector.get_columns("run_feedback")}
+    except Exception:
+        return  # table not created yet — create_all will produce the column
+    if "rating_mode" in columns:
+        return
+    with db_engine.begin() as conn:
+        conn.execute(text(
+            "ALTER TABLE run_feedback ADD COLUMN rating_mode VARCHAR(8) DEFAULT 'blind'"
+        ))
+        conn.execute(text(
+            "UPDATE run_feedback SET rating_mode = 'blind' WHERE rating_mode IS NULL"
         ))
 
 
