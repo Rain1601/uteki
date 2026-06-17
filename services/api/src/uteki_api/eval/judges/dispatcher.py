@@ -15,10 +15,17 @@ axis and logs; the run itself stays whatever status the harness gave it.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
 from uteki_api.core.config import settings
+from uteki_api.eval.judges.cost import (
+    DEFAULT_WEIGHTS,
+    CostBaselineCache,
+    aggregate,
+    score_cost_discipline,
+)
 from uteki_api.eval.judges.runner import JudgeRunner, default_judge_runner
 from uteki_api.runs import default_run_store
 from uteki_api.runs.models import Run
@@ -48,10 +55,17 @@ class JudgeDispatcher:
         run_store: RunStore | None = None,
         runner: JudgeRunner | None = None,
         targets: tuple[str, ...] = DEFAULT_JUDGE_TARGETS,
+        cost_cache: CostBaselineCache | None = None,
+        weights: dict[str, float] | None = None,
     ) -> None:
         self.run_store = run_store
         self.runner = runner or default_judge_runner
         self.targets = targets
+        # The cost cache resolves the store lazily through ``_store()``, so
+        # passing an explicit store at construction (the e2e path) wires
+        # both halves of the dispatcher together cleanly.
+        self.cost_cache = cost_cache or CostBaselineCache(run_store or default_run_store)
+        self.weights = weights or DEFAULT_WEIGHTS
 
     def _store(self) -> RunStore:
         # Lazy lookup so per-test rebinds in conftest hit. If the caller
@@ -92,23 +106,51 @@ class JudgeDispatcher:
             logger.debug("dispatcher.score skipped run_id=%s: %s", run_id, reason)
             return
 
-        # PR γ will gather outcome + cost in parallel here. For now just
-        # outcome, returned-as-exception-isolated so the same shape works
-        # when cost arrives.
-        outcome = await self._score_outcome(run)
-        breakdown: dict[str, Any] = {"outcome": outcome}
+        # Both axes run in parallel. return_exceptions=True so one slow
+        # / failing judge can't take down the other; we just record None
+        # for the broken axis and let the aggregate weight what survived.
+        outcome_raw, cost_raw = await asyncio.gather(
+            self._score_outcome(run),
+            self._score_cost(run),
+            return_exceptions=True,
+        )
 
-        # MVP aggregate: outcome only. PR γ swaps in the weighted blend.
-        aggregate = outcome if isinstance(outcome, (int, float)) else None
+        outcome = _none_on_exc(outcome_raw, "outcome")
+        cost = _none_on_exc(cost_raw, "cost")
+
+        # outcome is on a 1-10 scale (rubric's anchors); cost is on 1-5
+        # already. Halve outcome before blending so the aggregate is a
+        # single common 1-5 unit.
+        outcome_for_blend = outcome / 2.0 if outcome is not None else None
+        breakdown: dict[str, float | None] = {
+            "outcome": outcome,           # keep the raw 1-10 in the breakdown for UI
+            "cost": cost,
+        }
+        # The aggregate computation gets the normalised values.
+        blended = aggregate(
+            {"outcome": outcome_for_blend, "cost": cost},
+            self.weights,
+        )
 
         try:
             await self._store().update_score(
                 run_id,
-                auto_score=aggregate,
+                auto_score=blended,
                 score_breakdown=breakdown,
             )
         except Exception:  # noqa: BLE001
             logger.exception("dispatcher.score: persist failed for %s", run_id)
+
+    # ── cost axis ────────────────────────────────────────────────────
+
+    async def _score_cost(self, run: Run) -> float | None:
+        """Cost discipline against the 30-day p50 baseline for this skill."""
+        baseline = await self.cost_cache.get(run.skill)
+        if baseline is None:
+            # Too few prior samples — we don't have a confident baseline
+            # for this skill yet, so cost gets dropped from the blend.
+            return None
+        return score_cost_discipline(float(run.usage_summary.cost_usd or 0.0), baseline)
 
     # ── outcome axis ─────────────────────────────────────────────────
 
@@ -200,6 +242,20 @@ class JudgeDispatcher:
         # is about decision-readiness, not exhaustive coverage. 16K is
         # ample to assess the top of a deliverable.
         return text[:16_000]
+
+
+def _none_on_exc(value: Any, axis: str) -> float | None:
+    """Helper for ``asyncio.gather(..., return_exceptions=True)``: when a
+    sibling task raised, the awaited result is the exception instance
+    itself. We want a clean ``None`` in the breakdown so the aggregate
+    can drop the axis and the UI doesn't render a stray traceback."""
+    if isinstance(value, BaseException):
+        logger.warning("dispatcher axis %r raised: %s", axis, value)
+        return None
+    if value is None or isinstance(value, (int, float)):
+        return float(value) if value is not None else None
+    logger.warning("dispatcher axis %r returned non-numeric %r", axis, value)
+    return None
 
 
 default_judge_dispatcher = JudgeDispatcher()

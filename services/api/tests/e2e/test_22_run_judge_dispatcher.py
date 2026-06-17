@@ -27,8 +27,9 @@ from fastapi.testclient import TestClient
 import uteki_api.eval.judges.dispatcher as dispatcher_mod
 import uteki_api.runs as runs_pkg
 from uteki_api.core.config import settings
+from uteki_api.eval.judges.cost import CostBaselineCache
 from uteki_api.eval.judges.runner import JudgeScore
-from uteki_api.runs.models import Run
+from uteki_api.runs.models import Run, UsageSummary
 
 from .conftest import AuthedUser, Reporter
 
@@ -78,6 +79,7 @@ async def _seed_run(
     user_id: str,
     skill: str,
     triggered_by: str,
+    cost_usd: float = 0.0,
 ) -> None:
     """Insert a finished-shape Run directly via the store, so we can
     exercise the dispatcher without driving a real harness."""
@@ -88,10 +90,24 @@ async def _seed_run(
             skill=skill,
             triggered_by=triggered_by,  # type: ignore[arg-type]
             started_at=time.time(),
+            ended_at=time.time(),
             user_input="analyze AAPL",
             summary="my final take",
+            usage_summary=UsageSummary(cost_usd=cost_usd),
         )
     )
+
+
+class _StubCostBaseline(CostBaselineCache):
+    """Override the live store query so the test doesn't depend on which
+    runs happen to be in the in-memory store at this point. Returns a
+    fixed p50 for the named skill, None for everything else."""
+
+    def __init__(self, p50_by_skill: dict[str, float | None]) -> None:
+        self._p50 = p50_by_skill
+
+    async def get(self, skill: str) -> float | None:
+        return self._p50.get(skill)
 
 
 @pytest.mark.asyncio
@@ -107,9 +123,15 @@ async def test_run_judge_dispatcher_chain(
     # dispatcher's eligibility decisions and the write-back path.
 
     stub = _StubJudgeRunner(score=8)
+    # Pre-seeded p50 so we can exercise the cost axis deterministically
+    # in scenario (f). Earlier scenarios use ``research`` only and the
+    # cost axis naturally returns None for them when usage_summary.cost_usd
+    # is 0 (which seeds default to).
+    cost_cache = _StubCostBaseline({"research": 1.0})
     dispatcher = dispatcher_mod.JudgeDispatcher(
         run_store=runs_pkg.default_run_store,
         runner=stub,  # type: ignore[arg-type]
+        cost_cache=cost_cache,
     )
 
     # ── (a) default flag off ────────────────────────────────────────
@@ -155,23 +177,94 @@ async def test_run_judge_dispatcher_chain(
     assert run_d.auto_score is None
     assert stub.calls == []
 
-    # ── (e) all eligible → judge writes ─────────────────────────────
-    reporter.section("e) research + user + flag on + non-mock + stub returns 8 → score=8.0")
-    await _seed_run(run_id="t22-e", user_id=alice.id, skill="research", triggered_by="user")
+    # ── (e) cost_usd=0 → cost rule returns the "ideal" 5.0 ─────────
+    # outcome 8 → halved to 4.0; cost 5.0. Blend = 4.0*0.7 + 5.0*0.3 = 4.3.
+    reporter.section(
+        "e) outcome=8 + cost_usd=0 (free run, cost=5) → blend=4.3"
+    )
+    await _seed_run(
+        run_id="t22-e",
+        user_id=alice.id,
+        skill="research",
+        triggered_by="user",
+        cost_usd=0.0,
+    )
     await dispatcher.score("t22-e")
     run_e = await runs_pkg.default_run_store.get("t22-e")
     reporter.kv("auto_score", run_e.auto_score)
     reporter.kv("score_breakdown", run_e.score_breakdown)
-    reporter.kv("stub.calls", len(stub.calls))
-    reporter.checked("auto_score=8.0", run_e.auto_score == 8.0)
+    expected_e = 4.0 * 0.7 + 5.0 * 0.3  # 4.3
     reporter.checked(
-        "score_breakdown={'outcome': 8.0}",
-        run_e.score_breakdown == {"outcome": 8.0},
+        f"auto_score ≈ {expected_e}",
+        abs((run_e.auto_score or 0) - expected_e) < 0.001,
     )
-    reporter.checked("stub called once", len(stub.calls) == 1)
-    reporter.checked("rubric=outcome", stub.calls[0]["rubric"] == "outcome")
-    assert run_e.auto_score == 8.0
-    assert run_e.score_breakdown == {"outcome": 8.0}
-    assert len(stub.calls) == 1
+    reporter.checked(
+        "breakdown {outcome:8, cost:5}",
+        run_e.score_breakdown == {"outcome": 8.0, "cost": 5.0},
+    )
+    assert abs((run_e.auto_score or 0) - expected_e) < 0.001
+    assert run_e.score_breakdown == {"outcome": 8.0, "cost": 5.0}
+
+    # ── (e2) baseline=None (no data yet) → cost dropped, outcome alone ──
+    reporter.section(
+        "e2) skill 'company_research_pipeline' has no baseline → cost=None, blend=outcome/2"
+    )
+    # Rebind dispatcher to a baseline stub that returns None for this skill.
+    dispatcher2 = dispatcher_mod.JudgeDispatcher(
+        run_store=runs_pkg.default_run_store,
+        runner=stub,  # type: ignore[arg-type]
+        cost_cache=_StubCostBaseline({}),  # nothing
+    )
+    # Need company_research_pipeline in the targets — that's already the case.
+    await _seed_run(
+        run_id="t22-e2",
+        user_id=alice.id,
+        skill="company_research_pipeline",
+        triggered_by="user",
+        cost_usd=0.5,
+    )
+    await dispatcher2.score("t22-e2")
+    run_e2 = await runs_pkg.default_run_store.get("t22-e2")
+    reporter.kv("auto_score", run_e2.auto_score)
+    reporter.kv("score_breakdown", run_e2.score_breakdown)
+    reporter.checked("auto_score=4.0 (8/2, cost dropped)", run_e2.auto_score == 4.0)
+    reporter.checked(
+        "breakdown {outcome:8, cost:None}",
+        run_e2.score_breakdown == {"outcome": 8.0, "cost": None},
+    )
+    assert run_e2.auto_score == 4.0
+    assert run_e2.score_breakdown == {"outcome": 8.0, "cost": None}
+
+    # ── (f) cost_usd above baseline → cost axis evaluated ───────────
+    # baseline p50 = $1.0; this run cost $1.8 → ratio 1.8 → score 3.0
+    # blend: outcome 8 / 2 = 4.0; (4.0 * 0.7 + 3.0 * 0.3) = 3.7
+    reporter.section(
+        "f) outcome=8 + cost_usd=$1.80 (baseline $1.00) → cost=3.0 → blend=3.7"
+    )
+    await _seed_run(
+        run_id="t22-f",
+        user_id=alice.id,
+        skill="research",
+        triggered_by="user",
+        cost_usd=1.80,
+    )
+    await dispatcher.score("t22-f")
+    run_f = await runs_pkg.default_run_store.get("t22-f")
+    reporter.kv("auto_score", run_f.auto_score)
+    reporter.kv("score_breakdown", run_f.score_breakdown)
+    expected_blend = 4.0 * 0.7 + 3.0 * 0.3  # 3.7
+    reporter.checked(
+        f"auto_score ≈ {expected_blend}",
+        abs((run_f.auto_score or 0) - expected_blend) < 0.001,
+    )
+    reporter.checked(
+        "breakdown has both axes",
+        run_f.score_breakdown == {"outcome": 8.0, "cost": 3.0},
+    )
+    assert abs((run_f.auto_score or 0) - expected_blend) < 0.001
+    assert run_f.score_breakdown == {"outcome": 8.0, "cost": 3.0}
+    # 3 outcome judge calls total — (e), (e2), (f). Scenarios (a)-(d) all
+    # short-circuited before reaching the judge.
+    assert len(stub.calls) == 3
 
     reporter.end()
