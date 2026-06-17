@@ -1,16 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Trace } from "@/components/agent/Trace";
 import { Message } from "@/components/agent/Message";
 import { Artifacts } from "@/components/agent/Artifacts";
+import { RunRatingPanel } from "@/components/runs/RunRatingPanel";
 import { PageContainer } from "@/components/ui/PageHeader";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { GenericArtifactPreview } from "@/components/artifact-renderers/GenericArtifactPreview";
 import type { ArtifactRef, RunDetail } from "@/lib/api";
+import { fetchMe, type AuthUser } from "@/lib/auth";
 import { ArrowUpRight, ChevronLeft, ChevronDown, ChevronRight } from "lucide-react";
 
 function formatTs(ts: number | undefined | null): string {
@@ -55,6 +57,12 @@ const DOSSIER_ROUTES: Record<string, { label: string; href: (runId: string) => s
 
 export function RunDetailView({ run }: { run: RunDetail }) {
   const [rawOpen, setRawOpen] = useState(false);
+  // 013 — annotator surface. We need the user to gate RunRatingPanel
+  // visibility; readers don't get the panel rendered at all.
+  const [user, setUser] = useState<AuthUser | null>(null);
+  useEffect(() => {
+    fetchMe().then(setUser).catch(() => setUser(null));
+  }, []);
 
   const fallbackFinalText = useMemo(
     () =>
@@ -172,6 +180,11 @@ export function RunDetailView({ run }: { run: RunDetail }) {
           </div>
         </CardBody>
       </Card>
+
+      {/* 013 — annotator rating panel. Hidden entirely for non-annotators.
+          Default collapsed; opens to a 👍/👎 + notes + 🚩 surface; AUTO
+          score is revealed after labelling (server-side masking). */}
+      <RunRatingPanel runId={run.id} user={user} />
 
       {primary ? (
         <GenericArtifactPreview

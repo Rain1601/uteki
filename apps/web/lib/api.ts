@@ -82,6 +82,8 @@ export interface ListRunsParams {
   skill?: string;
   triggered_by?: string;
   limit?: number;
+  /** 013 — only return runs the calling annotator has 🚩-flagged. */
+  flagged?: boolean;
 }
 
 export async function listRuns(
@@ -91,6 +93,7 @@ export async function listRuns(
   if (params.skill) qs.set("skill", params.skill);
   if (params.triggered_by) qs.set("triggered_by", params.triggered_by);
   if (params.limit != null) qs.set("limit", String(params.limit));
+  if (params.flagged) qs.set("flagged", "1");
   const suffix = qs.toString() ? `?${qs.toString()}` : "";
   const r = await authedFetch(`${API_BASE}/api/runs${suffix}`, {
     cache: "no-store",
@@ -186,10 +189,75 @@ export interface RunSummary {
   primary_artifact?: ArtifactRef | null;
 }
 
+/** 013 — async judge result on a Run. Both null until the dispatcher
+ *  writes. The API also masks these to null for callers who haven't
+ *  submitted feedback yet on this run (reveal-after-label). */
+export interface RunScoreBreakdown {
+  outcome?: number | null;  // 1-10 (rubric raw)
+  cost?: number | null;     // 1-5
+  [axis: string]: number | null | undefined;
+}
+
 export interface RunDetail extends RunSummary {
   events: AgentEvent[];
   artifacts?: ArtifactRef[];
   events_summary?: Record<string, number>;
+  /** 013 — weighted aggregate on a 1-5 scale (outcome halved before
+   *  blending). NULL pre-judge / when API masking is active. */
+  auto_score?: number | null;
+  score_breakdown?: RunScoreBreakdown | null;
+}
+
+// ─── 013 · Run feedback (annotator-only) ─────────────────────────────
+
+export interface RunFeedback {
+  run_id: string;
+  rating: "" | "up" | "down";  // "" when the caller hasn't labelled yet
+  notes: string;
+  flagged: boolean;
+  created_at: string;
+  updated_at: string;
+  /** Only populated once the caller HAS labelled this run. The same
+   *  fields exist on RunDetail; both come from the same masking rule
+   *  on the server. */
+  auto_score?: number | null;
+  score_breakdown?: RunScoreBreakdown | null;
+}
+
+export interface RunFeedbackPatch {
+  rating: "up" | "down";
+  notes?: string;
+  flagged?: boolean;
+}
+
+/** GET my feedback row for a run. Returns rating="" + score=null when
+ *  I haven't labelled yet (the API hides the auto-score until I do). */
+export async function getRunFeedback(runId: string): Promise<RunFeedback> {
+  const r = await authedFetch(`${API_BASE}/api/runs/${runId}/feedback`, {
+    cache: "no-store",
+  });
+  if (!r.ok) {
+    const detail = await r.text().catch(() => "");
+    throw new Error(detail || `getRunFeedback failed: ${r.status}`);
+  }
+  return r.json();
+}
+
+/** Upsert my feedback row. Server reveals auto_score on the response. */
+export async function setRunFeedback(
+  runId: string,
+  body: RunFeedbackPatch,
+): Promise<RunFeedback> {
+  const r = await authedFetch(`${API_BASE}/api/runs/${runId}/feedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) {
+    const detail = await r.text().catch(() => "");
+    throw new Error(detail || `setRunFeedback failed: ${r.status}`);
+  }
+  return r.json();
 }
 
 export interface AgentInfo {

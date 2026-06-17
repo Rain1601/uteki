@@ -14,7 +14,8 @@ import {
   type AgentInfo,
   type RunSummary,
 } from "@/lib/api";
-import { ArrowUpRight, RefreshCw } from "lucide-react";
+import { canAnnotateRuns, fetchMe, type AuthUser } from "@/lib/auth";
+import { ArrowUpRight, Flag, RefreshCw } from "lucide-react";
 
 function formatTs(ts: number | undefined | null): string {
   if (!ts) return "—";
@@ -39,19 +40,28 @@ export default function RunsPage() {
   const searchParams = useSearchParams();
   const skillFromUrl = searchParams.get("skill") ?? "";
   const triggeredFromUrl = searchParams.get("triggered_by") ?? "";
+  const flaggedFromUrl = searchParams.get("flagged") === "1";
 
   const [skill, setSkill] = useState(skillFromUrl);
   const [triggeredBy, setTriggeredBy] = useState(triggeredFromUrl);
+  const [flagged, setFlagged] = useState(flaggedFromUrl);
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [agents, setAgents] = useState<AgentInfo[]>([]);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const showFlagged = canAnnotateRuns(user);
 
   // Sync local filter state when URL changes (back/forward, deep link).
   useEffect(() => {
     setSkill(skillFromUrl);
     setTriggeredBy(triggeredFromUrl);
-  }, [skillFromUrl, triggeredFromUrl]);
+    setFlagged(flaggedFromUrl);
+  }, [skillFromUrl, triggeredFromUrl, flaggedFromUrl]);
+
+  useEffect(() => {
+    fetchMe().then(setUser).catch(() => setUser(null));
+  }, []);
 
   // Pull the canonical skill list from the registry so the dropdown shows
   // every skill, not just ones the current user happens to have runs for.
@@ -69,6 +79,7 @@ export default function RunsPage() {
         skill: skill || undefined,
         triggered_by: triggeredBy || undefined,
         limit: 100,
+        flagged: flagged || undefined,
       });
       setRuns(r.items);
     } catch (e) {
@@ -76,7 +87,7 @@ export default function RunsPage() {
     } finally {
       setLoading(false);
     }
-  }, [skill, triggeredBy]);
+  }, [skill, triggeredBy, flagged]);
 
   useEffect(() => {
     fetchRuns();
@@ -93,6 +104,16 @@ export default function RunsPage() {
     },
     [router, searchParams],
   );
+
+  // Separate setter for the boolean flagged toggle so we can keep the
+  // URL clean ( ?flagged=1 ↔ removed ) without abusing string semantics.
+  const toggleFlagged = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (flagged) params.delete("flagged");
+    else params.set("flagged", "1");
+    const qs = params.toString();
+    router.replace(qs ? `/runs?${qs}` : "/runs");
+  }, [flagged, router, searchParams]);
 
   const skillOptions = useMemo(
     () => agents.map((a) => a.name).sort(),
@@ -138,6 +159,22 @@ export default function RunsPage() {
             ]}
           />
         </FilterField>
+        {showFlagged && (
+          <button
+            type="button"
+            onClick={toggleFlagged}
+            className={
+              "inline-flex h-7 items-center gap-1.5 rounded-md border px-2 font-mono text-[10px] tracking-[0.06em] transition-colors " +
+              (flagged
+                ? "border-[color-mix(in_srgb,var(--warn)_60%,transparent)] bg-[color-mix(in_srgb,var(--warn)_10%,transparent)] text-[var(--warn)]"
+                : "border-[var(--line)] text-[var(--ink-muted)] hover:text-[var(--ink-soft)]")
+            }
+            title={flagged ? "show all runs" : "show only flagged-for-re-review"}
+          >
+            <Flag size={10} />
+            {flagged ? "FLAGGED ONLY" : "filter flagged"}
+          </button>
+        )}
         <span className="ml-auto font-mono text-[11px] text-[var(--ink-faint)]">
           {runs.length} runs
         </span>

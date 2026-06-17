@@ -202,3 +202,11 @@ export function canAdmin(user: AuthUser | null | undefined): boolean {
   if (!user) return false;
   return user.role === "admin" || user.permissions?.includes("admin:*") === true;
 }
+
+/** 013 — annotator surface gate. Mirrors backend ``PERM_ANNOTATE_RUNS``.
+ *  Phase 1 only admins have this; Phase 2 will add a per-user
+ *  extra_permissions field so trusted readers can be granted it. */
+export function canAnnotateRuns(user: AuthUser | null | undefined): boolean {
+  if (!user) return false;
+  return user.permissions?.includes("runs:annotate") === true;
+}
