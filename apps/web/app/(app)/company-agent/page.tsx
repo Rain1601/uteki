@@ -212,6 +212,11 @@ export default function CompanyAgentPage() {
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 014 — visible "已发起,等待第一条事件" state so the user knows the click
+  // registered (vs the pre-click "等待起草" which looks identical to a
+  // hung connection). Ticks every 500ms while running and no events.
+  const [runStartTs, setRunStartTs] = useState<number | null>(null);
+  const [tick, setTick] = useState(0);
   // Two-step delete: clicking the trash arms the row (deleteArmed = run.id).
   // A second click on the same row commits. Clicking anywhere else, or the
   // explicit X, disarms. Avoids a modal for what's still a routine cleanup.
@@ -384,6 +389,21 @@ export default function CompanyAgentPage() {
 
   const latestRun = runs[0] ?? null;
   const currentStage = useMemo(() => stageFromEvents(events), [events]);
+
+  // Tick at 500ms while we're running but haven't seen any event yet —
+  // gives the "等待第一条事件 (Xs)" label a live clock so the user knows
+  // the click registered and we're actually waiting on the network.
+  useEffect(() => {
+    if (!isRunning || events.length > 0) return;
+    const t = window.setInterval(() => setTick((n) => n + 1), 500);
+    return () => window.clearInterval(t);
+  }, [isRunning, events.length]);
+  const waitingForFirstEvent = isRunning && events.length === 0;
+  const waitingForFirstEventLabel = waitingForFirstEvent
+    ? `已发起 · 等待第一条事件 (${Math.max(0, ((Date.now() - (runStartTs ?? Date.now())) / 1000)).toFixed(1)}s)`
+    : null;
+  // suppress "tick is unused" — it drives the re-render that recomputes the label above.
+  void tick;
   const visibleEvents = useMemo(
     () =>
       events.filter((ev) =>
@@ -447,6 +467,7 @@ export default function CompanyAgentPage() {
     setEvents([]);
     setActiveRunId(null);
     setIsRunning(true);
+    setRunStartTs(Date.now());
 
     const messages: ChatMessage[] = [{ role: "user", content: runPrompt(cleanSymbol, peerText) }];
 
@@ -473,6 +494,7 @@ export default function CompanyAgentPage() {
     } finally {
       setIsRunning(false);
       setAborter(null);
+      setRunStartTs(null);
     }
   }
 
@@ -786,6 +808,14 @@ export default function CompanyAgentPage() {
               </Button>
             </div>
           </div>
+          {/* 014 — inline error near the run button so SSE failures (401,
+              CORS, dead backend, etc.) are visible without scrolling. The
+              bottom-of-page error block is the fallback for non-run errors. */}
+          {error && isRunning === false && (
+            <div className="mb-4 border border-[color-mix(in_srgb,var(--loss)_40%,transparent)] bg-[color-mix(in_srgb,var(--loss)_8%,transparent)] px-4 py-2 font-mono text-[11px] text-[var(--loss)]">
+              ⚠ run 失败: {error}
+            </div>
+          )}
 
           <section className="border border-[var(--line-strong)] bg-[color-mix(in_srgb,var(--surface)_70%,transparent)] px-7 py-6">
             <div className="mb-5 flex flex-wrap items-center gap-3">
@@ -796,7 +826,13 @@ export default function CompanyAgentPage() {
                 DEEPSEEK · COMPANY RESEARCH PIPELINE
               </span>
               <div className="ml-auto font-mono text-[12px] text-[var(--ink-soft)]">
-                {isRunning ? currentStage.label : latestRun ? "最近一次执行" : "等待起草"}
+                {waitingForFirstEventLabel
+                  ? waitingForFirstEventLabel
+                  : isRunning
+                    ? currentStage.label
+                    : latestRun
+                      ? "最近一次执行"
+                      : "等待起草"}
               </div>
             </div>
 
