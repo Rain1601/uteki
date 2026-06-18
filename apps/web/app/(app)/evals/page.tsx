@@ -78,9 +78,27 @@ export default function EvalsPage() {
           </Button>
         }
       />
+      {/* 013 deprecation notice — synthetic-case evals are being retired in
+          favor of prod-run scoring on /runs. drift_monitor + A/B eval still
+          read from this surface, so the backend stays live; UI is hidden
+          from the sidebar but the page remains for deep-link access until
+          drift + A/B are migrated to consume Run.auto_score. */}
+      <div className="mb-6 rounded-[var(--r)] border border-[color-mix(in_srgb,var(--warn)_40%,transparent)] bg-[color-mix(in_srgb,var(--warn)_8%,transparent)] p-3 text-[12px] leading-relaxed text-[var(--ink-soft)]">
+        <div className="mb-1 font-mono text-[10px] tracking-[0.1em] text-[var(--warn)]">
+          DEPRECATED · 迁移中
+        </div>
+        评测主战场已迁到{" "}
+        <Link href="/runs" className="text-[var(--accent)] hover:underline">
+          /runs
+        </Link>{" "}
+        —— prod run 的 LLM-rubric judge + 人工 👍/👎/🚩 打标。这页(合成 case)
+        当前还在,因为 <code className="font-mono text-[11px]">drift_monitor</code>{" "}
+        + <code className="font-mono text-[11px]">ab_eval</code> 还读这里;
+        014 把这两个迁到 prod run 评分后,本页会下线。
+      </div>
       {!isAdmin && (
         <div className="mb-6 rounded-[var(--r)] border border-[var(--line)] bg-[var(--surface)] p-3 font-mono text-[11px] text-[var(--ink-muted)]">
-          reader 模式：可以查看 case 和历史结果；运行 eval 仅限 admin。
+          reader 模式:可以查看 case 和历史结果;运行 eval 仅限 admin。
         </div>
       )}
 

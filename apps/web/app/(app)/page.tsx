@@ -84,8 +84,8 @@ export default async function Home() {
         <FlowCard
           n="05"
           title="Evaluate"
-          body="case-based scoring · regression watch"
-          href="/evals"
+          body="run quality · judge + 人工打标"
+          href="/runs"
           icon={ClipboardCheck}
         />
       </div>
@@ -113,8 +113,8 @@ export default async function Home() {
             把同一个问题喂给不同 skill 做横向对比；维护 eval case 集做回归；每个 skill 的 prompt / tool / model 变更自动写入版本历史，run 与版本绑定。
           </p>
           <div className="space-y-2">
+            <NavRow href="/runs"    icon={Activity} label="Runs" hint="prod run quality · 人工打标" />
             <NavRow href="/compare" icon={GitCompareArrows} label="Compare" hint="A/B between skills" />
-            <NavRow href="/evals"   icon={ClipboardCheck} label="Evals" hint="case-based scoring" />
             <NavRow href="/agents"  icon={Boxes} label="Skills" hint="versions · changelog · diff" />
           </div>
         </Card>

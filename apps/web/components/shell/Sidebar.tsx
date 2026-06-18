@@ -49,7 +49,11 @@ const SECTIONS: NavSection[] = [
     items: [
       { href: "/runs", label: "Runs", icon: Activity },
       { href: "/compare", label: "Compare", icon: GitCompareArrows, requiresAdmin: true },
-      { href: "/evals", label: "Evals", icon: ClipboardCheck, requiresAdmin: true },
+      // /evals (synthetic-case regression) is being retired. Drift monitor +
+      // A/B eval still depend on it, so the backend stays live for now; UI
+      // is hidden so users land on /runs (013) for quality work. Wire it
+      // back up here if the migration plan stalls — backend untouched.
+      // { href: "/evals", label: "Evals", icon: ClipboardCheck, requiresAdmin: true },
     ],
   },
   {
