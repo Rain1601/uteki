@@ -55,7 +55,16 @@ const DOSSIER_ROUTES: Record<string, { label: string; href: (runId: string) => s
   },
 };
 
-export function RunDetailView({ run }: { run: RunDetail }) {
+export function RunDetailView({
+  run,
+  hideRatingPanel = false,
+}: {
+  run: RunDetail;
+  /** When the rating panel is rendered by a parent layout (e.g. the
+   *  3-pane /runs explorer puts it in its own column), suppress the
+   *  in-page panel here to avoid a duplicate annotator surface. */
+  hideRatingPanel?: boolean;
+}) {
   const [rawOpen, setRawOpen] = useState(false);
   // 013 — annotator surface. We need the user to gate RunRatingPanel
   // visibility; readers don't get the panel rendered at all.
@@ -183,8 +192,10 @@ export function RunDetailView({ run }: { run: RunDetail }) {
 
       {/* 013 — annotator rating panel. Hidden entirely for non-annotators.
           Default collapsed; opens to a 👍/👎 + notes + 🚩 surface; AUTO
-          score is revealed after labelling (server-side masking). */}
-      <RunRatingPanel runId={run.id} user={user} />
+          score is revealed after labelling (server-side masking).
+          Suppressed when a parent layout (e.g. /runs 3-pane) renders the
+          panel in its own column. */}
+      {!hideRatingPanel && <RunRatingPanel runId={run.id} user={user} />}
 
       {primary ? (
         <GenericArtifactPreview

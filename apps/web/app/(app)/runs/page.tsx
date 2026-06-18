@@ -3,29 +3,38 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { PageContainer, PageHeader } from "@/components/ui/PageHeader";
-import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Empty } from "@/components/ui/Empty";
+import { RunRatingPanel } from "@/components/runs/RunRatingPanel";
+import { RunDetailView } from "./[id]/view";
 import {
+  getRun,
   listAgents,
   listRuns,
   type AgentInfo,
+  type RunDetail,
   type RunSummary,
 } from "@/lib/api";
 import { canAnnotateRuns, fetchMe, type AuthUser } from "@/lib/auth";
-import { ArrowUpRight, Flag, RefreshCw } from "lucide-react";
+import { ArrowUpRight, Flag, Loader2, RefreshCw } from "lucide-react";
+
+/**
+ * /runs — 3-pane explorer.
+ *
+ *   ┌────────────┬──────────────────────────┬────────────┐
+ *   │ run list   │ run detail               │ eval panel │
+ *   │ filters    │ summary + artifacts +    │ 👍/👎/🚩  │
+ *   │ scroll     │ events                   │ notes      │
+ *   └────────────┴──────────────────────────┴────────────┘
+ *
+ * Selected run is in the URL (?id=<runId>) so refresh / deep-link / share
+ * works. Old /runs/[id] still exists for fullscreen single-run viewing.
+ */
 
 function formatTs(ts: number | undefined | null): string {
   if (!ts) return "—";
-  const d = new Date(ts * 1000);
-  return d.toLocaleString();
-}
-
-function durationMs(r: RunSummary): number | undefined {
-  if (!r.ended_at || !r.started_at) return undefined;
-  return Math.round((r.ended_at - r.started_at) * 1000);
+  return new Date(ts * 1000).toLocaleString();
 }
 
 function statusTone(s: string): "gain" | "loss" | "warn" | "neutral" {
@@ -41,6 +50,7 @@ export default function RunsPage() {
   const skillFromUrl = searchParams.get("skill") ?? "";
   const triggeredFromUrl = searchParams.get("triggered_by") ?? "";
   const flaggedFromUrl = searchParams.get("flagged") === "1";
+  const selectedId = searchParams.get("id") ?? "";
 
   const [skill, setSkill] = useState(skillFromUrl);
   const [triggeredBy, setTriggeredBy] = useState(triggeredFromUrl);
@@ -50,9 +60,14 @@ export default function RunsPage() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Detail fetched lazily when selectedId changes.
+  const [detail, setDetail] = useState<RunDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+
   const showFlagged = canAnnotateRuns(user);
 
-  // Sync local filter state when URL changes (back/forward, deep link).
   useEffect(() => {
     setSkill(skillFromUrl);
     setTriggeredBy(triggeredFromUrl);
@@ -63,8 +78,6 @@ export default function RunsPage() {
     fetchMe().then(setUser).catch(() => setUser(null));
   }, []);
 
-  // Pull the canonical skill list from the registry so the dropdown shows
-  // every skill, not just ones the current user happens to have runs for.
   useEffect(() => {
     listAgents()
       .then((r) => setAgents(r.items))
@@ -93,27 +106,70 @@ export default function RunsPage() {
     fetchRuns();
   }, [fetchRuns]);
 
-  // Push filter changes into the URL so refresh / deep-link / share works.
-  const setFilter = useCallback(
-    (key: "skill" | "triggered_by", value: string) => {
+  // Lazy detail fetch when the user picks a run.
+  useEffect(() => {
+    if (!selectedId) {
+      setDetail(null);
+      setDetailError(null);
+      return;
+    }
+    let cancelled = false;
+    setDetailLoading(true);
+    setDetailError(null);
+    getRun(selectedId)
+      .then((d) => {
+        if (cancelled) return;
+        setDetail(d);
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        setDetailError(e instanceof Error ? e.message : "load failed");
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setDetailLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId]);
+
+  // If nothing's selected yet, auto-pick the first run as soon as the list
+  // arrives so the middle + right columns don't look orphaned.
+  useEffect(() => {
+    if (!selectedId && runs.length > 0) {
+      selectRun(runs[0].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runs.length]);
+
+  const setUrl = useCallback(
+    (next: Record<string, string | null>) => {
       const params = new URLSearchParams(searchParams.toString());
-      if (value) params.set(key, value);
-      else params.delete(key);
+      for (const [k, v] of Object.entries(next)) {
+        if (v == null || v === "") params.delete(k);
+        else params.set(k, v);
+      }
       const qs = params.toString();
       router.replace(qs ? `/runs?${qs}` : "/runs");
     },
     [router, searchParams],
   );
 
-  // Separate setter for the boolean flagged toggle so we can keep the
-  // URL clean ( ?flagged=1 ↔ removed ) without abusing string semantics.
+  const selectRun = useCallback(
+    (id: string) => setUrl({ id }),
+    [setUrl],
+  );
+
+  const setFilter = useCallback(
+    (key: "skill" | "triggered_by", value: string) =>
+      setUrl({ [key]: value || null }),
+    [setUrl],
+  );
+
   const toggleFlagged = useCallback(() => {
-    const params = new URLSearchParams(searchParams.toString());
-    if (flagged) params.delete("flagged");
-    else params.set("flagged", "1");
-    const qs = params.toString();
-    router.replace(qs ? `/runs?${qs}` : "/runs");
-  }, [flagged, router, searchParams]);
+    setUrl({ flagged: flagged ? null : "1" });
+  }, [flagged, setUrl]);
 
   const skillOptions = useMemo(
     () => agents.map((a) => a.name).sort(),
@@ -125,20 +181,29 @@ export default function RunsPage() {
   );
 
   return (
-    <PageContainer>
-      <PageHeader
-        eyebrow="ENGINE · RUNS"
-        title="Runs"
-        subtitle="每一条 run 都是 harness 编排过一次 skill 的留痕：trigger 来源、命中的工具、最终输出、token 用量、版本号——全在事件流里。"
-        actions={
+    <div className="flex h-screen flex-col gap-3 p-4">
+      {/* Header bar */}
+      <header className="flex items-baseline gap-3">
+        <div className="eyebrow">ENGINE · RUNS</div>
+        <h1 className="font-display italic text-[22px] tracking-tight text-[var(--ink)]">
+          Runs
+        </h1>
+        <span className="font-mono text-[10px] tracking-[0.04em] text-[var(--ink-faint)]">
+          · 3-pane · 左列表 / 中详情 / 右 eval
+        </span>
+        <span className="ml-auto flex items-center gap-2">
           <Button onClick={fetchRuns} disabled={loading}>
-            <RefreshCw size={14} className={loading ? "animate-spin" : ""} /> Refresh
+            <RefreshCw
+              size={12}
+              className={loading ? "animate-spin" : ""}
+            />{" "}
+            Refresh
           </Button>
-        }
-      />
+        </span>
+      </header>
 
       {/* Filter rail */}
-      <div className="mb-6 flex flex-wrap items-center gap-3 rounded-[var(--r-lg)] border border-[var(--line)] bg-[var(--surface-1)] p-3">
+      <div className="flex flex-wrap items-center gap-3 rounded-[var(--r-lg)] border border-[var(--line)] bg-[var(--surface-1)] p-2.5">
         <FilterField label="SKILL">
           <FilterSelect
             value={skill}
@@ -169,98 +234,151 @@ export default function RunsPage() {
                 ? "border-[color-mix(in_srgb,var(--warn)_60%,transparent)] bg-[color-mix(in_srgb,var(--warn)_10%,transparent)] text-[var(--warn)]"
                 : "border-[var(--line)] text-[var(--ink-muted)] hover:text-[var(--ink-soft)]")
             }
-            title={flagged ? "show all runs" : "show only flagged-for-re-review"}
+            title={flagged ? "show all runs" : "show only flagged"}
           >
             <Flag size={10} />
             {flagged ? "FLAGGED ONLY" : "filter flagged"}
           </button>
         )}
-        <span className="ml-auto font-mono text-[11px] text-[var(--ink-faint)]">
+        <span className="ml-auto font-mono text-[10px] text-[var(--ink-faint)]">
           {runs.length} runs
         </span>
       </div>
 
-      {error && (
-        <Card className="mb-4 border-[color-mix(in_srgb,var(--loss)_40%,transparent)] p-4 text-[12px] text-[var(--loss)]">
-          ⚠ {error}
-        </Card>
-      )}
-
-      {runs.length === 0 && !loading ? (
-        <Empty
-          title={
-            skill
-              ? `没有 ${skill} 的 run`
-              : "Nothing here yet"
-          }
-          hint={
-            skill
-              ? "这个 skill 还没被触发过，或者你筛选了其他 trigger 类型。"
-              : "去关注列表 / 研究台触发一次，run 会出现在这里。"
-          }
-          action={
-            <Link
-              href={skill ? `/agents/${encodeURIComponent(skill)}` : "/agents"}
-              className="inline-flex items-center gap-2 font-mono text-[11px] tracking-[0.08em] uppercase text-[var(--accent)] hover:underline"
-            >
-              {skill ? "View skill" : "Browse skills"} <ArrowUpRight size={14} />
-            </Link>
-          }
-        />
-      ) : (
-        <ul className="space-y-2">
-          {runs.map((r) => {
-            const dur = durationMs(r);
-            return (
-              <li key={r.id}>
+      {/* 3-pane body — each column scrolls independently */}
+      <div className="grid min-h-0 flex-1 grid-cols-[300px_minmax(0,1fr)_400px] gap-3">
+        {/* LEFT — run list */}
+        <aside className="min-h-0 overflow-y-auto rounded-[var(--r-lg)] border border-[var(--line)] bg-[var(--surface-1)]">
+          {error && (
+            <div className="border-b border-[color-mix(in_srgb,var(--loss)_40%,transparent)] p-3 text-[11px] text-[var(--loss)]">
+              ⚠ {error}
+            </div>
+          )}
+          {runs.length === 0 && !loading ? (
+            <Empty
+              title="Nothing here yet"
+              hint={
+                skill ? "这个 skill 还没被触发过。" : "去研究台触发一次。"
+              }
+              action={
                 <Link
-                  href={`/runs/${r.id}`}
-                  className="group block rounded-[var(--r-lg)] border border-[var(--line)] bg-[var(--surface-1)] p-4 transition-colors hover:border-[var(--line-strong)] hover:bg-[var(--surface-2)]"
+                  href="/agents"
+                  className="inline-flex items-center gap-2 font-mono text-[10px] tracking-[0.08em] uppercase text-[var(--accent)] hover:underline"
                 >
-                  <div className="flex flex-wrap items-baseline gap-3">
-                    <span className="font-display italic text-[18px] tracking-tight text-[var(--ink)]">
-                      {r.skill}
-                    </span>
-                    {r.skill_version && (
-                      <span className="font-mono text-[10px] tracking-[0.08em] text-[var(--ink-faint)]">
-                        {r.skill_version}
-                      </span>
-                    )}
-                    <Badge>{r.triggered_by}</Badge>
-                    <span className="ml-auto flex items-center gap-3">
-                      {dur != null && (
-                        <span className="numeric text-[11px] text-[var(--ink-muted)]">
-                          {dur} ms
-                        </span>
-                      )}
-                      <Badge tone={statusTone(r.status)}>{r.status}</Badge>
-                    </span>
-                  </div>
-                  {r.trigger_reason && (
-                    <div className="mt-2 font-mono text-[10px] tracking-[0.04em] text-[var(--ink-faint)]">
-                      reason: {r.trigger_reason}
-                    </div>
-                  )}
-                  {(r.summary || r.user_input) && (
-                    <div className="mt-2 line-clamp-2 text-[13px] leading-relaxed text-[var(--ink-soft)]">
-                      {r.summary || r.user_input}
-                    </div>
-                  )}
-                  <div className="mt-3 font-mono text-[10px] tracking-[0.04em] text-[var(--ink-faint)]">
-                    {formatTs(r.started_at)} → {formatTs(r.ended_at)} ·{" "}
-                    <span className="text-[var(--ink-muted)]">{r.id}</span>
-                  </div>
+                  Browse skills <ArrowUpRight size={12} />
                 </Link>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </PageContainer>
+              }
+            />
+          ) : (
+            <ul>
+              {runs.map((r) => (
+                <RunListItem
+                  key={r.id}
+                  run={r}
+                  active={r.id === selectedId}
+                  onSelect={() => selectRun(r.id)}
+                />
+              ))}
+            </ul>
+          )}
+        </aside>
+
+        {/* MIDDLE — run detail */}
+        <main className="min-h-0 overflow-y-auto rounded-[var(--r-lg)] border border-[var(--line)] bg-[var(--surface-1)] p-4">
+          {!selectedId ? (
+            <CenterEmpty title="选一条 run" hint="从左侧列表点一条进来。" />
+          ) : detailLoading ? (
+            <div className="flex items-center gap-2 text-[12px] text-[var(--ink-muted)]">
+              <Loader2 size={14} className="animate-spin" /> loading run…
+            </div>
+          ) : detailError ? (
+            <CenterEmpty
+              title="加载失败"
+              hint={detailError}
+            />
+          ) : detail ? (
+            <RunDetailView run={detail} hideRatingPanel />
+          ) : null}
+        </main>
+
+        {/* RIGHT — eval panel (real, persists to RunFeedback) */}
+        <aside className="min-h-0 overflow-y-auto rounded-[var(--r-lg)] border border-[var(--line)] bg-[var(--surface-1)] p-4">
+          {selectedId ? (
+            <RunRatingPanel runId={selectedId} user={user} />
+          ) : (
+            <CenterEmpty
+              title="Eval"
+              hint="选一条 run 后,这里出现 👍/👎/🚩 + notes + 自动评分。"
+            />
+          )}
+        </aside>
+      </div>
+    </div>
   );
 }
 
-function FilterField({ label, children }: { label: string; children: React.ReactNode }) {
+// ─── left rail item ───────────────────────────────────────────────────
+
+function RunListItem({
+  run,
+  active,
+  onSelect,
+}: {
+  run: RunSummary;
+  active: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onSelect}
+        className={
+          "block w-full cursor-pointer border-b border-[var(--line)] px-3 py-2.5 text-left transition-colors " +
+          (active
+            ? "bg-[color-mix(in_srgb,var(--accent)_8%,transparent)]"
+            : "hover:bg-[var(--surface-2)]")
+        }
+      >
+        <div className="flex items-baseline gap-2">
+          <span className="truncate font-display italic text-[13px] tracking-tight text-[var(--ink)]">
+            {run.skill}
+          </span>
+          <Badge tone={statusTone(run.status)}>{run.status}</Badge>
+        </div>
+        <div className="mt-1 line-clamp-1 text-[11px] leading-snug text-[var(--ink-soft)]">
+          {run.summary || run.user_input || "(no summary)"}
+        </div>
+        <div className="mt-1.5 flex items-center gap-2 font-mono text-[9px] tracking-[0.04em] text-[var(--ink-faint)]">
+          <span>{run.triggered_by}</span>
+          <span>·</span>
+          <span>{formatTs(run.started_at)}</span>
+        </div>
+      </button>
+    </li>
+  );
+}
+
+// ─── small helpers ────────────────────────────────────────────────────
+
+function CenterEmpty({ title, hint }: { title: string; hint: string }) {
+  return (
+    <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-1 text-center">
+      <div className="font-display italic text-[14px] text-[var(--ink-muted)]">
+        {title}
+      </div>
+      <div className="text-[11px] text-[var(--ink-faint)]">{hint}</div>
+    </div>
+  );
+}
+
+function FilterField({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <label className="flex items-center gap-2">
       <span className="font-mono text-[9px] tracking-[0.18em] text-[var(--ink-faint)]">
@@ -284,7 +402,7 @@ function FilterSelect({
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="rounded-md border border-[var(--line-strong)] bg-[var(--surface)] px-2.5 py-1.5 font-mono text-[11px] text-[var(--ink-soft)] hover:bg-[var(--surface-2)] transition-colors"
+      className="rounded-md border border-[var(--line-strong)] bg-[var(--surface)] px-2 py-1 font-mono text-[10px] text-[var(--ink-soft)] transition-colors hover:bg-[var(--surface-2)]"
     >
       {options.map((o) => (
         <option key={o.value} value={o.value} className="bg-[var(--surface)]">
