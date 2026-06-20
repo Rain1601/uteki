@@ -600,6 +600,19 @@ class CompanyResearchPipeline(BaseAgent):
         final_verdict = await self._synthesize_verdict_json(
             symbol, question, evidence, gate_outputs, memo, ranking, capital_plan
         )
+        # Lock fisher_qa.questions to gate 2's authority. Gate 2 already scored
+        # all 15 Q's against the persona prompt + missing-data 0-score rule;
+        # the verdict stage should aggregate (growth_verdict/radar/flags), not
+        # re-derive per-Q scores. Without this lock the verdict LLM drifts —
+        # observed a 10-point total swing + Q14 answered with Q15's content.
+        gate2_text = next(
+            (g["text"] for g in gate_outputs if g["name"] == "fisher_qa"), None
+        )
+        locked = self._parse_fisher_qa_md(gate2_text) if gate2_text else None
+        if locked is not None:
+            fq = final_verdict.setdefault("fisher_qa", {})
+            fq["questions"] = locked["questions"]
+            fq["total_score"] = locked["total_score"]
         source_quality = self._build_source_quality()
         claim_audit = self._build_claim_audit(
             symbol=symbol,
@@ -2087,6 +2100,70 @@ class CompanyResearchPipeline(BaseAgent):
             f"最大仓位 {capital_plan.get('max_position_pct', 0)}%。严格按风险触发条件复核 [src:none]\n\n"
             "## Monitoring Triggers\n- 财报增速、利润率、管理层动作、估值区间 [src:none]\n"
         )
+
+    @staticmethod
+    def _parse_fisher_qa_md(text: str) -> dict[str, Any] | None:
+        """Extract the 15 Fisher Q answers + scores from a gate-02 markdown.
+
+        Returns None if fewer than 15 Q's parse cleanly — caller keeps the
+        verdict LLM's answer so the artifact is never empty. On success the
+        returned ``questions`` shape matches ``final_verdict.fisher_qa.questions``
+        so it can be plugged in verbatim.
+
+        Gate 2's markdown structure (per the persona prompt):
+
+            ### Q1 <question text>
+
+            - **分析**: <2-3 sentence answer with [src:N]>
+            - **评分**: <0-10>
+            - **数据信心度**: <high|medium|low>
+        """
+        if not text:
+            return None
+        # split() with a captured group inserts the capture into the result:
+        # ["pre", "1", "body1", "2", "body2", ...]
+        parts = re.split(r"(?m)^###\s+Q(\d{1,2})\b\s*", text)
+        if len(parts) < 3:
+            return None
+        questions: list[dict[str, Any]] = []
+        total = 0
+        for n_str, body in zip(parts[1::2], parts[2::2], strict=False):
+            # Cut at the next top-level heading so "## Gate conclusion" tail
+            # after Q15 doesn't pollute Q15's body.
+            body = re.split(r"(?m)^##\s+", body, maxsplit=1)[0]
+            head = re.match(r"\s*(.+?)(?:\n|$)", body)
+            question_text = head.group(1).strip() if head else ""
+            analysis_m = re.search(
+                r"-\s*\*\*分析\*\*\s*[:：]\s*(.+?)(?=\n\s*-\s*\*\*|\Z)",
+                body, re.S,
+            )
+            score_m = re.search(r"-\s*\*\*评分\*\*\s*[:：]\s*(\d{1,2})", body)
+            conf_m = re.search(r"-\s*\*\*数据信心度\*\*\s*[:：]\s*(\w+)", body)
+            if score_m is None or analysis_m is None:
+                continue
+            score = max(0, min(10, int(score_m.group(1))))
+            answer = " ".join(analysis_m.group(1).split())
+            confidence = (conf_m.group(1).strip().lower() if conf_m else "low")
+            if confidence not in {"high", "medium", "low"}:
+                confidence = "low"
+            try:
+                idx = int(n_str)
+            except ValueError:
+                continue
+            questions.append({
+                "id": f"Q{idx}",
+                "question": question_text,
+                "answer": answer,
+                "score": score,
+                "data_confidence": confidence,
+            })
+            total += score
+        if len(questions) < 15:
+            return None
+        # Keep first 15 in case the LLM accidentally listed Q16+. Sort by id
+        # so display order is stable regardless of source order.
+        questions.sort(key=lambda q: int(q["id"][1:]))
+        return {"questions": questions[:15], "total_score": total}
 
     @staticmethod
     def _sanitize_deliverable_text(text: str) -> str:
