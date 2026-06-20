@@ -40,6 +40,9 @@ class EvaluatorSkill(BaseAgent):
     def __init__(self, model: str | None = None) -> None:
         self.model = model
         self.system_prompt, self.refs = load_skill_prompt("evaluator")
+        tools_prefix = self.tools_allowlist_prefix(self.DEFAULT_TOOLS)
+        if tools_prefix:
+            self.system_prompt = f"{tools_prefix}\n\n---\n\n{self.system_prompt}"
 
     def current_signature(self) -> dict[str, Any]:
         return {
