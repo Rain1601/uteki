@@ -238,6 +238,9 @@ async def test_web_search_uses_live_providers_when_mock_data_disabled(
 
     monkeypatch.setattr(settings, "use_mock_data", False)
 
+    async def fake_vertex_empty(_q: str, _l: int) -> list[dict]:
+        return []  # simulate missing GOOGLE_CLOUD_PROJECT / market_utils
+
     async def fake_google_empty(_q: str, _l: int) -> list[dict]:
         return []  # simulate missing CSE key
 
@@ -252,6 +255,7 @@ async def test_web_search_uses_live_providers_when_mock_data_disabled(
             }
         ]
 
+    monkeypatch.setattr(mod, "_vertex_grounding_general", fake_vertex_empty)
     monkeypatch.setattr(mod, "_google_cse_general", fake_google_empty)
     monkeypatch.setattr(mod, "_ddgs_general", fake_ddgs)
 
@@ -271,6 +275,9 @@ async def test_web_search_prefers_google_when_available(
 
     monkeypatch.setattr(settings, "use_mock_data", False)
 
+    async def fake_vertex_empty(_q: str, _l: int) -> list[dict]:
+        return []
+
     async def fake_google_ok(query: str, _l: int) -> list[dict]:
         return [
             {
@@ -289,6 +296,7 @@ async def test_web_search_prefers_google_when_available(
         ddgs_called = True
         return [{"title": "should not be reached"}]
 
+    monkeypatch.setattr(mod, "_vertex_grounding_general", fake_vertex_empty)
     monkeypatch.setattr(mod, "_google_cse_general", fake_google_ok)
     monkeypatch.setattr(mod, "_ddgs_general", fake_ddgs_unused)
 
@@ -296,6 +304,91 @@ async def test_web_search_prefers_google_when_available(
     assert result.ok
     assert result.data["results"][0]["provider"] == "google_cse"
     assert ddgs_called is False, "DDGS must not be called when Google CSE returns hits"
+
+
+@pytest.mark.asyncio
+async def test_web_search_prefers_vertex_over_cse_and_ddgs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Vertex AI Grounding is the new primary — CSE + DDGS must not run when
+    vertex returns results. Verifies the chain ordering after the CSE key
+    started returning HTTP 400 (2026-06)."""
+    from uteki_api.tools import web_search as mod
+    from uteki_api.tools.web_search import WebSearchTool
+
+    monkeypatch.setattr(settings, "use_mock_data", False)
+
+    async def fake_vertex_ok(query: str, _l: int) -> list[dict]:
+        return [
+            {
+                "title": f"{query} via vertex",
+                "snippet": "grounded by gemini",
+                "source": "blog.google",
+                "url": "https://blog.google/x",
+                "provider": "vertex_grounding",
+            }
+        ]
+
+    cse_called = False
+    ddgs_called = False
+
+    async def fake_cse_unused(_q: str, _l: int) -> list[dict]:
+        nonlocal cse_called
+        cse_called = True
+        return [{"title": "should not be reached"}]
+
+    async def fake_ddgs_unused(_q: str, _l: int) -> list[dict]:
+        nonlocal ddgs_called
+        ddgs_called = True
+        return [{"title": "should not be reached"}]
+
+    monkeypatch.setattr(mod, "_vertex_grounding_general", fake_vertex_ok)
+    monkeypatch.setattr(mod, "_google_cse_general", fake_cse_unused)
+    monkeypatch.setattr(mod, "_ddgs_general", fake_ddgs_unused)
+
+    result = await WebSearchTool().run(query="alphabet earnings call", limit=1)
+    assert result.ok
+    assert result.data["results"][0]["provider"] == "vertex_grounding"
+    assert cse_called is False
+    assert ddgs_called is False
+
+
+@pytest.mark.asyncio
+async def test_web_search_surfaces_provider_errors_even_on_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When an upstream provider fails but a fallback succeeds, the error
+    must still appear in data['provider_errors'] — silently swallowing
+    failures hid a dead CSE key for weeks."""
+    from uteki_api.tools import web_search as mod
+    from uteki_api.tools.web_search import WebSearchTool
+
+    monkeypatch.setattr(settings, "use_mock_data", False)
+
+    async def fake_vertex_raises(_q: str, _l: int) -> list[dict]:
+        raise RuntimeError("vertex quota exhausted")
+
+    async def fake_cse_ok(query: str, _l: int) -> list[dict]:
+        return [
+            {
+                "title": f"{query} from cse",
+                "snippet": "cse body",
+                "source": "docs.example.com",
+                "url": "https://docs.example.com/x",
+                "provider": "google_cse",
+            }
+        ]
+
+    monkeypatch.setattr(mod, "_vertex_grounding_general", fake_vertex_raises)
+    monkeypatch.setattr(mod, "_google_cse_general", fake_cse_ok)
+
+    result = await WebSearchTool().run(query="AAPL fcf", limit=1)
+    assert result.ok
+    assert result.data["results"][0]["provider"] == "google_cse"
+    errs = result.data.get("provider_errors") or []
+    assert any("vertex" in e and "quota exhausted" in e for e in errs), (
+        f"expected vertex error in provider_errors, got {errs!r}"
+    )
 
 
 @pytest.mark.asyncio

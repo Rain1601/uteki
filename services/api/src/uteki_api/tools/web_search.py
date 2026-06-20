@@ -1,23 +1,31 @@
-"""联网搜索工具 — Google CSE primary + DDGS fallback.
+"""联网搜索工具 — Vertex Grounding primary + Google CSE + DDGS fallback.
 
-Phase C.3 migration. Same provider stack the news_search tool uses, just
-without the news-recency bias: web_search returns general results
-(documentation, blog posts, SEC filings, etc.), news_search filters to
-recent news.
+Migration history:
+- Phase C.3: Google CSE + DDGS, when CSE was still open to new keys.
+- 2026-06: Google closed CSE to new customers and the legacy key started
+  returning HTTP 400 "API key not valid". Vertex AI Grounding (Gemini 2.5
+  Flash + the google_search tool) replaces it as primary per the cross-
+  project rule documented in ~/.claude/CLAUDE.md.
 
-When no Google CSE key is configured the tool degrades to DDGS (DuckDuckGo)
-and, if that also fails, to deterministic mock results so the rest of the
-agent run continues. This is the same graceful-degradation contract
-news_search uses.
+Chain: vertex_grounding → google_cse → ddgs → mock fixture. Each layer
+falls through on empty result OR raised exception; the result surfaces
+``provider_errors`` to the caller even when a later layer succeeded so a
+silently-dead key is visible to ops, not hidden behind a green check.
 
-Future: Tavily would be the upgrade (LLM-optimized markdown output), but
-Google CSE + DDGS already gives the agent meaningful real results today
-without an extra API key purchase.
+Auth for vertex: Application Default Credentials.
+- ``GOOGLE_CLOUD_PROJECT`` (required)
+- ``GOOGLE_CLOUD_LOCATION`` (optional, default us-central1)
+- ADC via ``gcloud auth application-default login`` or
+  ``GOOGLE_APPLICATION_CREDENTIALS`` pointing at a SA JSON with
+  ``roles/aiplatform.user`` + ``roles/serviceusage.serviceUsageConsumer``.
+
+Cost: ~$0.04/search at Gemini 2.5 Flash + grounding tier (Jun 2026).
 """
 
 from __future__ import annotations
 
 import asyncio
+import os
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlparse
@@ -26,6 +34,37 @@ import httpx
 
 from uteki_api.core.config import settings
 from uteki_api.tools.base import Tool, ToolResult
+
+
+async def _vertex_grounding_general(query: str, limit: int) -> list[dict[str, Any]]:
+    """Vertex AI Grounding — primary backend.
+
+    Returns [] (not raise) when ``GOOGLE_CLOUD_PROJECT`` is unset or
+    ``market_utils`` is not installed, so the chain falls through cleanly
+    to CSE/DDGS without polluting ``provider_errors`` with config noise.
+    """
+    if not os.environ.get("GOOGLE_CLOUD_PROJECT"):
+        return []
+    try:
+        from market_utils.search import SearchEngine
+    except ImportError:
+        return []
+    engine = SearchEngine.from_env(strategy="vertex_grounding")
+    rows = await engine.search(query, max_results=limit)
+    items: list[dict[str, Any]] = []
+    for row in rows[:limit]:
+        url = row.url or ""
+        source = (row.source or urlparse(url).netloc or "vertex").lower()
+        items.append(
+            {
+                "title": row.title or "",
+                "snippet": row.snippet or "",
+                "source": source,
+                "url": url,
+                "provider": "vertex_grounding",
+            }
+        )
+    return items
 
 
 async def _google_cse_general(query: str, limit: int) -> list[dict[str, Any]]:
@@ -152,14 +191,20 @@ class WebSearchTool(Tool):
             )
 
         errors: list[str] = []
-        for searcher in (_google_cse_general, _ddgs_general):
+        for searcher in (_vertex_grounding_general, _google_cse_general, _ddgs_general):
             try:
                 items = await searcher(effective_query, limit)
             except Exception as e:  # noqa: BLE001 — provider failure should degrade
                 errors.append(f"{searcher.__name__}: {e}")
                 continue
             if items:
-                return self._items_result(effective_query, items, as_of=as_of)
+                # Surface upstream provider errors even on success — a dead CSE
+                # key was hidden for weeks because DDGS quietly took over.
+                # Ops needs to see the failure to know it's there.
+                result = self._items_result(effective_query, items, as_of=as_of)
+                if errors:
+                    result.data["provider_errors"] = errors
+                return result
 
         fallback = self._items_result(
             effective_query, _mock_results(effective_query, limit),
