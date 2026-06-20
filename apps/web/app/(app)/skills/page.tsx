@@ -36,7 +36,7 @@ export default function AgentsPage() {
         {agents.map((a) => (
           <li key={a.name}>
             <Link
-              href={`/agents/${encodeURIComponent(a.name)}`}
+              href={`/skills/${encodeURIComponent(a.name)}`}
               className="group block h-full rounded-[var(--r-lg)] border border-[var(--line)] bg-[var(--surface-1)] p-5 transition-colors hover:border-[var(--line-strong)] hover:bg-[var(--surface-2)]"
             >
               <div className="flex items-start gap-3">

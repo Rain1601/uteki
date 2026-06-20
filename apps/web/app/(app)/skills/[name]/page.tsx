@@ -75,7 +75,7 @@ export default function AgentDetailPage() {
     <PageContainer>
       <div className="mb-4">
         <Link
-          href="/agents"
+          href="/skills"
           className="inline-flex items-center gap-1.5 font-mono text-[11px] tracking-[0.08em] uppercase text-[var(--ink-faint)] hover:text-[var(--ink)] transition-colors"
         >
           <ChevronLeft size={12} /> All skills

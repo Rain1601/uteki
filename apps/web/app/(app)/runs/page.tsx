@@ -262,7 +262,7 @@ export default function RunsPage() {
               }
               action={
                 <Link
-                  href="/agents"
+                  href="/skills"
                   className="inline-flex items-center gap-2 font-mono text-[10px] tracking-[0.08em] uppercase text-[var(--accent)] hover:underline"
                 >
                   Browse skills <ArrowUpRight size={12} />

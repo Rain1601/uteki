@@ -71,7 +71,7 @@ export default async function Home() {
           n="03"
           title="Skill"
           body="yields plan · thinking · tool_call · delta"
-          href="/agents"
+          href="/skills"
           icon={Boxes}
         />
         <FlowCard
@@ -115,7 +115,7 @@ export default async function Home() {
           <div className="space-y-2">
             <NavRow href="/runs"    icon={Activity} label="Runs" hint="prod run quality · 人工打标" />
             <NavRow href="/compare" icon={GitCompareArrows} label="Compare" hint="A/B between skills" />
-            <NavRow href="/agents"  icon={Boxes} label="Skills" hint="versions · changelog · diff" />
+            <NavRow href="/skills"  icon={Boxes} label="Skills" hint="versions · changelog · diff" />
           </div>
         </Card>
       </div>
