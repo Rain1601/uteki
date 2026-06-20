@@ -80,6 +80,36 @@ _NO_REPEAT_NOTE = (
     "在前序结论基础上深化、聚焦本维度独有的判断。"
 )
 
+# Deliverable hard-constraint — ported from Anthropic finance skill prompts
+# (initiating-coverage / earnings-analysis). The pattern is "only output the
+# specified sections, NOTHING ELSE", with an explicit ❌ list of the additions
+# LLM defaults to producing helpfully (executive summary, next steps, ...).
+# Without this, gate 7 verdict re-aggregation has to filter through ~40% noise.
+_DELIVERABLE_BAN_NOTE = """【交付物硬约束 — NOTHING ELSE】
+
+本 gate 只输出下面"输出要求"中列出的段落,任何附加段落都视为缺陷。
+
+默认禁止输出(除非"输出要求"明文列出):
+- ❌ "执行摘要 / Executive Summary"(本 gate 的 Key findings 已经是首段浓缩)
+- ❌ "结论 / Conclusion / 总结"(每节自带 conclusion + Gate conclusion)
+- ❌ "下一步建议 / Next Steps / Action Items"(由 Gate 7 verdict 负责)
+- ❌ "免责声明 / Disclaimer / 风险提示"(法务模板,不是研究内容)
+- ❌ "本报告范围 / About this report / 适用对象"
+- ❌ "附录 / Appendix / 补充资料"(写不进主体的就不要写)
+- ❌ "TL;DR" / "一句话总结"(若需要会在输出要求中明文)
+- ❌ emoji 装饰(🎯/✨/📊/🔥 等)和 ASCII art
+- ❌ "如需更多信息请告诉我" / "若有任何问题欢迎沟通" 等客套
+- ❌ "希望此分析对您有所帮助" / "以上即为本次分析" 段尾向读者致意
+
+【WHY】每个 gate 的输出会被 Gate 7 verdict synthesis 重新聚合,你赠送的总结
+在那一关会被**覆写** —— 做了等于没做,只是浪费 input token budget,可能撞
+max_input_tokens 上限触发 truncation 反而丢掉核心论点。
+
+【提交前自检】
+1. 我输出的每个段落是否都能在"输出要求"清单里找到对应?不能 → 删
+2. 文末最后一句是研究判断,还是客套?是客套 → 删
+3. 有没有"希望" / "感谢" / "建议您" / "如需" / "进一步"?有 → 大概率违规,重审"""
+
 # Hard-as-rules numerical-citation contract. Replaces older soft language
 # like "每个关键判断带 [src:N]" / "每个 section 至少一个 [src:N]" — these were
 # being read by the LLM as section-level minimums and let through paragraphs
@@ -952,6 +982,8 @@ class CompanyResearchPipeline(BaseAgent):
 {_DATA_MISSING_NOTE}
 
 {_CITATION_STRICT_NOTE}
+
+{_DELIVERABLE_BAN_NOTE}
 
 【输出要求】
 - 输出 markdown，必须包含 `## Key findings`、`## Analysis`、`## Gate conclusion` 三个段落

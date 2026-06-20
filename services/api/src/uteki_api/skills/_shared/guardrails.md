@@ -165,3 +165,49 @@ yield AgentEvent(type="tool_call", data={"name": "market_quote", "args": {...}})
 
 这一条不是排版要求，是**可观察性合同**：你不"说话"，你的判断对其他 agent
 和 reviewer 就是黑箱。
+
+## 7. Deliverable 硬约束 —— NOTHING ELSE
+
+**只输出 SKILL.md / gate prompt 中显式列出的段落或文件。任何"附赠"都视为缺陷。**
+
+### 7a. 禁止输出的"附赠段落"
+
+不管 SKILL 是不是显式禁,以下段落**默认禁止**(除非当前 gate 明文要求):
+
+- ❌ "执行摘要 / Executive Summary"(我们要的就是首段 Key findings,不要二次浓缩)
+- ❌ "结论 / Conclusion / 总结"(每个 section 自带 conclusion / Gate conclusion)
+- ❌ "下一步建议 / Next Steps / Action Items"(pipeline 协调层负责)
+- ❌ "免责声明 / Disclaimer / 风险提示"(不是研究内容,是法务模板)
+- ❌ "本报告范围 / About this report / 适用对象"
+- ❌ "附录 / Appendix / 补充资料"(写不进主体的就不要写)
+- ❌ "TL;DR" / "一句话总结"(若要,会在 SKILL 里明文要求位置)
+- ❌ 任何 emoji 装饰(🎯/✨/📊/🔥 etc.)和分隔线之外的 ASCII art
+- ❌ "如需更多信息请告诉我" / "若有任何问题欢迎进一步沟通" 等客套
+- ❌ "以上即为本次分析" / "综上所述本报告认为" 段尾客套
+- ❌ "希望此分析对您有所帮助" 任何向读者致意
+
+### 7b. NOTHING ELSE 兜底
+
+每个 gate / skill 的 deliverable 清单后,默认隐含 **"NOTHING ELSE"** —— 如果某段不在显式清单里,就不要写。
+
+**Why**:
+- 每个 gate 的输出会被 pipeline 协调层(Gate 7 / synthesis)**重新聚合**;你的赠送总结在那一关会被**覆写**——做了等于没做,只是浪费 context budget
+- 多余段落会把后续 gate 的 input prompt 撑大,可能撞 max_input_tokens 上限,触发 truncation 反而丢核心论点
+- 投研人(实际用户)的工作流是浏览结构化字段,不是读散文;赠送段落是噪声
+
+### 7c. "我重写一下更好"也是违规
+
+LLM 写完一遍后偶尔会自发"我刚才漏了 X,重新整理一下:" 然后又来一遍 —— 这是 **double-output**,跟附赠段同等严重。
+
+**正确做法**:第一次就按 deliverable 写对。觉得没写好,在 thinking 里调整,不要在 artifact 里返工。
+
+### 7d. 自检 checklist
+
+按 enter 提交前默默执行:
+1. 我输出的段落,是否每一个都能在 SKILL prompt 的 deliverable 清单里找到对应?
+2. 有没有以 "**总结**" / "**结语**" / "**说明**" / "**注**" / "**附**" 开头的段?有 → 删
+3. 有没有 emoji?有 → 删(除非 SKILL 明文要)
+4. 文末最后一句是不是研究判断?是 → ✓;是客套 → 删
+5. 全文有没有出现 "希望" / "感谢" / "建议您" / "如需" / "进一步"?有 → 大概率违规,重审
+
+通过 → 输出。
