@@ -221,8 +221,15 @@ _GATE_INSTRUCTIONS: dict[str, str] = {
 
 每个结论必须有数据支撑（数字、比例、金额），并用 [src:N] 标注证据来源。
 
+【必引来源类型 — sources policy】
+本 gate 的判断必须**至少引用**以下证据类型(目录里有就引,没有要明确标 [src:none] 并说明哪个数据点该来自哪类):
+- ✅ **financials** 表(营收 / 毛利 / 分部数据) —— 商业模式 + 生意质量
+- ✅ **market_quote**(市值 / 估值锚点) —— 公司规模
+- ✅ **news_search**(近期业务动态) —— 可持续性
+- 🟡 sec_income(分部细分)、sec_filings(10-K 业务描述) —— 加分项
+
 【Deliverable 量化约束】
-- **必须完成 ALL 4 个维度**，缺一不可（即使数据缺失也要写出"缺什么数据 + 为什么这个维度无法定论"）
+- **必须完成 ALL 4 个维度**，缺一不可(即使数据缺失也要写出"缺什么数据 + 为什么这个维度无法定论")
 - 每个维度最少 150 字，最多 350 字 —— 一句话糊弄视为偷工
 - Key findings: 5-7 条 bullet，每条必有 [src:N]
 - Analysis 段总长度 700-1300 字
@@ -231,7 +238,8 @@ _GATE_INSTRUCTIONS: dict[str, str] = {
 【提交前自检】
 1. 数完 Analysis 里的 4 个维度：是否都 >= 150 字？少于 150 字 → 补
 2. 数完 Key findings 的 bullet 数：5-7 条？不在范围 → 调整
-3. Gate conclusion 是否有立场（好/中/差），而不是"需进一步关注"？""",
+3. Gate conclusion 是否有立场(好/中/差),而不是"需进一步关注"?
+4. 必引来源类型 (financials / market_quote / news_search) 是否每类**至少出现 1 次** [src:N]?""",
 
     "fisher_qa": """你是菲利普·费雪，遵循《怎样选择成长股》中的 15 要点框架逐一评估这家公司。
 你关心的不是便宜不便宜，而是这家公司能否持续成长 10 年以上。
@@ -240,6 +248,11 @@ _GATE_INSTRUCTIONS: dict[str, str] = {
 - 分析回答（80-150 字，必须引用具体数据，每个数字后 [src:N]）
 - 评分（0-10 分）—— 如果该问题缺乏数据支撑，评分应为 0 分
 - 数据信心度（high / medium / low）
+
+【必引来源类型 — sources policy(按 Q 分组)】
+- Q1, Q2, Q3, Q5, Q6, Q10, Q11, Q13 (财务面 + 市场面) → **必引** financials + market_quote + sec_income(若有)
+- Q4, Q7, Q8, Q9, Q14, Q15 (软性面 + 管理面) → **必引** insider_trading + sec_filings(DEF 14A) + news_search;**若都为空** → 显式标 [src:none] 并说明哪类证据缺失
+- Q12 (展望) → **必引** price_target(分析师锚) + earnings_calendar
 
 【Deliverable 量化约束 — 反偷工】
 - **必须答完 ALL 15 个 Q**，从 Q1 到 Q15 一个不能漏
@@ -296,6 +309,13 @@ Q15 管理层的诚信是否毫无疑问？
 
 输出 markdown，每个关键判断带 [src:N]。
 
+【必引来源类型 — sources policy】
+- ✅ **financials**(毛利率 vs 同业 — 成本优势 / 品牌定价权的硬证据)
+- ✅ **market_quote**(目标 + 至少 2 家同业的市值 — 有效规模壁垒判断)
+- ✅ **news_search**(市占率数字 / 行业格局变化)
+- 🟡 sec_filings(10-K 的"competitors" / "patents" 段落)
+- 🟡 sec_income(分部利润率对比)
+
 【Deliverable 量化约束】
 - **必须分析 ALL 6 种护城河类型 (BRAND/NETWORK/SWITCHING/COST/SCALE/IP)**，每种至少 100 字 + 强度判定(strong/moderate/weak/无) + 证据 [src:N]
 - 6 种后的 6 个跟进点(宽度/趋势/持久性/竞争格局/威胁/所有者收益)，每点 100-200 字
@@ -305,7 +325,8 @@ Q15 管理层的诚信是否毫无疑问？
 【提交前自检】
 1. 6 种护城河类型是否都分析了？数一遍 BRAND/NETWORK/SWITCHING/COST/SCALE/IP — 缺一种 → 补
 2. 每种是否都给出 strong/moderate/weak/无 的判定？
-3. 6 个跟进点是否每点 >= 100 字？""",
+3. 6 个跟进点是否每点 >= 100 字？
+4. 必引来源(financials / market_quote / news_search)是否都引用了?""",
 
     "management_assessment": """你是一名结合费雪和芒格视角的管理层评估专家。
 费雪关注管理层的成长导向和坦诚度，芒格关注管理层的诚信和资本配置能力。
@@ -322,6 +343,13 @@ Q15 管理层的诚信是否毫无疑问？
 
 最后给出 **管理层综合评分（0-10）** 和一句话总结。
 
+【必引来源类型 — sources policy】
+- ✅ **insider_trading**(近 12 个月高管买卖 — 信号强度 + 股东导向)
+- ✅ **sec_filings**(DEF 14A 索引 — 高管薪酬、董事会、接班 / 关键人风险)
+- ✅ **news_search**(管理层离职 / 财报电话会议片段 / 财务造假新闻)
+- 🟡 sec_income(用净利率轨迹辅助资本配置判断)
+- 🟡 price_target(分析师对管理层执行力的隐含评分)
+
 【Deliverable 量化约束】
 - **必须覆盖 ALL 7 个维度**，每个维度 100-200 字 + 评分(或分级) + [src:N]
 - 总 Analysis 段 700-1400 字
@@ -330,7 +358,8 @@ Q15 管理层的诚信是否毫无疑问？
 
 【提交前自检】
 1. 7 维度 ✓:诚信 / 资本配置 / 股东导向 / 接班 / 内部人 / 关键人 / 薪酬 —— 有没有缺?
-2. 综合评分是否引用至少 2 个具体维度作为加权依据?""",
+2. 综合评分是否引用至少 2 个具体维度作为加权依据?
+3. 必引来源(insider_trading / sec_filings / news_search)是否都出现?""",
 
     "reverse_test": """你是查理·芒格，运用反转思维和多元心智模型来审计这笔投资。
 你的任务不是证明这家公司好，而是拼命寻找它会失败的理由。
@@ -357,6 +386,14 @@ Q15 管理层的诚信是否毫无疑问？
 
 5. **最悲观情景叙述**：如果所有坏事同时发生，会怎样？
 
+【必引来源类型 — sources policy】
+- ✅ **sec_income**(应收增速 vs 营收增速 / 经营 CF vs 净利润 - 收入质量、利润虚高)
+- ✅ **financials**(杠杆比 / 客户集中度 / 自由现金流)
+- ✅ **insider_trading**(管理层大额减持信号)
+- ✅ **news_search**(应付账款丑闻 / 关联交易 / 审计变更)
+- 🟡 sec_filings(8-K 重大事件 / 关联方披露)
+- 🟡 macro_rates(高杠杆 + 加息 → 现金流冲击)
+
 【Deliverable 量化约束】
 - **毁灭场景必须 3-5 个**，每个最少 120 字 + probability/impact/timeline/reasoning 四要素齐全
 - **红旗清单必须逐一过 ALL 8 条**（即使 false 也要写一句说明为什么不触发 + [src:N]）
@@ -369,7 +406,8 @@ Q15 管理层的诚信是否毫无疑问？
 【提交前自检】
 1. 数毁灭场景:3-5 个之间?
 2. 红旗清单 8 条全过了?(每条都要 triggered: true/false + detail)
-3. 最悲观情景是叙述段不是 bullet list?""",
+3. 最悲观情景是叙述段不是 bullet list?
+4. 必引来源(sec_income / financials / insider_trading / news_search)是否都引用了?""",
 
     "valuation": """你是一名以巴菲特"生意人视角"思考估值的分析师。
 注意：不要做任何 DCF 计算、折现率估算、或精确的数学估值模型。
@@ -398,6 +436,15 @@ Q15 管理层的诚信是否毫无疑问？
 - **市场情绪**：fear / neutral / greed / euphoria
 - **购买信心度**（0-10）
 
+【必引来源类型 — sources policy】
+本 gate 是数据最依赖来源最多的一关,必须**每类都引用至少 1 次**:
+- ✅ **market_quote**(目标公司当前 PE/PS/市值 — 当前估值锚点)
+- ✅ **financials**(目标公司 5 年历史 PE/PB/PS/FCF Yield 区间)
+- ✅ **financials**(**至少 2 家同业**的 PE / EV/EBITDA / FCF Yield — 横向对比)
+- ✅ **price_target**(分析师目标价 + 共识,作为市场情绪锚)
+- ✅ **macro_rates / dgs10**(10Y 国债收益率,FCF Yield vs 国债的边际比较)
+- 🟡 macro_fred / cpi_core(估值 vs 通胀环境)
+
 【Deliverable 量化约束】
 - **必须覆盖 ALL 6 个视角**：定量锚点 / 买家视角 / 市场温度 / 同行对比 / 安全边际 / 分析师参考
 - 每个视角最少 100 字 + 至少 1 个量化数据 [src:N]
@@ -409,7 +456,8 @@ Q15 管理层的诚信是否毫无疑问？
 【提交前自检】
 1. 6 视角是否齐全?
 2. 同行对比是否给了 >=2 家具体公司 + 倍数?
-3. 4 个最终判定(价格/边际/情绪/信心)是否都给出明确档位?""",
+3. 4 个最终判定(价格/边际/情绪/信心)是否都给出明确档位?
+4. 5 必引来源(market_quote / financials × 2 / price_target / macro_rates)是否都引用了?""",
 }
 
 
