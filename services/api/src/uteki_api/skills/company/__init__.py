@@ -244,7 +244,30 @@ _GATE_INSTRUCTIONS: dict[str, str] = {
     "fisher_qa": """你是菲利普·费雪，遵循《怎样选择成长股》中的 15 要点框架逐一评估这家公司。
 你关心的不是便宜不便宜，而是这家公司能否持续成长 10 年以上。
 
-【重要】请逐一回答 ALL 15 个问题，缺一不可。每个问题请给出：
+【重要】请逐一回答 ALL 15 个问题，缺一不可。
+
+【格式硬约束 — 必须严格遵守】每个问题的输出必须**完全匹配**以下模板:
+
+```
+### Q1 未来几年是否仍有足够大的市场空间来实现可观的营收增长？
+
+- **分析回答**：<80-150 字答案,每个数字后 [src:N]>
+- **评分**：<0-10>
+- **数据信心度**：<high|medium|low>
+```
+
+❌ 禁止格式变形:
+- ❌ 用 `**Q1 ...**：` 内联代替 `### Q1` heading(下游 parser 依赖 heading)
+- ❌ 把多个 Q 合并到同一段
+- ❌ 用编号列表 `1. Q1 ...` 代替 heading
+- ❌ 省略 `- **分析回答**：` / `- **评分**：` / `- **数据信心度**：` 三个 bullet 之一
+- ❌ 字段名变体: 必须是"分析回答"(不是"分析" / "回答" / "Answer")、"评分"(不是"得分" / "Score")、"数据信心度"(不是"信心" / "Confidence")
+
+WHY: Gate 7 verdict synthesis 依赖**精确解析** gate 2 的 Q1-Q15 评分和答案,任何
+格式漂移会让 verdict.json 落回 LLM 自己重写,导致两份 artifact 评分不一致
++ 长答案被 verdict 抹成 "未知" 2字。这是已知的 P0 退化。
+
+每个问题请给出：
 - 分析回答（80-150 字，必须引用具体数据，每个数字后 [src:N]）
 - 评分（0-10 分）—— 如果该问题缺乏数据支撑，评分应为 0 分
 - 数据信心度（high / medium / low）
@@ -2337,9 +2360,35 @@ class CompanyResearchPipeline(BaseAgent):
         """
         if not text:
             return None
-        # split() with a captured group inserts the capture into the result:
-        # ["pre", "1", "body1", "2", "body2", ...]
+        # Try the canonical `### Qn ...` heading format first. If it doesn't
+        # produce 15 parts, fall back to the inline `**Qn ...**:` format that
+        # the LLM started emitting after we added word-floor constraints
+        # (the model compressed structure to save tokens). Without this
+        # fallback the parser silently disengages and verdict.json falls back
+        # to LLM re-derivation — that's the P0 regression we're guarding against.
         parts = re.split(r"(?m)^###\s+Q(\d{1,2})\b\s*", text)
+        if len(parts) < 31:  # need (pre + 15 × (id, body)) = 31 elements
+            inline_parts = re.split(r"(?m)^\*\*Q(\d{1,2})\s+([^*]+?)\*\*\s*[:：]\s*", text)
+            if len(inline_parts) >= 31:
+                # inline format: [pre, "1", "title", body, "2", "title", body, ...]
+                # normalize to (id, body) by joining title back into body.
+                normalized: list[str] = [inline_parts[0]]
+                for i in range(1, len(inline_parts) - 2, 3):
+                    normalized.append(inline_parts[i])              # n_str
+                    title = inline_parts[i + 1]
+                    body = inline_parts[i + 2]
+                    # Synthesize the canonical bullet structure so the
+                    # downstream extraction logic can pick it up unchanged.
+                    # In inline format the analysis is everything before
+                    # the next ** marker (信号 / 评分 / 信心度).
+                    analysis_segment = re.split(
+                        r"\n\s*\*\*(?:信号|评分|信心度|数据信心度)\b",
+                        body, maxsplit=1,
+                    )[0].strip()
+                    normalized.append(
+                        f"{title}\n\n- **分析回答**：{analysis_segment}\n{body}"
+                    )
+                parts = normalized
         if len(parts) < 3:
             return None
         questions: list[dict[str, Any]] = []
@@ -2350,12 +2399,27 @@ class CompanyResearchPipeline(BaseAgent):
             body = re.split(r"(?m)^##\s+", body, maxsplit=1)[0]
             head = re.match(r"\s*(.+?)(?:\n|$)", body)
             question_text = head.group(1).strip() if head else ""
+            # Field-name + format tolerance. The LLM has drifted across runs:
+            # - field name: "分析" vs "分析回答" vs "分析说明"
+            # - bullet vs no bullet: "- **分析**" vs "**分析**"
+            # - score: "评分: 9" vs "评分: 9/10"
+            # - confidence label: "数据信心度" vs "信心度"
+            # Original parser was strict; one drift defeats it. New version
+            # tolerates the observed variants without weakening "must have all
+            # three fields".
             analysis_m = re.search(
-                r"-\s*\*\*分析\*\*\s*[:：]\s*(.+?)(?=\n\s*-\s*\*\*|\Z)",
+                r"(?:^|\n)\s*(?:-\s*)?\*\*分析(?:回答|说明)?\*\*\s*[:：]\s*"
+                r"(.+?)(?=\n\s*(?:-\s*)?\*\*(?:评分|信心度|数据信心度|信号|分析)|\Z)",
                 body, re.S,
             )
-            score_m = re.search(r"-\s*\*\*评分\*\*\s*[:：]\s*(\d{1,2})", body)
-            conf_m = re.search(r"-\s*\*\*数据信心度\*\*\s*[:：]\s*(\w+)", body)
+            score_m = re.search(
+                r"(?:-\s*)?\*\*评分\*\*\s*[:：]\s*(\d{1,2})(?:\s*/\s*10)?",
+                body,
+            )
+            conf_m = re.search(
+                r"(?:-\s*)?\*\*(?:数据)?信心度\*\*\s*[:：]\s*(\w+)",
+                body,
+            )
             if score_m is None or analysis_m is None:
                 continue
             score = max(0, min(10, int(score_m.group(1))))

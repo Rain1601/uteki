@@ -240,6 +240,76 @@ def test_parse_fisher_qa_md_returns_none_for_mock_gate_output() -> None:
     assert CompanyResearchPipeline._parse_fisher_qa_md(text) is None
 
 
+def test_parse_fisher_qa_md_accepts_field_name_variants() -> None:
+    """After the Anthropic-pattern adoption (word-floor prompts), the LLM
+    started writing the field as "分析回答" instead of "分析". Parser must
+    accept both — otherwise the P0 lock silently disengages and the verdict
+    LLM re-derives the 15Q (which is what P0 was designed to prevent).
+    """
+    text = "".join(
+        f"### Q{i} ?\n\n"
+        f"- **分析回答**：合理长度的答案 [src:none]。\n"
+        f"- **评分**：{i % 11}\n"
+        f"- **数据信心度**：medium\n\n"
+        for i in range(1, 16)
+    )
+
+    parsed = CompanyResearchPipeline._parse_fisher_qa_md(text)
+
+    assert parsed is not None
+    assert len(parsed["questions"]) == 15
+    # All 15 Q's parse cleanly even with the renamed field
+    assert all(q["answer"] for q in parsed["questions"]), (
+        "answer field must populate when LLM writes '分析回答' instead of '分析'"
+    )
+
+
+def test_parse_fisher_qa_md_accepts_inline_format_after_word_floors() -> None:
+    """Real-LLM regression caught in fecc56f443cf: after adding word-floor
+    constraints to fisher_qa, the model started emitting an inline format
+    ``**Q1 title**: text`` with ``评分: 9/10`` and ``信心度`` (no 数据-prefix)
+    instead of the canonical heading + bullet block. Parser must handle it.
+    """
+    md = """## Analysis
+
+**Q1 市场空间**：搜索广告市场虽成熟，但 Google Cloud TAM 巨大 [src:13]。
+2025 年 Cloud 营收 480 亿美元，渗透率仍低。市场支撑 10 年+ 增长 [src:none]。
+
+**信号**：不足够大 → 有限 → 足够大
+**评分**：9/10
+**信心度**：high
+
+**Q2 管理层开发决心**：管理层通过资本开支展示决心 [src:10]。AI 基建是
+主要支出方向，支持 Cloud 和 Gemini 模型开发 [src:none]。
+
+**信号**：耗尽 → 维持 → 积极
+**评分**：8/10
+**信心度**：medium
+
+"""
+    md += "\n\n".join(
+        f"**Q{i} q{i}**：合理长度的答案 [src:none]。\n\n"
+        f"**评分**：{(i*3) % 11}/10\n"
+        f"**信心度**：low"
+        for i in range(3, 16)
+    )
+    md += "\n\n## Gate conclusion\n本维度评级 PASS。\n"
+
+    parsed = CompanyResearchPipeline._parse_fisher_qa_md(md)
+
+    assert parsed is not None, "inline format must parse, not silently fail"
+    assert len(parsed["questions"]) == 15
+    # Verify scores survived /10 stripping
+    assert parsed["questions"][0]["score"] == 9
+    assert parsed["questions"][1]["score"] == 8
+    # Confidence label "信心度" (no 数据-prefix) accepted
+    assert parsed["questions"][0]["data_confidence"] == "high"
+    assert parsed["questions"][1]["data_confidence"] == "medium"
+    # Answer text extracted (not empty, not just the title)
+    assert "Google Cloud TAM" in parsed["questions"][0]["answer"]
+    assert "资本开支" in parsed["questions"][1]["answer"]
+
+
 def test_parse_fisher_qa_md_clamps_score_to_range() -> None:
     # Defensive: if the LLM writes "评分: 12" or "-5", the parser clamps
     # to [0, 10] rather than passing garbage into the radar chart.
