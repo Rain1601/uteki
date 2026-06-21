@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>Suite Detail · Eval Workbench Demo</title>
+  <link rel="stylesheet" href="_styles.css">
+  <style>
+    .query-row { display: grid; grid-template-columns: 100px 1fr 240px auto; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--line-soft); align-items: center; }
+    .query-row:hover { background: var(--canvas-soft); }
+    .query-row:last-child { border-bottom: 0; }
+    .query-ticker { font-family: "SF Mono", monospace; font-weight: 600; }
+    .query-input { background: transparent; border: 0; outline: none; font: inherit; color: var(--ink-soft); width: 100%; }
+    .query-input:focus { background: var(--surface-1); padding: 2px 6px; border-radius: var(--r); border: 1px solid var(--accent-line); }
+    .history-row { display: grid; grid-template-columns: 110px 80px 1fr 90px 100px 80px; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line-soft); align-items: center; }
+    .history-row:hover { background: var(--canvas-soft); cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div class="container" style="max-width:1100px;">
+
+    <div class="row mb-4" style="justify-content:space-between;">
+      <a href="01-overview.html" class="btn ghost">← back to overview</a>
+      <div class="eyebrow">eval-bench · screen 2 · suite detail</div>
+    </div>
+
+    <div class="mb-6">
+      <h1>mega-cap baseline</h1>
+      <div class="row mt-2 gap-4">
+        <div class="col" style="gap:2px;">
+          <span class="eyebrow">queries</span>
+          <span class="font-mono">10</span>
+        </div>
+        <div class="col" style="gap:2px;">
+          <span class="eyebrow">target skill</span>
+          <span class="font-mono">company_research_pipeline</span>
+        </div>
+        <div class="col" style="gap:2px;">
+          <span class="eyebrow">cron</span>
+          <span class="font-mono">0 6 * * * <span class="text-faint">(daily 06:00 ET)</span></span>
+        </div>
+        <div class="col" style="gap:2px;">
+          <span class="eyebrow">created by</span>
+          <span class="font-mono">demo@local</span>
+        </div>
+        <div class="ml-auto row gap-2">
+          <button class="btn">Run smoke</button>
+          <button class="btn primary">Run quality bench</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Queries editor -->
+    <div class="card mb-6">
+      <div class="card-header">
+        <div class="row">
+          <span class="eyebrow">queries · double-click row to edit</span>
+          <button class="btn ml-auto" style="font-size:11px;">+ Add query</button>
+        </div>
+      </div>
+      <div>
+        <div class="query-row" style="background:var(--canvas-soft); border-bottom:1px solid var(--line);">
+          <span class="eyebrow">ticker</span>
+          <span class="eyebrow">question</span>
+          <span class="eyebrow">peers</span>
+          <span></span>
+        </div>
+        <div class="query-row"><span class="query-ticker">GOOGL</span><input class="query-input" value="分析 GOOGL 的长期投资价值,给出 BUY/WATCH/AVOID 建议"><span class="font-mono text-muted" style="font-size:11px;">MSFT, META</span><button class="btn ghost" style="font-size:10px;">✕</button></div>
+        <div class="query-row"><span class="query-ticker">MSFT</span><input class="query-input" value="分析 MSFT 的长期投资价值,给出 BUY/WATCH/AVOID 建议"><span class="font-mono text-muted" style="font-size:11px;">GOOGL, AMZN</span><button class="btn ghost" style="font-size:10px;">✕</button></div>
+        <div class="query-row"><span class="query-ticker">NVDA</span><input class="query-input" value="分析 NVDA 的长期投资价值,给出 BUY/WATCH/AVOID 建议"><span class="font-mono text-muted" style="font-size:11px;">AMD, AVGO</span><button class="btn ghost" style="font-size:10px;">✕</button></div>
+        <div class="query-row"><span class="query-ticker">AAPL</span><input class="query-input" value="分析 AAPL 的长期投资价值,给出 BUY/WATCH/AVOID 建议"><span class="font-mono text-muted" style="font-size:11px;">MSFT, GOOGL</span><button class="btn ghost" style="font-size:10px;">✕</button></div>
+        <div class="query-row"><span class="query-ticker">META</span><input class="query-input" value="分析 META 的长期投资价值,给出 BUY/WATCH/AVOID 建议"><span class="font-mono text-muted" style="font-size:11px;">GOOGL, NFLX</span><button class="btn ghost" style="font-size:10px;">✕</button></div>
+        <div class="query-row"><span class="query-ticker">AMZN</span><input class="query-input" value="分析 AMZN 的长期投资价值,给出 BUY/WATCH/AVOID 建议"><span class="font-mono text-muted" style="font-size:11px;">MSFT, GOOGL</span><button class="btn ghost" style="font-size:10px;">✕</button></div>
+        <div class="query-row"><span class="query-ticker">TSLA</span><input class="query-input" value="分析 TSLA 的长期投资价值,给出 BUY/WATCH/AVOID 建议"><span class="font-mono text-muted" style="font-size:11px;">GM, FORD</span><button class="btn ghost" style="font-size:10px;">✕</button></div>
+        <div class="query-row"><span class="query-ticker">AMD</span><input class="query-input" value="分析 AMD 的长期投资价值,给出 BUY/WATCH/AVOID 建议"><span class="font-mono text-muted" style="font-size:11px;">NVDA, INTC</span><button class="btn ghost" style="font-size:10px;">✕</button></div>
+        <div class="query-row"><span class="query-ticker">AVGO</span><input class="query-input" value="分析 AVGO 的长期投资价值,给出 BUY/WATCH/AVOID 建议"><span class="font-mono text-muted" style="font-size:11px;">NVDA, AMD</span><button class="btn ghost" style="font-size:10px;">✕</button></div>
+        <div class="query-row"><span class="query-ticker">NFLX</span><input class="query-input" value="分析 NFLX 的长期投资价值,给出 BUY/WATCH/AVOID 建议"><span class="font-mono text-muted" style="font-size:11px;">DIS, AMZN</span><button class="btn ghost" style="font-size:10px;">✕</button></div>
+      </div>
+    </div>
+
+    <!-- Bench run history -->
+    <div class="card">
+      <div class="card-header">
+        <div class="row">
+          <span class="eyebrow">bench run history</span>
+          <span class="ml-auto text-faint" style="font-size:11px;">latest 14 of 47 · <a href="#" class="text-accent">show all</a></span>
+        </div>
+      </div>
+      <div>
+        <div class="history-row" style="background:var(--canvas-soft); border-bottom:1px solid var(--line);">
+          <span class="eyebrow">when</span>
+          <span class="eyebrow">mode</span>
+          <span class="eyebrow">versions</span>
+          <span class="eyebrow">decision</span>
+          <span class="eyebrow">cost / time</span>
+          <span class="eyebrow"></span>
+        </div>
+
+        <div class="history-row">
+          <span class="text-faint font-mono" style="font-size:11px;">6h ago</span>
+          <span class="badge accent">A · quality</span>
+          <span class="font-mono" style="font-size:12px;">v3 → v4</span>
+          <span><span class="badge warn">pending</span></span>
+          <span class="font-mono text-muted" style="font-size:11px;">52min · $14.85</span>
+          <a href="03-compare.html" class="btn ghost" style="font-size:11px;">view →</a>
+        </div>
+        <div class="history-row">
+          <span class="text-faint font-mono" style="font-size:11px;">8h ago</span>
+          <span class="badge">B · smoke</span>
+          <span class="font-mono" style="font-size:12px;">v4 only</span>
+          <span><span class="badge gain">passed</span></span>
+          <span class="font-mono text-muted" style="font-size:11px;">5min · $2.48</span>
+          <a href="#" class="btn ghost" style="font-size:11px;">view →</a>
+        </div>
+        <div class="history-row">
+          <span class="text-faint font-mono" style="font-size:11px;">2d ago</span>
+          <span class="badge accent">A · quality</span>
+          <span class="font-mono" style="font-size:12px;">v2 → v3</span>
+          <span><span class="badge gain">approved</span></span>
+          <span class="font-mono text-muted" style="font-size:11px;">49min · $14.10</span>
+          <a href="#" class="btn ghost" style="font-size:11px;">view →</a>
+        </div>
+        <div class="history-row">
+          <span class="text-faint font-mono" style="font-size:11px;">5d ago</span>
+          <span class="badge">A · quality · cron</span>
+          <span class="font-mono" style="font-size:12px;">v2 only</span>
+          <span><span class="badge">baseline</span></span>
+          <span class="font-mono text-muted" style="font-size:11px;">25min · $7.40</span>
+          <a href="#" class="btn ghost" style="font-size:11px;">view →</a>
+        </div>
+        <div class="history-row">
+          <span class="text-faint font-mono" style="font-size:11px;">6d ago</span>
+          <span class="badge accent">A · quality</span>
+          <span class="font-mono" style="font-size:12px;">v1 → v2</span>
+          <span><span class="badge gain">approved</span></span>
+          <span class="font-mono text-muted" style="font-size:11px;">48min · $13.95</span>
+          <a href="#" class="btn ghost" style="font-size:11px;">view →</a>
+        </div>
+        <div class="history-row">
+          <span class="text-faint font-mono" style="font-size:11px;">11d ago</span>
+          <span class="badge accent">A · quality</span>
+          <span class="font-mono" style="font-size:12px;">v0 → v1</span>
+          <span><span class="badge loss">rejected</span></span>
+          <span class="font-mono text-muted" style="font-size:11px;">50min · $14.50</span>
+          <a href="#" class="btn ghost" style="font-size:11px;">view →</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="row mt-6 gap-2" style="justify-content:flex-end;">
+      <button class="btn danger">Delete suite</button>
+      <button class="btn">Duplicate suite</button>
+      <button class="btn primary">Save changes</button>
+    </div>
+
+  </div>
+</body>
+</html>

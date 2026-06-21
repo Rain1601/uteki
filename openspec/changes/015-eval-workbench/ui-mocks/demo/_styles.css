@@ -1,0 +1,139 @@
+/* Mirrors uteki's actual design system (apps/web/app/globals.css).
+   Self-contained so the demo can open with no build step. */
+
+:root {
+  --canvas: #faf9f7;
+  --canvas-soft: #f3f1ee;
+  --surface-1: #ffffff;
+  --surface-2: #f8f6f3;
+  --ink: #1a1916;
+  --ink-soft: #44423e;
+  --ink-muted: #767468;
+  --ink-faint: #a8a59a;
+  --line: #e6e3dc;
+  --line-soft: #efece6;
+  --line-strong: #c8c4ba;
+  --accent: #6b46c1;
+  --accent-soft: #f3edff;
+  --accent-line: #c4b5fd;
+  --gain: #16a34a;
+  --loss: #dc2626;
+  --warn: #b45309;
+
+  --r: 4px;
+  --r-lg: 8px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.font-display { font-family: "Times New Roman", Georgia, serif; font-style: italic; }
+.font-mono { font-family: "SF Mono", Menlo, monospace; }
+
+.container { max-width: 1200px; margin: 0 auto; padding: 32px; }
+
+.eyebrow {
+  font-family: "SF Mono", Menlo, monospace;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+h1 { font-family: "Times New Roman", Georgia, serif; font-style: italic; font-size: 34px; font-weight: 400; letter-spacing: -0.02em; color: var(--ink); margin-bottom: 4px; }
+h2 { font-family: "Times New Roman", Georgia, serif; font-style: italic; font-size: 22px; font-weight: 400; letter-spacing: -0.01em; color: var(--ink); margin-bottom: 12px; }
+h3 { font-size: 13px; font-weight: 600; color: var(--ink); margin-bottom: 8px; }
+
+.card {
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+.card-header { padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--canvas-soft); }
+.card-body { padding: 16px; }
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  font-family: "SF Mono", Menlo, monospace;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+.badge.gain   { color: var(--gain);   border-color: color-mix(in srgb, var(--gain) 40%, transparent); background: color-mix(in srgb, var(--gain) 10%, transparent); }
+.badge.loss   { color: var(--loss);   border-color: color-mix(in srgb, var(--loss) 40%, transparent); background: color-mix(in srgb, var(--loss) 10%, transparent); }
+.badge.warn   { color: var(--warn);   border-color: color-mix(in srgb, var(--warn) 40%, transparent); background: color-mix(in srgb, var(--warn) 10%, transparent); }
+.badge.accent { color: var(--accent); border-color: var(--accent-line); background: var(--accent-soft); }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: var(--r);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-decoration: none;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-1);
+  color: var(--ink);
+}
+.btn:hover { border-color: var(--ink-muted); }
+.btn.primary { background: var(--accent); color: white; border-color: var(--accent); }
+.btn.primary:hover { background: #5b3bb0; }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--ink-muted); }
+.btn.ghost:hover { color: var(--ink); background: var(--canvas-soft); }
+.btn.danger { color: var(--loss); border-color: color-mix(in srgb, var(--loss) 40%, transparent); }
+.btn.danger:hover { background: color-mix(in srgb, var(--loss) 10%, transparent); }
+
+.numeric { font-family: "SF Mono", Menlo, monospace; font-variant-numeric: tabular-nums; }
+
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; padding: 8px 12px; font-family: "SF Mono", Menlo, monospace; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-faint); border-bottom: 1px solid var(--line); font-weight: 500; }
+td { padding: 8px 12px; border-bottom: 1px solid var(--line-soft); }
+tr:hover td { background: var(--canvas-soft); }
+
+.row { display: flex; align-items: center; gap: 12px; }
+.col { display: flex; flex-direction: column; gap: 8px; }
+.gap-2 { gap: 8px; }
+.gap-4 { gap: 16px; }
+.ml-auto { margin-left: auto; }
+.text-muted { color: var(--ink-muted); }
+.text-soft { color: var(--ink-soft); }
+.text-faint { color: var(--ink-faint); }
+.text-gain { color: var(--gain); }
+.text-loss { color: var(--loss); }
+.text-warn { color: var(--warn); }
+.text-accent { color: var(--accent); }
+.mt-2 { margin-top: 8px; } .mt-4 { margin-top: 16px; } .mt-6 { margin-top: 24px; } .mt-8 { margin-top: 32px; }
+.mb-2 { margin-bottom: 8px; } .mb-4 { margin-bottom: 16px; } .mb-6 { margin-bottom: 24px; }
+
+.nav-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); padding-bottom: 0; }
+.nav-tab {
+  padding: 8px 14px;
+  font-family: "Times New Roman", Georgia, serif;
+  font-style: italic;
+  font-size: 14px;
+  color: var(--ink-muted);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.nav-tab.active { color: var(--ink); border-bottom-color: var(--accent); }
+.nav-tab:hover { color: var(--ink-soft); }

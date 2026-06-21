@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>Overview · Eval Workbench Demo</title>
+  <link rel="stylesheet" href="_styles.css">
+  <style>
+    .pending-card { display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center; padding: 14px 16px; border: 1px solid var(--warn); background: color-mix(in srgb, var(--warn) 6%, transparent); border-radius: var(--r-lg); }
+    .suite-card { padding: 16px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface-1); display: grid; grid-template-columns: 1fr auto; gap: 16px; }
+    .suite-card.scheduled { border-color: var(--accent-line); }
+    .mini-stat { display: inline-flex; flex-direction: column; gap: 2px; }
+    .mini-stat-label { font-size: 9px; font-family: "SF Mono", monospace; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-faint); }
+    .mini-stat-value { font-family: "SF Mono", monospace; font-variant-numeric: tabular-nums; font-size: 14px; color: var(--ink); }
+    .delta-up::after { content: " ⬆"; color: var(--gain); }
+    .delta-down::after { content: " ⬇"; color: var(--loss); }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <div class="row mb-4" style="justify-content:space-between;">
+      <a href="index.html" class="btn ghost">← back to index</a>
+      <div class="eyebrow">eval-bench · screen 1 · landing</div>
+    </div>
+
+    <div class="mb-6">
+      <h1>Eval Workbench</h1>
+      <p class="text-soft">prompt 改动 → 量化 / 回测 / 决策 / 漂移监控。整个工作台的入口屏。</p>
+    </div>
+
+    <!-- Top: Recent prompt changes queue (highest priority — 这是工作流驱动力) -->
+    <div class="mb-6">
+      <div class="row mb-2">
+        <span class="eyebrow">⚠ unverified prompt changes</span>
+        <span class="ml-auto text-faint" style="font-size:11px;">EvolutionStore 检测到 hash 变化 → 提示但不强跑</span>
+      </div>
+
+      <div class="col gap-2">
+        <div class="pending-card">
+          <div class="col" style="gap:4px;">
+            <div class="row gap-2">
+              <span style="font-weight:600;">company_research_pipeline</span>
+              <span class="badge warn">v3 → v4 unverified</span>
+              <span class="text-faint" style="font-size:11px;">hash a3c7… · 6h ago</span>
+            </div>
+            <div class="text-muted" style="font-size:12px;">
+              修改文件: <code style="background:var(--canvas-soft); padding:1px 4px;">skills/company/__init__.py</code> ·
+              gate-02 fisher_qa prompt 字数下限 + 必引来源策略
+            </div>
+          </div>
+          <div class="row gap-2">
+            <button class="btn">Run smoke <span class="text-faint" style="margin-left:4px; font-size:10px;">~5min · $2.5</span></button>
+            <button class="btn primary">Run quality bench <span style="margin-left:4px; opacity:0.8; font-size:10px;">~50min · $15</span></button>
+          </div>
+        </div>
+
+        <div class="pending-card" style="opacity:0.5; background:transparent; border-style:dashed;">
+          <div class="col" style="gap:4px;">
+            <div class="row gap-2">
+              <span style="font-weight:600;">research</span>
+              <span class="badge">v2 → v3 already verified</span>
+              <span class="text-faint" style="font-size:11px;">approved 2 days ago</span>
+            </div>
+            <div class="text-muted" style="font-size:12px;">
+              已经过 quality bench · all 13 metrics 改善 · approved by you
+            </div>
+          </div>
+          <button class="btn ghost" style="font-size:11px;">View bench result →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick stats -->
+    <div class="card mb-6">
+      <div class="card-body">
+        <div class="row gap-4" style="justify-content:space-around;">
+          <div class="mini-stat">
+            <span class="mini-stat-label">total bench runs (30d)</span>
+            <span class="mini-stat-value">14</span>
+          </div>
+          <div class="mini-stat">
+            <span class="mini-stat-label">prod runs scored (30d)</span>
+            <span class="mini-stat-value">347</span>
+          </div>
+          <div class="mini-stat">
+            <span class="mini-stat-label">active predictions</span>
+            <span class="mini-stat-value">82</span>
+          </div>
+          <div class="mini-stat">
+            <span class="mini-stat-label">hit rate (v3, 90d horizon)</span>
+            <span class="mini-stat-value delta-up">61%</span>
+          </div>
+          <div class="mini-stat">
+            <span class="mini-stat-label">hedge phrases / run (latest)</span>
+            <span class="mini-stat-value delta-up">0.3</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Saved suites -->
+    <div class="mb-6">
+      <div class="row mb-2">
+        <span class="eyebrow">saved suites</span>
+        <button class="btn ml-auto" style="font-size:11px;">+ New suite</button>
+      </div>
+
+      <div class="col gap-2">
+        <div class="suite-card scheduled">
+          <div class="col" style="gap:6px;">
+            <div class="row gap-2">
+              <span style="font-weight:600; font-size:14px;">mega-cap baseline</span>
+              <span class="badge accent">★ default</span>
+              <span class="text-muted font-mono" style="font-size:11px;">10 queries</span>
+            </div>
+            <div class="text-muted" style="font-size:12px;">
+              GOOGL · MSFT · NVDA · AAPL · META · AMZN · TSLA · AMD · AVGO · NFLX
+            </div>
+            <div class="row gap-4 mt-2" style="font-size:11px;">
+              <span class="text-faint">last run: 6h ago · v3 vs v4 · 13/13 ⬆</span>
+              <span class="text-faint">next cron: today 06:00 ET</span>
+            </div>
+          </div>
+          <div class="row gap-2">
+            <a href="02-suite-detail.html" class="btn ghost">Edit</a>
+            <button class="btn">Run smoke</button>
+            <button class="btn primary">Run bench</button>
+          </div>
+        </div>
+
+        <div class="suite-card">
+          <div class="col" style="gap:6px;">
+            <div class="row gap-2">
+              <span style="font-weight:600; font-size:14px;">fisher Q4/7/14 stress</span>
+              <span class="badge">soft-data probe</span>
+              <span class="text-muted font-mono" style="font-size:11px;">6 queries</span>
+            </div>
+            <div class="text-muted" style="font-size:12px;">
+              针对 fisher_qa 软题(销售/劳资/沟通)的小型 probe — 在 web_search 接入前后对比变化
+            </div>
+            <div class="row gap-4 mt-2" style="font-size:11px;">
+              <span class="text-faint">last run: 2d ago · v3 · structural pass 4/6</span>
+              <span class="text-faint">no cron</span>
+            </div>
+          </div>
+          <div class="row gap-2">
+            <button class="btn ghost">Edit</button>
+            <button class="btn">Run smoke</button>
+            <button class="btn primary">Run bench</button>
+          </div>
+        </div>
+
+        <div class="suite-card">
+          <div class="col" style="gap:6px;">
+            <div class="row gap-2">
+              <span style="font-weight:600; font-size:14px;">A-share negative control</span>
+              <span class="badge warn">flagged</span>
+              <span class="text-muted font-mono" style="font-size:11px;">3 queries</span>
+            </div>
+            <div class="text-muted" style="font-size:12px;">
+              用户标记:跑 A-shares 是探活套件,不进 mega-cap 主线 — 保留作回归测试用
+            </div>
+            <div class="row gap-4 mt-2" style="font-size:11px;">
+              <span class="text-faint">last run: 16d ago · v3</span>
+              <span class="text-faint">no cron</span>
+            </div>
+          </div>
+          <div class="row gap-2">
+            <button class="btn ghost">Edit</button>
+            <button class="btn">Run smoke</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick navigation -->
+    <div class="card">
+      <div class="card-body">
+        <div class="row mb-2"><span class="eyebrow">jump to</span></div>
+        <div class="row gap-2">
+          <a href="03-compare.html" class="btn">→ A/B Compare</a>
+          <a href="05-trends.html" class="btn">→ Trends</a>
+          <a href="06-backtest.html" class="btn">→ Backtest aggregate</a>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

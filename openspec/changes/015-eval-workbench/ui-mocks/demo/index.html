@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>Eval Workbench · Demo</title>
+  <link rel="stylesheet" href="_styles.css">
+</head>
+<body>
+  <div class="container">
+    <div class="mb-6">
+      <div class="eyebrow">015 · DESIGN PREVIEW · INTERACTIVE MOCK</div>
+      <h1>Eval Workbench</h1>
+      <p class="text-soft mt-2">
+        prompt 改动 → 自动量化"v4 真比 v3 好吗" + 回测层接 ground truth。
+        所有页面都是 mock data,点击 button 不真触发后端。打开 .html 浏览器看完整交互。
+      </p>
+    </div>
+
+    <div class="card mb-6">
+      <div class="card-body">
+        <div class="row mb-4">
+          <span class="eyebrow">screens · 6 + 1 widget</span>
+        </div>
+
+        <div class="col gap-2">
+
+          <a href="03-compare.html" class="row" style="text-decoration:none; padding:14px 16px; border:1px solid var(--accent-line); background:var(--accent-soft); border-radius:var(--r-lg);">
+            <div class="col" style="gap:2px;">
+              <div style="font-weight:600; color:var(--ink);">★ Screen 3 · A/B Compare</div>
+              <div class="text-muted" style="font-size:12px;">v3 vs v4 矩阵 + per-query 钻取 + Approve/Reject 决策。整个 workbench 的核心屏。</div>
+            </div>
+            <span class="badge accent ml-auto">core</span>
+          </a>
+
+          <a href="05-trends.html" class="row" style="text-decoration:none; padding:14px 16px; border:1px solid var(--line); background:var(--surface-1); border-radius:var(--r-lg);">
+            <div class="col" style="gap:2px;">
+              <div style="font-weight:600; color:var(--ink);">Screen 5 · Trends</div>
+              <div class="text-muted" style="font-size:12px;">日历轴 + 版本颜色分段 + 竖虚线标注转换。漂移监控 + 事后归因。</div>
+            </div>
+            <span class="badge ml-auto">R3 decision</span>
+          </a>
+
+          <a href="01-overview.html" class="row" style="text-decoration:none; padding:14px 16px; border:1px solid var(--line); background:var(--surface-1); border-radius:var(--r-lg);">
+            <div class="col" style="gap:2px;">
+              <div style="font-weight:600; color:var(--ink);">Screen 1 · Overview</div>
+              <div class="text-muted" style="font-size:12px;">入口屏 — 套件 list + 最近 prompt 改动队列(workflow 起点)+ 快速统计。</div>
+            </div>
+            <span class="badge accent ml-auto">demo ready</span>
+          </a>
+
+          <a href="02-suite-detail.html" class="row" style="text-decoration:none; padding:14px 16px; border:1px solid var(--line); background:var(--surface-1); border-radius:var(--r-lg);">
+            <div class="col" style="gap:2px;">
+              <div style="font-weight:600; color:var(--ink);">Screen 2 · Suite detail</div>
+              <div class="text-muted" style="font-size:12px;">套件 query 编辑(inline edit)+ 历史 bench run 列表 + decision 标记。</div>
+            </div>
+            <span class="badge accent ml-auto">demo ready</span>
+          </a>
+
+          <a href="04-run-with-backtest.html" class="row" style="text-decoration:none; padding:14px 16px; border:1px solid var(--line); background:var(--surface-1); border-radius:var(--r-lg);">
+            <div class="col" style="gap:2px;">
+              <div style="font-weight:600; color:var(--ink);">Screen 4 · Run detail · with backtest widget</div>
+              <div class="text-muted" style="font-size:12px;">/runs/[id] 右栏加 backtest widget — entry → now 实时 + 30/90/180d horizon。回答"自预测以来标的走了多少"。</div>
+            </div>
+            <span class="badge accent ml-auto">just added</span>
+          </a>
+
+          <a href="06-backtest.html" class="row" style="text-decoration:none; padding:14px 16px; border:1px solid var(--line); background:var(--surface-1); border-radius:var(--r-lg);">
+            <div class="col" style="gap:2px;">
+              <div style="font-weight:600; color:var(--ink);">Screen 6 · Backtest aggregate</div>
+              <div class="text-muted" style="font-size:12px;">hit rate by version × by action + per-prediction 表 + failure pattern auto-detect(只提醒不改 prompt)。</div>
+            </div>
+            <span class="badge accent ml-auto">demo ready</span>
+          </a>
+
+          <a href="07-skill-widget.html" class="row" style="text-decoration:none; padding:14px 16px; border:1px solid var(--line); background:var(--surface-1); border-radius:var(--r-lg);">
+            <div class="col" style="gap:2px;">
+              <div style="font-weight:600; color:var(--ink);">Widget · /skills/[name] 顶部状态条</div>
+              <div class="text-muted" style="font-size:12px;">3 个状态(unverified · verified · running)的视觉契约。</div>
+            </div>
+            <span class="badge accent ml-auto">demo ready</span>
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-body">
+        <h3>背景</h3>
+        <div class="col gap-2 text-soft">
+          <div>· proposal · <a href="../proposal.md" class="text-accent">../proposal.md</a></div>
+          <div>· design   · <a href="../design.md" class="text-accent">../design.md</a></div>
+          <div>· tasks    · <a href="../tasks.md" class="text-accent">../tasks.md</a> (7 PR · 8.5 工作日)</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
