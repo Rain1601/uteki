@@ -223,7 +223,10 @@ class ResearchPipeline(BaseAgent):
         )
 
         try:
-            sub = default_skills.get(skill_name)
+            # create() not get() — concurrent pipeline runs share the same
+            # singleton planner/research/evaluator otherwise. Writing
+            # sub.artifacts = self.artifacts mid-run would race.
+            sub = default_skills.create(skill_name)
         except KeyError:
             yield AgentEvent(
                 type="error",

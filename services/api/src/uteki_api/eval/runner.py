@@ -108,7 +108,7 @@ class EvalRunner:
             try:
                 from uteki_api.skills import default_skills
 
-                skill = default_skills.get(case.agent)
+                skill = default_skills.create(case.agent)
                 harness = AgentHarness(skill=skill, user_id=self.user_id)
             except KeyError:
                 pass  # fall back to default harness silently

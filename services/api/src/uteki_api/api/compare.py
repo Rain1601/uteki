@@ -49,7 +49,9 @@ async def compare_run(
             raise HTTPException(status_code=404, detail=str(e)) from e
 
     async def _worker(agent_name: str) -> str:
-        skill = default_skills.get(agent_name)
+        # create() not get() — A/B compare fans out N concurrent harness runs;
+        # sharing the singleton would clobber per-run artifacts/sources.
+        skill = default_skills.create(agent_name)
         latest = await default_evolution_store.latest(agent_name)
         skill_version = latest.version if latest else None
         harness = AgentHarness(

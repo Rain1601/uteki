@@ -64,9 +64,36 @@ class SkillRegistry:
         )
 
     def get(self, name: str) -> BaseAgent:
+        """Return the shared singleton instance — for inspection only.
+
+        Do NOT pass this to AgentHarness or write per-run state to it
+        (``skill.artifacts = X``). Two concurrent harness runs would clobber
+        each other's facades. Use ``create()`` for that.
+        """
         if name not in self._entries:
             raise KeyError(f"Unknown skill: {name}")
         return self._entries[name].skill
+
+    def create(self, name: str) -> BaseAgent:
+        """Return a fresh instance suitable for one harness run.
+
+        Concurrency-safety: harness writes per-run state onto the skill
+        instance (``self.artifacts`` / ``self.sources`` / ``self._tool_executor``
+        / ``self.as_of`` / ``self.model``). With the registry holding a
+        singleton, two concurrent runs would race those writes — observed
+        in production as TSLA + NVDA parallel runs producing TSLA gates but
+        NVDA-themed synthesis (the later harness rebound ``self.artifacts``
+        mid-execution of the earlier one).
+
+        Implementation: re-instantiate via the singleton's class with no
+        args. All current skills accept ``__init__(self, model=None)`` and
+        the heavy load (``load_skill_prompt`` is lru-cached) so the per-run
+        cost is microseconds.
+        """
+        if name not in self._entries:
+            raise KeyError(f"Unknown skill: {name}")
+        cls = type(self._entries[name].skill)
+        return cls()
 
     def entry(self, name: str) -> SkillEntry:
         if name not in self._entries:

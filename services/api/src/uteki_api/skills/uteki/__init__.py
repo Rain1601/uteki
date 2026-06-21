@@ -405,7 +405,10 @@ class UtekiRouter(BaseAgent):
         )
 
         try:
-            sub = default_skills.get(skill_name)
+            # create() not get() — see SkillRegistry.create docstring; the
+            # singleton would race per-run artifacts under concurrent uteki
+            # router invocations.
+            sub = default_skills.create(skill_name)
         except KeyError:
             yield AgentEvent(
                 type="error",

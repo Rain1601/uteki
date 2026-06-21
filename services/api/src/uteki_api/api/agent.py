@@ -49,10 +49,12 @@ async def _build_harness(
     as_of: date | None = None,
     origin: str | None = None,
 ) -> AgentHarness:
+    # create() not get() — concurrent runs must not share skill instances
+    # (the harness writes self.artifacts / self.sources etc on the skill).
     try:
-        skill = default_skills.get(agent_name)
+        skill = default_skills.create(agent_name)
     except KeyError:
-        skill = default_skills.get("research")
+        skill = default_skills.create("research")
 
     # Inject the caller's model override if the skill accepts it.
     if model is not None and hasattr(skill, "model"):
