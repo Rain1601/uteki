@@ -95,6 +95,72 @@ async def _seed_evolution_versions() -> None:
         await default_evolution_store.record(version)
 
 
+async def _seed_default_bench_suite() -> None:
+    """015 PR α — idempotently materialize the ``mega-cap baseline`` suite.
+
+    10 US mega-cap tickers (R1 decision in design.md), one canonical
+    long-term-value question each. Skipped silently if any suite with the
+    same name already exists. Re-runs are no-ops.
+
+    Each query has the same ``peers`` mapping the eval-bench will hand
+    to ``company_research_pipeline`` so the peer-comparison gate has
+    something to compare against.
+    """
+    from sqlmodel import Session
+
+    from uteki_api.core.db import engine
+    from uteki_api.eval.bench_store import default_suite_store
+    from uteki_api.users import ensure_demo_user
+
+    SEED_NAME = "mega-cap baseline"
+    # Question template — DRY'd: 10 rows used to repeat the same shape.
+    # Change wording in one place; add/remove tickers without touching question text.
+    SEED_QUESTION_TEMPLATE = (
+        "分析 {ticker} 的长期投资价值,对比 {peers_csv},给出 BUY/WATCH/AVOID 建议"
+    )
+    SEED_TICKERS_AND_PEERS: list[tuple[str, list[str]]] = [
+        ("GOOGL", ["MSFT", "META"]),
+        ("MSFT",  ["GOOGL", "AMZN"]),
+        ("NVDA",  ["AMD", "AVGO"]),
+        ("AAPL",  ["MSFT", "GOOGL"]),
+        ("META",  ["GOOGL", "NFLX"]),
+        ("AMZN",  ["MSFT", "GOOGL"]),
+        ("TSLA",  ["GM", "FORD"]),
+        ("AMD",   ["NVDA", "INTC"]),
+        ("AVGO",  ["NVDA", "AMD"]),
+        ("NFLX",  ["DIS", "AMZN"]),
+    ]
+    SEED_QUERIES = [
+        {
+            "ticker": ticker,
+            "peers": peers,
+            "question": SEED_QUESTION_TEMPLATE.format(
+                ticker=ticker, peers_csv=", ".join(peers)
+            ),
+        }
+        for ticker, peers in SEED_TICKERS_AND_PEERS
+    ]
+    with Session(engine) as db:
+        existing = default_suite_store.get_by_name(db, SEED_NAME, include_archived=True)
+        if existing is not None:
+            return
+        # ``created_by`` is informational; use the demo user so prod and
+        # dev share the same provenance shape. In prod the admin will see
+        # "created_by=<demo-uid>" + can rename / take ownership via PATCH.
+        demo = ensure_demo_user(db)
+        default_suite_store.create(
+            db,
+            name=SEED_NAME,
+            skill_name="company_research_pipeline",
+            queries=SEED_QUERIES,
+            description=(
+                "US mega-cap tickers · seed suite for prompt-tuning A/B compare. "
+                "10 queries · GOOGL/MSFT/NVDA/AAPL/META/AMZN/TSLA/AMD/AVGO/NFLX."
+            ),
+            created_by=demo.id,
+        )
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     # M4: build/migrate schema + materialize the demo fallback user.
@@ -114,6 +180,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         ensure_owner_user(db)
 
     await _seed_evolution_versions()
+    await _seed_default_bench_suite()
     yield
 
 

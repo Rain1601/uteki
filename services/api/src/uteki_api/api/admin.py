@@ -504,6 +504,261 @@ async def compare_search(
     return SearchCompareResponse(query=body.query, results=list(results))
 
 
+# ── 015 PR α · Eval workbench · Suite + BenchmarkRun CRUD ───────────
+#
+# Admin /eval-bench surfaces these. Suites are the "yardstick" — a
+# named set of (ticker, peers, question) queries we replay across
+# prompt versions. BenchmarkRun is the per-execution journal.
+#
+# Lifecycle (this PR only registers the API surface; PR γ wires the
+# actual fan-out runner):
+#   POST /api/admin/eval/suites           create
+#   GET  /api/admin/eval/suites           list
+#   GET  /api/admin/eval/suites/{id}      get
+#   PATCH /api/admin/eval/suites/{id}     update
+#   DELETE /api/admin/eval/suites/{id}    archive (soft)
+#
+#   GET  /api/admin/eval/runs             list recent bench runs
+#   GET  /api/admin/eval/runs/{id}        get one
+#   PATCH /api/admin/eval/runs/{id}/decision  approve|reject (anti-pattern guard)
+
+from uteki_api.eval.bench_store import (  # noqa: E402
+    default_bench_run_store,
+    default_suite_store,
+)
+
+
+class SuiteQuery(BaseModel):
+    ticker: str = Field(min_length=1, max_length=16)
+    peers: list[str] = Field(default_factory=list)
+    question: str = Field(min_length=1, max_length=512)
+
+
+class SuiteCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    skill_name: str = Field(min_length=1, max_length=64)
+    queries: list[SuiteQuery] = Field(min_length=1)
+    description: str = Field(default="", max_length=2048)
+    cron_schedule: str | None = Field(default=None, max_length=64)
+
+
+class SuiteUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=128)
+    description: str | None = Field(default=None, max_length=2048)
+    queries: list[SuiteQuery] | None = None
+    cron_schedule: str | None = None
+
+
+class SuiteOut(BaseModel):
+    id: str
+    name: str
+    description: str
+    skill_name: str
+    queries: list[dict[str, Any]]
+    cron_schedule: str | None
+    archived: bool
+    created_by: str
+    created_at: float
+    updated_at: float
+
+
+class BenchRunOut(BaseModel):
+    id: str
+    suite_id: str
+    mode: str
+    skill_name: str
+    skill_version_a: str
+    skill_version_b: str | None
+    n_per_query: int
+    temperature: float
+    triggered_by: str
+    triggered_by_user_id: str
+    triggered_at: float
+    finished_at: float | None
+    status: str
+    run_ids: list[str]
+    metrics_summary: dict[str, Any]
+    approved_by: str | None
+    approved_at: float | None
+    rejected_by: str | None
+    rejected_at: float | None
+    rejected_reason: str
+    error_message: str
+
+
+class BenchRunDecision(BaseModel):
+    decision: str = Field(pattern="^(approve|reject)$")
+    reason: str = Field(default="", max_length=2048)
+
+
+def _suite_to_out(suite: Any) -> SuiteOut:
+    return SuiteOut(
+        id=suite.id,
+        name=suite.name,
+        description=suite.description,
+        skill_name=suite.skill_name,
+        queries=suite.queries,
+        cron_schedule=suite.cron_schedule,
+        archived=suite.archived,
+        created_by=suite.created_by,
+        created_at=suite.created_at,
+        updated_at=suite.updated_at,
+    )
+
+
+def _bench_run_to_out(run: Any) -> BenchRunOut:
+    return BenchRunOut(
+        id=run.id,
+        suite_id=run.suite_id,
+        mode=run.mode,
+        skill_name=run.skill_name,
+        skill_version_a=run.skill_version_a,
+        skill_version_b=run.skill_version_b,
+        n_per_query=run.n_per_query,
+        temperature=run.temperature,
+        triggered_by=run.triggered_by,
+        triggered_by_user_id=run.triggered_by_user_id,
+        triggered_at=run.triggered_at,
+        finished_at=run.finished_at,
+        status=run.status,
+        run_ids=run.run_ids,
+        metrics_summary=run.metrics_summary,
+        approved_by=run.approved_by,
+        approved_at=run.approved_at,
+        rejected_by=run.rejected_by,
+        rejected_at=run.rejected_at,
+        rejected_reason=run.rejected_reason,
+        error_message=run.error_message,
+    )
+
+
+@router.post("/eval/suites", response_model=SuiteOut)
+async def create_suite(
+    body: SuiteCreate,
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> SuiteOut:
+    """Create a new benchmark suite. Name is informally unique but not
+    enforced — duplicate names are allowed (use ``id`` for routing)."""
+    suite = default_suite_store.create(
+        db,
+        name=body.name,
+        skill_name=body.skill_name,
+        queries=[q.model_dump() for q in body.queries],
+        description=body.description,
+        cron_schedule=body.cron_schedule,
+        created_by=user.id,
+    )
+    return _suite_to_out(suite)
+
+
+@router.get("/eval/suites", response_model=list[SuiteOut])
+async def list_suites(
+    skill_name: str | None = None,
+    include_archived: bool = False,
+    _user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> list[SuiteOut]:
+    suites = default_suite_store.list(
+        db, skill_name=skill_name, include_archived=include_archived
+    )
+    return [_suite_to_out(s) for s in suites]
+
+
+@router.get("/eval/suites/{suite_id}", response_model=SuiteOut)
+async def get_suite(
+    suite_id: str,
+    _user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> SuiteOut:
+    suite = default_suite_store.get(db, suite_id)
+    if suite is None:
+        raise HTTPException(404, detail=f"suite {suite_id!r} not found")
+    return _suite_to_out(suite)
+
+
+@router.patch("/eval/suites/{suite_id}", response_model=SuiteOut)
+async def update_suite(
+    suite_id: str,
+    body: SuiteUpdate,
+    _user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> SuiteOut:
+    updated = default_suite_store.update(
+        db,
+        suite_id,
+        name=body.name,
+        description=body.description,
+        queries=[q.model_dump() for q in body.queries] if body.queries is not None else None,
+        cron_schedule=(body.cron_schedule if "cron_schedule" in body.model_fields_set else ...),
+    )
+    if updated is None:
+        raise HTTPException(404, detail=f"suite {suite_id!r} not found")
+    return _suite_to_out(updated)
+
+
+@router.delete("/eval/suites/{suite_id}")
+async def archive_suite(
+    suite_id: str,
+    _user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Soft delete (archived=True). History stays for audit / drill-down."""
+    ok = default_suite_store.archive(db, suite_id)
+    if not ok:
+        raise HTTPException(404, detail=f"suite {suite_id!r} not found or already archived")
+    return {"archived": True, "id": suite_id}
+
+
+@router.get("/eval/runs", response_model=list[BenchRunOut])
+async def list_bench_runs(
+    suite_id: str | None = None,
+    skill_name: str | None = None,
+    limit: int = 50,
+    _user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> list[BenchRunOut]:
+    if suite_id is not None:
+        runs = default_bench_run_store.list_by_suite(db, suite_id, limit=limit)
+    else:
+        runs = default_bench_run_store.list_recent(db, skill_name=skill_name, limit=limit)
+    return [_bench_run_to_out(r) for r in runs]
+
+
+@router.get("/eval/runs/{bench_run_id}", response_model=BenchRunOut)
+async def get_bench_run(
+    bench_run_id: str,
+    _user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> BenchRunOut:
+    run = default_bench_run_store.get(db, bench_run_id)
+    if run is None:
+        raise HTTPException(404, detail=f"bench run {bench_run_id!r} not found")
+    return _bench_run_to_out(run)
+
+
+@router.patch("/eval/runs/{bench_run_id}/decision", response_model=BenchRunOut)
+async def decide_bench_run(
+    bench_run_id: str,
+    body: BenchRunDecision,
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> BenchRunOut:
+    """Anti-pattern guard: this endpoint *records* the human decision but
+    does NOT auto-deploy or change any prompt file. The eval workbench
+    surfaces signal; the human + git is the deployer."""
+    if body.decision == "reject" and not body.reason.strip():
+        raise HTTPException(
+            400, detail="rejection requires a non-empty reason field"
+        )
+    updated = default_bench_run_store.record_decision(
+        db, bench_run_id, decision=body.decision, user_id=user.id, reason=body.reason
+    )
+    if updated is None:
+        raise HTTPException(404, detail=f"bench run {bench_run_id!r} not found")
+    return _bench_run_to_out(updated)
+
+
 # Re-export so test conftest can rebind it alongside default_proposal_store.
 # (cc_runner reaches into module-level singletons; tests that swap the
 # proposal store in must also swap this module's reference so the API

@@ -91,6 +91,8 @@ def init_db() -> None:
     )
     from uteki_api.runs.sql_models import RunRow  # noqa: F401
     from uteki_api.users.models import AuthIdentity, RefreshToken, User  # noqa: F401
+    # 015 PR α — eval workbench schema
+    from uteki_api.eval.bench_models import BenchmarkRun, BenchmarkSuite  # noqa: F401
 
     SQLModel.metadata.create_all(engine)
     _ensure_user_role_column(engine)
