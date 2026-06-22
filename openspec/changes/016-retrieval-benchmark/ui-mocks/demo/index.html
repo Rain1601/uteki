@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>016 Retrieval Benchmark · Demo</title>
+  <link rel="stylesheet" href="_styles.css">
+  <style>
+    .scope-bar {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+      padding: 14px 16px; border-radius: var(--r-lg);
+      background: color-mix(in srgb, var(--warn) 8%, transparent);
+      border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+      margin-bottom: 24px;
+    }
+    .scope-bar .item { display: flex; flex-direction: column; gap: 4px; }
+    .scope-bar .label { font-size: 9px; font-family: "SF Mono", monospace; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-faint); }
+    .scope-bar .bullets { font-size: 12px; color: var(--ink-soft); }
+    .scope-bar .bullets b { color: var(--ink); }
+    .step { display: grid; grid-template-columns: 36px 1fr auto; gap: 16px; align-items: center; padding: 16px; border: 1px solid var(--line); background: var(--surface-1); border-radius: var(--r-lg); margin-bottom: 8px; }
+    .step.alarm { border-color: var(--loss); background: color-mix(in srgb, var(--loss) 4%, transparent); }
+    .step.ok { border-color: var(--gain); background: color-mix(in srgb, var(--gain) 4%, transparent); }
+    .step-num { width: 36px; height: 36px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: inline-flex; align-items: center; justify-content: center; font-weight: 600; font-family: "SF Mono", monospace; }
+    .step-num.alarm { background: color-mix(in srgb, var(--loss) 12%, transparent); color: var(--loss); }
+    .step-num.ok { background: color-mix(in srgb, var(--gain) 12%, transparent); color: var(--gain); }
+    .step .title { font-weight: 600; font-size: 14px; color: var(--ink); }
+    .step .sub { font-size: 12px; color: var(--ink-muted); margin-top: 2px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <div class="mb-6">
+      <div class="eyebrow">016 · retrieval benchmark · interactive mock</div>
+      <h1 style="margin-bottom: 6px;">Retrieval Benchmark</h1>
+      <p class="text-soft" style="font-size: 14px;">
+        管道保真度回归测试。 用法、不用法、CI 门禁、报告页 — 全部走一遍。
+      </p>
+    </div>
+
+    <!-- ★ Scope reminder bar — appears on every page -->
+    <div class="scope-bar">
+      <div class="item">
+        <span class="label">✓ in scope · measured here</span>
+        <span class="bullets">
+          <b>retrieval</b> 准不准 ·
+          <b>citation</b> 数字对不对 ·
+          <b>future leakage</b> 有没有 ·
+          <b>abstention</b> 答不出时承认了吗 ·
+          <b>contradiction</b> 浮现了对方观点吗
+        </span>
+      </div>
+      <div class="item">
+        <span class="label">✗ out of scope · do NOT measure here</span>
+        <span class="bullets">
+          <b>PnL</b> · <b>hit rate</b> · agent 的 BUY 跑赢 SPY 了吗 ·
+          conviction calibration · 文风好不好。 这些一律不进 CI 门禁。
+        </span>
+      </div>
+    </div>
+
+    <h2 style="margin-bottom: 4px;">最终目标 · 一个开发者的视角</h2>
+    <p class="text-muted mb-4" style="font-size: 13px;">
+      想象 016 完工以后,你刚改了 <code style="background:var(--canvas-soft); padding:1px 5px; border-radius:2px;">services/api/src/uteki_api/tools/web_search.py</code>(加了某条新 fallback 路径),
+      正准备 push。 接下来你会做的事 — 每一步对应一个 demo 页:
+    </p>
+
+    <a href="04-cli-output.html" class="step ok" style="text-decoration: none;">
+      <span class="step-num ok">1</span>
+      <div>
+        <div class="title">本地跑 benchmark</div>
+        <div class="sub">
+          <code style="font-size: 11px;">$ ./scripts/benchmark-run.sh --case-set approved --agent company_research_pipeline</code>
+          · 5-15 分钟 · 看终端输出
+        </div>
+      </div>
+      <span class="badge accent">CLI</span>
+    </a>
+
+    <a href="01-run-report.html" class="step alarm" style="text-decoration: none;">
+      <span class="step-num alarm">2</span>
+      <div>
+        <div class="title">报告页 — 看到红</div>
+        <div class="sub">
+          <strong>5 cases × 5 scorers 矩阵</strong> · CI 门禁:
+          <span class="text-loss font-mono" style="font-size: 11px;">FAIL</span> ·
+          lookahead_leakage = 1 (一条 future_trap 被引用了)
+        </div>
+      </div>
+      <span class="badge loss">FAIL</span>
+    </a>
+
+    <a href="02-case-detail.html" class="step" style="text-decoration: none;">
+      <span class="step-num">3</span>
+      <div>
+        <div class="title">钻进失败的那条 case</div>
+        <div class="sub">
+          看 case YAML · 对照 corpus 文档 · 看 agent 实际答案 · 看每个 scorer 怎么打的分
+        </div>
+      </div>
+      <span class="badge">drill-down</span>
+    </a>
+
+    <a href="03-regression-diff.html" class="step" style="text-decoration: none;">
+      <span class="step-num">4</span>
+      <div>
+        <div class="title">对照 main · 看是什么变了</div>
+        <div class="sub">
+          main 的 baseline report vs 你这条 branch 的 report · 5 个 scorer 哪个动了 · 哪条 case 动了
+        </div>
+      </div>
+      <span class="badge">diff</span>
+    </a>
+
+    <div style="padding: 14px 16px; background: var(--canvas-soft); border-radius: var(--r-lg); margin-top: 16px; font-size: 12px; color: var(--ink-muted);">
+      <strong style="color: var(--ink);">没有第 5 步。</strong>
+      你不需要打开浏览器看 dashboard,也没有"15 分钟内 agent 又跑了一遍"的等待。 整个 loop 在你 push 之前完成。
+      这是跟 015 eval-workbench 最大的不同 — 015 是<strong>主观打分(更慢、更贵、不进 CI)</strong>,016 是<strong>客观检查(快、零成本、进 CI)</strong>。
+    </div>
+
+    <h2 class="mt-8" style="margin-bottom: 4px;">背景</h2>
+    <div class="card">
+      <div class="card-body" style="font-size: 12px;">
+        <div class="row gap-2 mb-2">
+          <span class="badge">design</span>
+          <a href="../design.md" class="text-accent">design.md</a>
+          <span class="text-faint">— 数据模型 · 5 类 case · 5 评分器 · CI 门禁逻辑</span>
+        </div>
+        <div class="row gap-2 mb-2">
+          <span class="badge">scope</span>
+          <a href="../README-scope.md" class="text-accent">README-scope.md</a>
+          <span class="text-faint">— 在范围 vs 不在范围 · 红线</span>
+        </div>
+        <div class="row gap-2 mb-2">
+          <span class="badge">proposal</span>
+          <a href="../proposal.md" class="text-accent">proposal.md</a>
+          <span class="text-faint">— 跟 015 eval-workbench 边界 · 为什么现在做</span>
+        </div>
+        <div class="row gap-2">
+          <span class="badge">tasks</span>
+          <a href="../tasks.md" class="text-accent">tasks.md</a>
+          <span class="text-faint">— PR α/β/γ · 3.5 工作日</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

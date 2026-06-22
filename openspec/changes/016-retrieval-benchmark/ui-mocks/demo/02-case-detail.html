@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>Case Detail · 016 Retrieval Benchmark</title>
+  <link rel="stylesheet" href="_styles.css">
+  <style>
+    .case-header { padding: 16px; border-left: 4px solid var(--loss); background: color-mix(in srgb, var(--loss) 4%, transparent); border-radius: var(--r-lg); margin-bottom: 20px; }
+    .yaml-block { background: var(--canvas-soft); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px; font-family: "SF Mono", Menlo, monospace; font-size: 11px; line-height: 1.6; overflow-x: auto; white-space: pre; color: var(--ink-soft); }
+    .yaml-block .k { color: #6b46c1; }
+    .yaml-block .v { color: var(--ink); }
+    .yaml-block .c { color: var(--ink-faint); }
+
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+    .doc-card { padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface-1); }
+    .doc-card.cited { border-color: var(--accent-line); background: var(--accent-soft); }
+    .doc-card.future-trap { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 8%, transparent); position: relative; }
+    .doc-card.future-trap::after { content: "⛔ filtered (observed_at > as_of)"; position: absolute; right: 10px; top: 10px; font-size: 9px; color: var(--warn); font-family: "SF Mono", monospace; }
+    .doc-card .doc-id { font-family: "SF Mono", monospace; font-size: 11px; font-weight: 600; color: var(--ink); }
+    .doc-card .doc-meta { font-size: 10px; color: var(--ink-muted); margin-top: 3px; font-family: "SF Mono", monospace; }
+
+    .scorer-card { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--line-soft); }
+    .scorer-card:last-child { border-bottom: 0; }
+    .scorer-card.fail { background: color-mix(in srgb, var(--loss) 5%, transparent); }
+    .scorer-card .name { font-family: "SF Mono", monospace; font-size: 11px; color: var(--ink); font-weight: 500; }
+    .scorer-card .detail { font-size: 11px; color: var(--ink-muted); margin-top: 2px; }
+    .scorer-card .score { font-family: "SF Mono", monospace; font-variant-numeric: tabular-nums; font-size: 13px; font-weight: 600; }
+
+    .answer-block { padding: 14px 16px; border: 1px solid var(--line); background: var(--surface-1); border-radius: var(--r); font-size: 12px; line-height: 1.7; color: var(--ink-soft); }
+    .answer-block .hl-good { background: color-mix(in srgb, var(--gain) 15%, transparent); padding: 1px 3px; border-radius: 2px; }
+    .answer-block .hl-bad { background: color-mix(in srgb, var(--loss) 18%, transparent); padding: 1px 3px; border-radius: 2px; text-decoration: line-through; }
+
+    .nav { display: flex; gap: 6px; margin-bottom: 16px; align-items: center; }
+  </style>
+</head>
+<body>
+  <div class="container" style="max-width: 1300px;">
+
+    <div class="nav">
+      <a href="01-run-report.html" class="btn ghost">← run report</a>
+      <a href="03-regression-diff.html" class="btn ghost">vs main →</a>
+      <span class="eyebrow ml-auto">016 · step 3 · case detail</span>
+    </div>
+
+    <!-- Case header with FAIL banner -->
+    <div class="case-header">
+      <div class="row" style="margin-bottom: 6px;">
+        <span class="badge loss">FAILED</span>
+        <span class="eyebrow ml-2">case_id</span>
+      </div>
+      <h1 style="margin: 0; font-size: 22px;">planted_contradiction_002_googl_segment_commentary</h1>
+      <p class="text-soft" style="margin-top: 6px; font-size: 13px;">
+        regression: contradiction_recall dropped from <strong>1.00 → 0.50</strong> on this case.
+        The agent retrieved both contrasting docs but its answer only surfaced one framing.
+      </p>
+    </div>
+
+    <!-- Three-pane layout: case spec | corpus docs | agent run + scoring -->
+    <div class="two-col">
+
+      <!-- LEFT — Case specification (YAML) -->
+      <div>
+        <h3 style="font-size: 12px; margin-bottom: 8px;">CASE SPECIFICATION</h3>
+<div class="yaml-block"><span class="k">case_id</span>: <span class="v">planted_contradiction_002_googl_segment_commentary</span>
+<span class="k">capability</span>: <span class="v">planted_contradiction</span>
+<span class="k">query</span>: <span class="v">|</span>
+  <span class="v">How is Google Cloud trending in Q3 2024?</span>
+  <span class="v">Look at both filings + press release framing.</span>
+<span class="k">as_of_date</span>: <span class="v">2024-12-01</span>
+<span class="k">corpus_snapshot</span>: <span class="v">2024q4-googl-capex</span>
+
+<span class="k">expected_answer</span>: <span class="v">|</span>
+  <span class="v">Mixed picture: 10-Q reports Cloud revenue grew 35%</span>
+  <span class="v">but emphasizes the segment is "still emerging."</span>
+  <span class="v">Press release frames the same data as accelerating</span>
+  <span class="v">profitability ("operating income up 5x YoY").</span>
+
+<span class="k">must_retrieve</span>:
+  - <span class="v">googl-10q-2024-q3</span>
+  - <span class="v">googl-8k-2024-10-29-115</span>
+<span class="k">must_surface_contradiction</span>:
+  - <span class="v">googl-10q-2024-q3</span>      <span class="c"># "still emerging" framing</span>
+  - <span class="v">googl-8k-2024-10-29-115</span> <span class="c"># "accelerating profitability"</span>
+
+<span class="k">status</span>: <span class="v">approved</span>
+<span class="k">authored_by</span>: <span class="v">human-reviewer</span>
+<span class="k">review_notes</span>: <span class="v">|</span>
+  <span class="v">10-Q's Cloud section uses cautious tone. Same-day</span>
+  <span class="v">press release uses much more bullish framing.</span>
+  <span class="v">Real contradiction — analyst worth their salt</span>
+  <span class="v">should call this out.</span>
+</div>
+      </div>
+
+      <!-- RIGHT — corpus docs available at as_of -->
+      <div>
+        <h3 style="font-size: 12px; margin-bottom: 8px;">CORPUS @ as_of=2024-12-01</h3>
+        <div class="col gap-2">
+
+          <div class="doc-card cited">
+            <div class="row">
+              <div class="doc-id">googl-10q-2024-q3</div>
+              <span class="badge accent ml-auto" style="font-size: 8px;">cited by agent ✓</span>
+            </div>
+            <div class="doc-meta">observed_at 2024-10-30 · 10-Q · 190K · sha256=fc6020ea…</div>
+          </div>
+
+          <div class="doc-card cited">
+            <div class="row">
+              <div class="doc-id">googl-8k-2024-10-29-115</div>
+              <span class="badge accent ml-auto" style="font-size: 8px;">cited by agent ✓</span>
+            </div>
+            <div class="doc-meta">observed_at 2024-10-29 · 8-K · 4.4K · sha256=e87a25f5…</div>
+          </div>
+
+          <div class="doc-card">
+            <div class="doc-id">googl-8k-2024-10-17-001</div>
+            <div class="doc-meta">observed_at 2024-10-17 · 8-K · 12K · sha256=4d22c8a3…</div>
+          </div>
+
+          <div class="doc-card">
+            <div class="doc-id">googl-10q-2024-q2</div>
+            <div class="doc-meta">observed_at 2024-07-24 · 10-Q · 168K · sha256=8e191ddf…</div>
+          </div>
+
+          <div class="doc-card future-trap">
+            <div class="doc-id">googl-8k-2025-01-30-002</div>
+            <div class="doc-meta">observed_at <strong style="color: var(--warn);">2025-01-30</strong> · 8-K · 28K · <span class="text-warn">future trap doc</span></div>
+          </div>
+
+        </div>
+
+        <div style="margin-top: 12px; padding: 10px 12px; background: var(--canvas-soft); border-radius: var(--r); font-size: 11px; color: var(--ink-muted);">
+          <strong>5 docs in snapshot.</strong> Filtered to 4 by as_of (the 2025-01-30 8-K is hidden).
+          Agent retrieved 2 of 4 visible — both required by case.
+        </div>
+      </div>
+    </div>
+
+    <!-- AGENT'S ANSWER -->
+    <h3 style="font-size: 12px; margin-top: 24px; margin-bottom: 8px;">AGENT'S ANSWER · v4 branch</h3>
+    <div class="answer-block">
+      <p>
+        Google Cloud showed continued strong growth in Q3 2024.
+        <span class="hl-good">Per the 10-Q [src: googl-10q-2024-q3]</span>, Cloud revenue grew 35% year-over-year,
+        driven by AI infrastructure and Google Workspace.
+        Cloud segment operating income reached $1.95B [src: googl-10q-2024-q3].
+      </p>
+      <p style="margin-top: 10px;">
+        <span class="hl-good">The Q3 earnings press release [src: googl-8k-2024-10-29-115]</span>
+        confirmed these results as part of the broader Alphabet report.
+      </p>
+      <p style="margin-top: 10px;">
+        Overall, Cloud continues to be a key growth engine for Alphabet, with healthy
+        revenue acceleration and improving margins.
+      </p>
+      <p style="margin-top: 14px; padding: 10px 12px; background: color-mix(in srgb, var(--loss) 8%, transparent); border-left: 3px solid var(--loss); border-radius: 2px; font-size: 11px; color: var(--loss);">
+        <strong>❌ contradiction NOT surfaced.</strong>
+        Agent cited both docs (good · planted_recall = 2/2) but its answer presented a uniform
+        bullish narrative. The 10-Q's "still emerging" cautious language vs. the press release's
+        bullish profitability framing — neither side of that contrast appears in the answer.
+        That's exactly the failure mode <code>contradiction_recall</code> exists to catch.
+      </p>
+    </div>
+
+    <!-- SCORING BREAKDOWN -->
+    <h3 style="font-size: 12px; margin-top: 24px; margin-bottom: 8px;">SCORING BREAKDOWN · deterministic only</h3>
+    <div class="card">
+      <div class="scorer-card">
+        <div>
+          <div class="name">lookahead_leakage</div>
+          <div class="detail">0 cited docs with observed_at > as_of. The 2025-01-30 trap was correctly filtered out.</div>
+        </div>
+        <span class="score pass" style="color: var(--gain);">0</span>
+        <span class="badge gain">PASS</span>
+      </div>
+      <div class="scorer-card">
+        <div>
+          <div class="name">numeric_exact</div>
+          <div class="detail">Case has no numeric_answer field — this scorer doesn't apply.</div>
+        </div>
+        <span class="score na" style="color: var(--ink-faint);">n/a</span>
+        <span class="badge">N/A</span>
+      </div>
+      <div class="scorer-card">
+        <div>
+          <div class="name">planted_recall</div>
+          <div class="detail">Required docs retrieved: googl-10q-2024-q3 ✓ · googl-8k-2024-10-29-115 ✓</div>
+        </div>
+        <span class="score" style="color: var(--gain);">2/2 (1.00)</span>
+        <span class="badge gain">PASS</span>
+      </div>
+      <div class="scorer-card fail">
+        <div>
+          <div class="name" style="color: var(--loss);">contradiction_recall</div>
+          <div class="detail">Required contrast: 10-Q's "still emerging" vs PR's "accelerating profitability". Detection: both doc ids appear in citations, but answer text lacks contrast language ("however" / "on the other hand" / etc.). 1 of 2 framings surfaced.</div>
+        </div>
+        <span class="score" style="color: var(--loss);">1/2 (0.50)</span>
+        <span class="badge loss">FAIL</span>
+      </div>
+      <div class="scorer-card">
+        <div>
+          <div class="name">abstention_honesty</div>
+          <div class="detail">Case is not "unanswerable" — this scorer doesn't apply.</div>
+        </div>
+        <span class="score na" style="color: var(--ink-faint);">n/a</span>
+        <span class="badge">N/A</span>
+      </div>
+    </div>
+
+    <!-- Judge note -->
+    <div style="margin-top: 16px; padding: 12px 14px; background: var(--canvas-soft); border: 1px dashed var(--line-strong); border-radius: var(--r-lg); font-size: 11px; color: var(--ink-muted);">
+      <strong style="color: var(--ink);">faithfulness scorer · JUDGED · deferred.</strong>
+      LLM judge for "every atomic claim cited correctly" will be added when the Q2 Claude Code skill lands.
+      Right now this case only fails on deterministic <code>contradiction_recall</code>.
+    </div>
+
+    <div class="row mt-6 gap-2">
+      <a href="03-regression-diff.html" class="btn primary">side-by-side vs main →</a>
+      <a href="01-run-report.html" class="btn">back to report</a>
+    </div>
+
+  </div>
+</body>
+</html>
