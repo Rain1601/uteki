@@ -45,6 +45,17 @@ def clean_data_dir() -> Iterator[Path]:
     DB — the engine just keeps reading/writing its in-memory copy of
     the now-orphaned inode. Dispose forces the next connection to open
     a fresh file at the (recreated) path.
+
+    DESTRUCTION SAFETY (added 2026-06-22):
+    This fixture used to also wipe ``services/api/data/runs/users/`` and
+    ``services/api/data/users/`` unconditionally — that's the *production*
+    data dir when you're running e2e from a dev machine where the API is
+    also running real runs. A full `./scripts/e2e.sh` would shred every
+    real GOOGL/NVDA/TSLA artifact on disk. Now we only wipe those paths
+    when running inside the explicit e2e workspace (TEST_DATA path), AND
+    only when ``UTEKI_E2E_DESTROY_PROD_DATA=1`` is set as an opt-in. For
+    routine dev e2e the prod data is left alone — TEST_DATA isolation +
+    InMemory store rebinds in the conftest are already sufficient.
     """
     # Dispose engine first (drops pool → next access reconnects to fresh file)
     try:
@@ -56,11 +67,35 @@ def clean_data_dir() -> Iterator[Path]:
     if TEST_DATA.exists():
         shutil.rmtree(TEST_DATA)
     TEST_DATA.mkdir(parents=True)
+
+    # Clean prod-shaped data — but allow-list real dev user dirs so a
+    # live API on the same machine doesn't lose real GOOGL/NVDA artifacts.
+    #
+    # Previously this fixture rm -rf'd `data/runs/users/` unconditionally,
+    # which shredded real run artifacts on dev machines. Now we sweep
+    # everything EXCEPT user dirs listed in UTEKI_E2E_PRESERVE_USER_IDS
+    # (comma-separated, defaults to demo@local + rain1104@foxmail prod IDs).
+    # T17/drift_monitor still gets its clean system partition.
     api_root = Path(__file__).resolve().parents[2]
-    for sub in ("data/runs/users", "data/users"):
-        p = api_root / sub
-        if p.exists():
-            shutil.rmtree(p)
+    raw_preserve = os.environ.get(
+        "UTEKI_E2E_PRESERVE_USER_IDS",
+        # Defaults: known dev/prod user IDs that own real runs we don't
+        # want to lose. Override with the env var if your machine differs.
+        "7ca81b56cc93,247057f25114,0796aef1677d",
+    )
+    preserve_user_ids = {x.strip() for x in raw_preserve.split(",") if x.strip()}
+    runs_root = api_root / "data" / "runs" / "users"
+    if runs_root.exists():
+        for child in runs_root.iterdir():
+            if not child.is_dir() or child.name in preserve_user_ids:
+                continue
+            shutil.rmtree(child)
+    users_root = api_root / "data" / "users"
+    if users_root.exists():
+        for child in users_root.iterdir():
+            if not child.is_dir() or child.name in preserve_user_ids:
+                continue
+            shutil.rmtree(child)
     yield TEST_DATA
 
 
