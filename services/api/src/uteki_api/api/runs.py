@@ -323,8 +323,8 @@ async def upsert_feedback(
 
 import time as _time  # local alias to avoid colliding with Run.started_at-shaped fields  # noqa: E402
 
+from uteki_api.eval.market_price import spot_price  # noqa: E402
 from uteki_api.eval.prediction_store import default_prediction_store  # noqa: E402
-from uteki_api.tools import default_registry  # noqa: E402
 
 
 class PredictionOut(BaseModel):
@@ -354,26 +354,12 @@ class PredictionOut(BaseModel):
 
 
 async def _live_price(ticker: str) -> float | None:
-    """Best-effort live quote. None on any failure — UI handles gracefully."""
-    tool = default_registry.get("market_quote")
-    if tool is None:
-        return None
-    try:
-        result = await tool.run(symbol=ticker)
-    except Exception:  # noqa: BLE001
-        return None
-    if not result.ok:
-        return None
-    data = result.data or {}
-    for key in ("price", "last", "regular_market_price", "close"):
-        v = data.get(key)
-        if v is None:
-            continue
-        try:
-            return float(v)
-        except (TypeError, ValueError):
-            continue
-    return None
+    """Best-effort live close price via yfinance ``history()``.
+
+    See ``eval/market_price.py`` for why we bypass the market_quote tool
+    here. None on any failure — UI handles gracefully.
+    """
+    return await spot_price(ticker)
 
 
 @router.get("/{run_id}/prediction", response_model=PredictionOut)

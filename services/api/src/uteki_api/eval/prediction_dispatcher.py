@@ -24,9 +24,9 @@ from sqlmodel import Session
 
 from uteki_api.artifacts import default_artifact_store
 from uteki_api.core.db import engine
+from uteki_api.eval.market_price import spot_price
 from uteki_api.eval.prediction_store import default_prediction_store
 from uteki_api.runs import default_run_store
-from uteki_api.tools import default_registry
 
 logger = logging.getLogger(__name__)
 
@@ -132,35 +132,16 @@ class PredictionDispatcher:
         )
 
     async def _snapshot_price(self, ticker: str) -> float | None:
-        """Call market_quote tool to get the spot price.
+        """Snapshot the closing price via the dedicated ``spot_price`` helper.
 
-        Returns None on any failure (tool unregistered, quote fails, parse
-        error). The row still writes; UI handles None gracefully.
+        We deliberately bypass the ``market_quote`` tool here — that tool
+        uses yfinance ``info`` / ``fast_info`` for skill analysis fields,
+        and those endpoints occasionally return stale or cross-ticker
+        prices (observed in PR ε MVP: GOOGL phantom $122.72). The
+        backtest layer needs ONLY the close price, and ``history()``
+        gives us that reliably.
         """
-        tool = default_registry.get("market_quote")
-        if tool is None:
-            return None
-        try:
-            result = await tool.run(symbol=ticker)
-        except Exception as e:  # noqa: BLE001
-            logger.warning(
-                "prediction_dispatcher.snapshot_price failed for %s: %s", ticker, e
-            )
-            return None
-        if not result.ok:
-            return None
-        data: dict[str, Any] = result.data or {}
-        # market_quote returns various price keys depending on provider.
-        # Try the most-likely fields in order.
-        for key in ("price", "last", "regular_market_price", "close"):
-            v = data.get(key)
-            if v is None:
-                continue
-            try:
-                return float(v)
-            except (TypeError, ValueError):
-                continue
-        return None
+        return await spot_price(ticker)
 
     @staticmethod
     def _coerce_float(v: Any, *, default: float) -> float:
