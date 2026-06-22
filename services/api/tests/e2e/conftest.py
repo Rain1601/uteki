@@ -119,6 +119,12 @@ def client() -> Iterator[TestClient]:
     from uteki_api.evolution import cc_runner as cc_runner_mod
     cc_runner_mod.default_run_store = fresh_runs
 
+    # 015 PR ε — prediction_dispatcher does the same name-binding for
+    # default_run_store. Without this rebind, dispatcher would call into
+    # the prod store and miss tests' seeded runs.
+    from uteki_api.eval import prediction_dispatcher as prediction_disp_mod
+    prediction_disp_mod.default_run_store = fresh_runs
+
     # drift_monitor (M1.11) imports default_run_store by name to anchor
     # auto-triggered proposals on the originating skill. Without this
     # rebind, T17's seeded run goes into the per-test InMemoryRunStore

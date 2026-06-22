@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Empty } from "@/components/ui/Empty";
 import { RunRatingPanel } from "@/components/runs/RunRatingPanel";
+import { BacktestWidget } from "@/components/runs/BacktestWidget";
 import { RunDetailView } from "./[id]/view";
 import {
   getRun,
@@ -301,10 +302,13 @@ export default function RunsPage() {
           ) : null}
         </main>
 
-        {/* RIGHT — eval panel (real, persists to RunFeedback) */}
+        {/* RIGHT — eval panel (013 RunRatingPanel) + 015 backtest widget */}
         <aside className="min-h-0 overflow-y-auto rounded-[var(--r-lg)] border border-[var(--line)] bg-[var(--surface-1)] p-4">
           {selectedId ? (
-            <RunRatingPanel runId={selectedId} user={user} />
+            <>
+              <RunRatingPanel runId={selectedId} user={user} />
+              <BacktestWidget runId={selectedId} />
+            </>
           ) : (
             <CenterEmpty
               title="Eval"

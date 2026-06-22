@@ -309,3 +309,151 @@ async def upsert_feedback(
         rating_mode=body.rating_mode,
     )
     return await _build_feedback_out(db, run, feedback)
+
+
+# ── 015 PR ε MVP · Backtest widget data ────────────────────────────────
+#
+# Returns the prediction row for this run + a live current-price snapshot
+# + SPY comparison. The widget on /runs/[id] right pane binds to this.
+#
+# This endpoint deliberately combines "frozen at t0" data (from the
+# Prediction row) with "live right now" data (from market_quote) — UI
+# gets exactly what it needs in one shot without juggling two stores.
+
+
+import time as _time  # local alias to avoid colliding with Run.started_at-shaped fields  # noqa: E402
+
+from uteki_api.eval.prediction_store import default_prediction_store  # noqa: E402
+from uteki_api.tools import default_registry  # noqa: E402
+
+
+class PredictionOut(BaseModel):
+    run_id: str
+    ticker: str
+    action: str
+    conviction: float
+    quality_verdict: str | None
+    t0: float
+    t0_price: float | None
+    t0_currency: str
+
+    # Live snapshot — fetched on demand, may be None if market_quote fails.
+    now_price: float | None
+    spy_now_price: float | None
+    spy_t0_price: float | None  # not stored MVP-wise; None for now
+
+    # Computed deltas — None when any input is missing.
+    stock_pct: float | None  # (now - t0) / t0
+    spy_pct: float | None
+    relative_pct: float | None  # stock_pct - spy_pct
+
+    # Horizon countdowns — pure time arithmetic from t0.
+    horizons: list[dict]
+    # [{"horizon_days": 30, "due_at": <epoch>, "days_remaining": 29,
+    #   "outcome": null (MVP)}, ...]
+
+
+async def _live_price(ticker: str) -> float | None:
+    """Best-effort live quote. None on any failure — UI handles gracefully."""
+    tool = default_registry.get("market_quote")
+    if tool is None:
+        return None
+    try:
+        result = await tool.run(symbol=ticker)
+    except Exception:  # noqa: BLE001
+        return None
+    if not result.ok:
+        return None
+    data = result.data or {}
+    for key in ("price", "last", "regular_market_price", "close"):
+        v = data.get(key)
+        if v is None:
+            continue
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+@router.get("/{run_id}/prediction", response_model=PredictionOut)
+async def get_prediction(
+    run_id: str,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> PredictionOut:
+    """Return the backtest data for this run.
+
+    Combines the frozen Prediction row (action / t0_price / conviction)
+    with live current prices for the ticker + SPY benchmark.
+    Cross-user reads return 404 via the same shape as 'no such run' —
+    deliberately not leaking existence.
+    """
+    try:
+        run = await default_run_store.get(run_id, user.id)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+    prediction = default_prediction_store.get(db, run_id)
+    if prediction is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"no prediction for run {run_id!r} (skill not predictive or "
+            "verdict was missing/malformed at finish time)",
+        )
+
+    # Ownership sanity — the run lookup above already enforces this, but
+    # belt-and-braces (the Prediction table is not user-partitioned).
+    if prediction.user_id != run.user_id:
+        raise HTTPException(status_code=404, detail=str(run_id))
+
+    # Live snapshots (fire two requests in parallel — both already best-effort)
+    import asyncio as _asyncio  # noqa: PLC0415
+
+    now_price, spy_now = await _asyncio.gather(
+        _live_price(prediction.ticker),
+        _live_price("SPY"),
+    )
+
+    # Deltas — only computed when t0 + now snapshots are both available.
+    stock_pct: float | None = None
+    if prediction.t0_price and now_price:
+        stock_pct = (now_price - prediction.t0_price) / prediction.t0_price * 100.0
+
+    # SPY t0 isn't snapshotted in MVP (we'd need to call market_quote for SPY
+    # at finish time too — easy add but I'm scoping to "stock price first"
+    # in this slice). For now report SPY only as live; relative_pct stays None.
+    spy_pct: float | None = None
+    relative_pct: float | None = None
+
+    # Horizon countdowns from t0
+    now_ts = _time.time()
+    horizons: list[dict] = []
+    for h in prediction.horizons_to_score:
+        due_at = prediction.t0 + h * 86400
+        days_remaining = max(0.0, (due_at - now_ts) / 86400.0)
+        outcome = prediction.outcomes.get(f"{h}d") if prediction.outcomes else None
+        horizons.append({
+            "horizon_days": h,
+            "due_at": due_at,
+            "days_remaining": days_remaining,
+            "outcome": outcome,  # None until cron lands (PR ε.2)
+        })
+
+    return PredictionOut(
+        run_id=run_id,
+        ticker=prediction.ticker,
+        action=prediction.action,
+        conviction=prediction.conviction,
+        quality_verdict=prediction.quality_verdict,
+        t0=prediction.t0,
+        t0_price=prediction.t0_price,
+        t0_currency=prediction.t0_currency,
+        now_price=now_price,
+        spy_now_price=spy_now,
+        spy_t0_price=None,
+        stock_pct=stock_pct,
+        spy_pct=spy_pct,
+        relative_pct=relative_pct,
+        horizons=horizons,
+    )

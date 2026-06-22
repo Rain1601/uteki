@@ -6,6 +6,7 @@ import { Trace } from "@/components/agent/Trace";
 import { Message } from "@/components/agent/Message";
 import { Artifacts } from "@/components/agent/Artifacts";
 import { RunRatingPanel } from "@/components/runs/RunRatingPanel";
+import { BacktestWidget } from "@/components/runs/BacktestWidget";
 import { PageContainer } from "@/components/ui/PageHeader";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -196,6 +197,11 @@ export function RunDetailView({
           Suppressed when a parent layout (e.g. /runs 3-pane) renders the
           panel in its own column. */}
       {!hideRatingPanel && <RunRatingPanel runId={run.id} user={user} />}
+      {/* 015 PR ε — backtest widget (entry → now, horizon countdown).
+          Self-renders nothing on 404 (skill not predictive). Same hide
+          gate as RunRatingPanel — 3-pane layouts mount this in their own
+          column. */}
+      {!hideRatingPanel && <BacktestWidget runId={run.id} />}
 
       {primary ? (
         <GenericArtifactPreview
