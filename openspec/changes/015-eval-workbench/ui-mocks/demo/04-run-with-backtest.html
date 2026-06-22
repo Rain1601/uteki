@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>Run Detail · with Backtest · Eval Workbench Demo</title>
+  <link rel="stylesheet" href="_styles.css">
+  <style>
+    .three-pane { display: grid; grid-template-columns: 280px 1fr 380px; gap: 16px; align-items: flex-start; }
+    .pane { background: var(--surface-1); border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; }
+    .pane-header { padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--canvas-soft); }
+    .pane-body { padding: 14px; }
+
+    .run-item { padding: 8px 12px; border-radius: var(--r); cursor: pointer; }
+    .run-item:hover { background: var(--canvas-soft); }
+    .run-item.active { background: var(--accent-soft); border-left: 2px solid var(--accent); }
+
+    .artifact-row { padding: 6px 10px; border-radius: var(--r); cursor: pointer; font-family: "SF Mono", monospace; font-size: 11px; }
+    .artifact-row:hover { background: var(--canvas-soft); }
+    .artifact-row.active { background: var(--accent-soft); color: var(--accent); }
+
+    .gauge-card { padding: 16px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface-1); }
+
+    .return-positive { color: var(--gain); font-weight: 600; }
+    .return-negative { color: var(--loss); font-weight: 600; }
+
+    .horizon-row { display: grid; grid-template-columns: 80px 1fr 80px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line-soft); gap: 12px; }
+    .horizon-row:last-child { border-bottom: 0; }
+    .horizon-label { font-family: "SF Mono", monospace; font-size: 11px; color: var(--ink-muted); }
+    .horizon-bar { height: 6px; background: var(--canvas-soft); border-radius: 3px; overflow: hidden; position: relative; }
+    .horizon-bar-fill { height: 100%; background: linear-gradient(to right, var(--accent), var(--accent-line)); }
+
+    .ticker-big { font-family: "Times New Roman", Georgia, serif; font-style: italic; font-size: 28px; color: var(--ink); margin-right: 12px; }
+
+    .live-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; background: color-mix(in srgb, var(--gain) 10%, transparent); color: var(--gain); border-radius: 999px; font-family: "SF Mono", monospace; font-size: 10px; font-weight: 600; }
+    .live-pill::before { content: ""; width: 6px; height: 6px; background: var(--gain); border-radius: 50%; animation: pulse 2s infinite; }
+    @keyframes pulse { 50% { opacity: 0.4; } }
+  </style>
+</head>
+<body>
+  <div class="container" style="max-width:1500px;">
+
+    <div class="row mb-4" style="justify-content:space-between;">
+      <a href="index.html" class="btn ghost">← back to index</a>
+      <div class="eyebrow">/runs/958aa2eb5d68 · existing layout + 015 PR ε backtest widget</div>
+    </div>
+
+    <div class="mb-4">
+      <h1>Run detail · with market backtest</h1>
+      <p class="text-soft">
+        左 = runs 列表 / 中 = 现有 artifact 视图 / <strong>右 = 新加 backtest widget(015 PR ε 落地后填实数据)</strong>。
+        现在右栏拿的是 mock,真实部署后从 Prediction 表 join 历史价。
+      </p>
+    </div>
+
+    <div class="three-pane">
+
+      <!-- LEFT: runs list -->
+      <div class="pane">
+        <div class="pane-header"><span class="eyebrow">runs</span></div>
+        <div class="pane-body" style="padding: 6px;">
+          <div class="run-item active">
+            <div class="row" style="gap:6px;"><span class="font-mono" style="font-size:11px;">958aa2eb5d68</span><span class="badge gain" style="margin-left:auto;">ok</span></div>
+            <div class="text-muted" style="font-size:11px; margin-top:2px;">GOOGL · WATCH 0.55</div>
+            <div class="text-faint" style="font-size:10px; font-family:'SF Mono',monospace; margin-top:2px;">1 day ago · v4</div>
+          </div>
+          <div class="run-item">
+            <div class="row" style="gap:6px;"><span class="font-mono" style="font-size:11px;">9422190d9ac1</span><span class="badge gain" style="margin-left:auto;">ok</span></div>
+            <div class="text-muted" style="font-size:11px; margin-top:2px;">NVDA · BUY 0.80</div>
+            <div class="text-faint" style="font-size:10px; font-family:'SF Mono',monospace; margin-top:2px;">1 day ago · v4</div>
+          </div>
+          <div class="run-item">
+            <div class="row" style="gap:6px;"><span class="font-mono" style="font-size:11px;">c90a68fc7283</span><span class="badge gain" style="margin-left:auto;">ok</span></div>
+            <div class="text-muted" style="font-size:11px; margin-top:2px;">GOOGL · WATCH 0.45</div>
+            <div class="text-faint" style="font-size:10px; font-family:'SF Mono',monospace; margin-top:2px;">5 days ago · v3</div>
+          </div>
+          <div class="run-item">
+            <div class="row" style="gap:6px;"><span class="font-mono" style="font-size:11px;">a4f12c8b9d77</span><span class="badge gain" style="margin-left:auto;">ok</span></div>
+            <div class="text-muted" style="font-size:11px; margin-top:2px;">TSLA · WATCH 0.30</div>
+            <div class="text-faint" style="font-size:10px; font-family:'SF Mono',monospace; margin-top:2px;">32 days ago · v3</div>
+          </div>
+          <div class="run-item">
+            <div class="row" style="gap:6px;"><span class="font-mono" style="font-size:11px;">b8e93a2f1c50</span><span class="badge gain" style="margin-left:auto;">ok</span></div>
+            <div class="text-muted" style="font-size:11px; margin-top:2px;">NVDA · BUY 0.65</div>
+            <div class="text-faint" style="font-size:10px; font-family:'SF Mono',monospace; margin-top:2px;">95 days ago · v2</div>
+          </div>
+          <div class="run-item">
+            <div class="row" style="gap:6px;"><span class="font-mono" style="font-size:11px;">d2c4e7a91688</span><span class="badge gain" style="margin-left:auto;">ok</span></div>
+            <div class="text-muted" style="font-size:11px; margin-top:2px;">AAPL · BUY 0.60</div>
+            <div class="text-faint" style="font-size:10px; font-family:'SF Mono',monospace; margin-top:2px;">185 days ago · v2</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MIDDLE: artifact preview (truncated) -->
+      <div class="pane">
+        <div class="pane-header">
+          <div class="row">
+            <span class="font-mono" style="font-size:12px; font-weight:600;">958aa2eb5d68</span>
+            <span class="text-muted" style="font-size:11px; margin-left:8px;">company_research_pipeline · v4 · GOOGL</span>
+            <span class="badge ml-auto">artifacts: 27</span>
+          </div>
+        </div>
+        <div style="display:grid; grid-template-columns: 180px 1fr;">
+          <div style="border-right:1px solid var(--line); padding: 10px; background: var(--canvas-soft);">
+            <div class="artifact-row">company-profile.json</div>
+            <div class="artifact-row">financials.json</div>
+            <div class="artifact-row">news-brief.json</div>
+            <div class="artifact-row active">gate-01-business…</div>
+            <div class="artifact-row">gate-02-fisher_qa…</div>
+            <div class="artifact-row">gate-03-moat…</div>
+            <div class="artifact-row">gate-04-mgmt…</div>
+            <div class="artifact-row">gate-05-reverse…</div>
+            <div class="artifact-row">gate-06-valuation…</div>
+            <div class="artifact-row">final-report.md</div>
+            <div class="artifact-row">final-verdict.json</div>
+            <div class="artifact-row">decision.json</div>
+          </div>
+          <div class="pane-body">
+            <div class="eyebrow mb-2">gate-01-business_analysis · Gate conclusion</div>
+            <p class="text-soft" style="font-size:12px; line-height:1.7;">
+              本维度评级 <strong>PASS</strong>。GOOGL 拥有 59.7% 毛利率 [src:12]、32.8% 净利润率 [src:12] 和 $73.3B 年自由现金流 [src:12],生意质量优秀且可持续性强。相比 MSFT(2025 年营收 $281.7B [src:17]、净利率 36.1%)和 META(2025 年营收 $201.0B [src:20]、净利率 30.1%),GOOGL 的搜索护城河最深、收入集中度风险可控,当前 28.1x PE [src:9] 处于合理区间。主要不可知风险是反垄断执行力度和 AI 投资回报率。
+            </p>
+            <div class="row mt-4 gap-2 text-faint" style="font-size:11px;">
+              <span class="badge">26 citations</span>
+              <span class="badge gain">stance: PASS</span>
+              <span class="badge">word count: 267</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Backtest widget (NEW · 015 PR ε) -->
+      <div class="col" style="gap:16px;">
+
+        <!-- Active prediction tracker -->
+        <div class="pane">
+          <div class="pane-header">
+            <div class="row">
+              <span class="eyebrow">market backtest</span>
+              <span class="live-pill ml-auto">live</span>
+            </div>
+          </div>
+          <div class="pane-body">
+            <div class="row mb-4">
+              <span class="ticker-big">GOOGL</span>
+              <div class="col" style="gap:2px;">
+                <span class="badge accent" style="align-self:flex-start;">WATCH · conv 0.55</span>
+                <span class="text-faint" style="font-size:10px; font-family:'SF Mono',monospace;">predicted 2026-06-21 21:30 UTC</span>
+              </div>
+            </div>
+
+            <div class="gauge-card mb-4">
+              <div class="row mb-2">
+                <span class="text-muted" style="font-size:11px;">entry → now (1 day)</span>
+              </div>
+              <div class="row" style="align-items:baseline; gap:8px;">
+                <span class="font-mono" style="font-size:28px; font-weight:600;">$180.75</span>
+                <span class="return-positive font-mono" style="font-size:14px;">+2.5%</span>
+              </div>
+              <div class="text-muted mt-2" style="font-size:11px;">
+                entry $176.40 · 06/21 close
+              </div>
+              <div class="row mt-4" style="gap:16px; padding-top:12px; border-top:1px solid var(--line-soft);">
+                <div class="col" style="gap:2px;">
+                  <span class="eyebrow">vs SPY</span>
+                  <span class="font-mono return-positive">+0.8pp</span>
+                  <span class="text-faint" style="font-size:10px;">SPY: +1.7%</span>
+                </div>
+                <div class="col" style="gap:2px;">
+                  <span class="eyebrow">action verdict</span>
+                  <span class="text-muted" style="font-size:11px;">WATCH ≠ hit/miss</span>
+                  <span class="text-faint" style="font-size:10px;">仅做记账</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="eyebrow mb-2">scoring horizons</div>
+            <div class="horizon-row">
+              <span class="horizon-label">30d</span>
+              <div class="horizon-bar"><div class="horizon-bar-fill" style="width:3%;"></div></div>
+              <span class="text-muted" style="font-size:10px; text-align:right;">29d left</span>
+            </div>
+            <div class="horizon-row">
+              <span class="horizon-label">90d</span>
+              <div class="horizon-bar"><div class="horizon-bar-fill" style="width:1%;"></div></div>
+              <span class="text-muted" style="font-size:10px; text-align:right;">89d left</span>
+            </div>
+            <div class="horizon-row">
+              <span class="horizon-label">180d</span>
+              <div class="horizon-bar"><div class="horizon-bar-fill" style="width:0.5%;"></div></div>
+              <span class="text-muted" style="font-size:10px; text-align:right;">179d left</span>
+            </div>
+
+            <div class="text-muted mt-4" style="font-size:11px; line-height:1.5;">
+              cron 每日 06:30 UTC 扫到期 horizon,拉历史价 + SPY 对照,更新到 Prediction 表。
+            </div>
+          </div>
+        </div>
+
+        <!-- Matured prediction example (when you click 95-day-old NVDA run) -->
+        <div class="pane" style="opacity:0.65;">
+          <div class="pane-header">
+            <div class="row">
+              <span class="eyebrow">↑ this run too new · here's what a matured one looks like</span>
+            </div>
+          </div>
+          <div class="pane-body" style="padding-top:8px;">
+            <div class="text-faint" style="font-size:11px; font-family:'SF Mono',monospace;">b8e93a2f1c50 · NVDA · BUY 0.65 · 95d ago</div>
+            <div class="row mt-2" style="gap:12px;">
+              <div class="col" style="gap:2px;">
+                <span class="eyebrow">30d</span>
+                <span class="badge gain">✓ hit</span>
+                <span class="text-muted font-mono" style="font-size:10px;">+8.2% vs SPY +1.5%</span>
+              </div>
+              <div class="col" style="gap:2px;">
+                <span class="eyebrow">90d</span>
+                <span class="badge gain">✓ hit</span>
+                <span class="text-muted font-mono" style="font-size:10px;">+14.1% vs SPY +3.2%</span>
+              </div>
+              <div class="col" style="gap:2px;">
+                <span class="eyebrow">180d</span>
+                <span class="badge">pending</span>
+                <span class="text-muted font-mono" style="font-size:10px;">85d left</span>
+              </div>
+            </div>
+            <div class="row mt-4 gap-2">
+              <button class="btn ghost" style="font-size:11px;">Open backtest aggregate →</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Methodology -->
+    <div class="card mt-6">
+      <div class="card-header">
+        <span class="eyebrow">how this widget works · 015 PR ε</span>
+      </div>
+      <div class="card-body">
+        <div class="col gap-2 text-soft">
+          <div class="row gap-2"><span class="text-accent" style="font-family:'SF Mono',monospace;">1.</span><span><strong>At run completion</strong>: company_research_pipeline finish hook 读 verdict.json → 写一行到 <code style="background:var(--canvas-soft); padding:1px 4px; border-radius:2px;">prediction</code> 表(<code style="background:var(--canvas-soft); padding:1px 4px; border-radius:2px;">run_id, ticker, action, conviction, t0, t0_price</code>)。<code style="background:var(--canvas-soft); padding:1px 4px; border-radius:2px;">t0_price</code> 通过 market_quote 同步拉。</span></div>
+          <div class="row gap-2"><span class="text-accent" style="font-family:'SF Mono',monospace;">2.</span><span><strong>Daily cron 06:30 UTC</strong>: <code style="background:var(--canvas-soft); padding:1px 4px; border-radius:2px;">scoring_cron.py</code> 扫 t0 + 30/90/180d 已到的 predictions,yfinance batch 拉历史价 + SPY 对照,写回 <code style="background:var(--canvas-soft); padding:1px 4px; border-radius:2px;">outcomes</code> JSON 字段。</span></div>
+          <div class="row gap-2"><span class="text-accent" style="font-family:'SF Mono',monospace;">3.</span><span><strong>Hit 定义 (D1 决策)</strong>: <code style="background:var(--canvas-soft); padding:1px 4px; border-radius:2px;">BUY hit ⇔ stock_pct ≥ spy_pct</code>;<code style="background:var(--canvas-soft); padding:1px 4px; border-radius:2px;">AVOID hit ⇔ spy_pct ≥ stock_pct</code>;<code style="background:var(--canvas-soft); padding:1px 4px; border-radius:2px;">WATCH</code> 不进 hit rate 分母,但仍记账(可后续算"WATCH 输 BUY-everything 吗")。</span></div>
+          <div class="row gap-2"><span class="text-accent" style="font-family:'SF Mono',monospace;">4.</span><span><strong>UI 显示逻辑</strong>: 当前 widget 永远显示"entry → now"(实时拉),horizon bar 显示距离 30/90/180d 还差多少天;已到期的 horizon 显示 ✓ hit / ✗ miss + 具体数字。</span></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

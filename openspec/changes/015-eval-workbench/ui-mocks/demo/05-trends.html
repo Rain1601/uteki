@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>Trends · Eval Workbench Demo</title>
+  <link rel="stylesheet" href="_styles.css">
+  <style>
+    .chart-svg { display: block; width: 100%; height: 320px; }
+    .grid-line { stroke: var(--line-soft); stroke-width: 1; }
+    .axis-line { stroke: var(--line-strong); stroke-width: 1; }
+    .axis-label { fill: var(--ink-faint); font-family: "SF Mono", monospace; font-size: 9px; letter-spacing: 0.08em; }
+    .version-line { stroke-dasharray: 3,3; stroke-width: 1; opacity: 0.6; }
+    .version-label { font-family: "SF Mono", monospace; font-size: 9px; letter-spacing: 0.06em; font-weight: 600; }
+    .data-line { fill: none; stroke-width: 2; }
+    .data-dot { stroke: var(--surface-1); stroke-width: 1.5; cursor: pointer; transition: r 0.1s; }
+    .data-dot:hover { r: 7; }
+    .tooltip { position: absolute; background: var(--ink); color: white; padding: 6px 10px; border-radius: var(--r); font-size: 11px; pointer-events: none; opacity: 0; transition: opacity 0.1s; white-space: nowrap; }
+    .legend { display: flex; gap: 16px; flex-wrap: wrap; padding: 12px 16px; border-top: 1px solid var(--line); background: var(--canvas-soft); }
+    .legend-item { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; }
+    .legend-swatch { width: 12px; height: 3px; border-radius: 1px; }
+    .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+    select, button.tab { padding: 4px 10px; font-size: 12px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface-1); color: var(--ink); cursor: pointer; font-family: inherit; }
+    select:hover, button.tab:hover { border-color: var(--ink-muted); }
+    button.tab.active { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <div class="row mb-4" style="justify-content:space-between;">
+      <a href="index.html" class="btn ghost">← back to index</a>
+      <div class="eyebrow">eval-bench · screen 5</div>
+    </div>
+
+    <div class="mb-4">
+      <h1>Trends</h1>
+      <p class="text-soft">日历轴 + 版本颜色分段 + 竖虚线标转换。漂移监控用,不是 v3 vs v4 决策用(那是 <a href="03-compare.html" class="text-accent">A/B Compare</a>)。</p>
+    </div>
+
+    <div class="card mb-4">
+      <div class="controls">
+        <span class="eyebrow">metric</span>
+        <select id="metric-select">
+          <option value="hedge">hedge_phrase_count</option>
+          <option value="watch">WATCH_default_rate</option>
+          <option value="citation">citation_density</option>
+          <option value="structural">structural_pass_rate</option>
+          <option value="cost">tokens_per_run</option>
+        </select>
+
+        <span class="eyebrow" style="margin-left:16px;">skill</span>
+        <select>
+          <option>company_research_pipeline</option>
+          <option>research</option>
+          <option>earnings</option>
+        </select>
+
+        <span class="eyebrow" style="margin-left:16px;">range</span>
+        <button class="tab">7d</button>
+        <button class="tab active">30d</button>
+        <button class="tab">90d</button>
+        <button class="tab">all</button>
+
+        <div class="ml-auto row gap-2">
+          <span class="badge accent">live</span>
+          <span class="text-faint" style="font-size:11px;">refreshed 2 min ago</span>
+        </div>
+      </div>
+
+      <div style="position:relative; padding: 8px 0;">
+        <svg class="chart-svg" viewBox="0 0 800 320" id="chart">
+          <!-- Grid lines -->
+          <g id="grid"></g>
+          <!-- Axes -->
+          <line class="axis-line" x1="60" y1="40" x2="60" y2="270"/>
+          <line class="axis-line" x1="60" y1="270" x2="780" y2="270"/>
+          <!-- Y axis labels -->
+          <text class="axis-label" x="52" y="44" text-anchor="end">3.5</text>
+          <text class="axis-label" x="52" y="98" text-anchor="end">2.5</text>
+          <text class="axis-label" x="52" y="152" text-anchor="end">1.5</text>
+          <text class="axis-label" x="52" y="206" text-anchor="end">0.5</text>
+          <text class="axis-label" x="52" y="274" text-anchor="end">0</text>
+          <!-- Y axis title -->
+          <text class="axis-label" x="20" y="155" text-anchor="middle" transform="rotate(-90 20 155)">hedge phrases / run</text>
+          <!-- Version reference lines -->
+          <g id="version-lines"></g>
+          <!-- Version labels -->
+          <g id="version-labels"></g>
+          <!-- Data segments -->
+          <g id="data-segments"></g>
+          <!-- Data dots -->
+          <g id="data-dots"></g>
+          <!-- X axis labels -->
+          <g id="x-labels"></g>
+        </svg>
+
+        <div class="tooltip" id="tooltip"></div>
+      </div>
+
+      <div class="legend">
+        <span class="eyebrow" style="margin-right:8px;">versions</span>
+        <span class="legend-item"><span class="legend-swatch" style="background:#a8a59a;"></span> v1 · 06/01-04 · n=12</span>
+        <span class="legend-item"><span class="legend-swatch" style="background:#b4842b;"></span> v2 · 06/05-10 · n=18</span>
+        <span class="legend-item"><span class="legend-swatch" style="background:#4a90c2;"></span> v3 · 06/11-16 · n=18</span>
+        <span class="legend-item"><span class="legend-swatch" style="background:#16a34a;"></span> v4 · 06/17-20 · n=12</span>
+        <span class="legend-item"><span class="legend-swatch" style="background:#6b46c1;"></span> v5 · 06/21-26 · n=18 <span class="badge accent">current</span></span>
+      </div>
+    </div>
+
+    <div class="card mb-4">
+      <div class="card-header">
+        <div class="row">
+          <span class="eyebrow">📍 insight · auto-detected</span>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="row mb-2">
+          <span class="badge gain">v3 → v4 transition</span>
+          <span class="text-muted">06/17</span>
+        </div>
+        <p class="text-soft">
+          hedge_phrase_count 在 v3 → v4 转换处出现 <strong>step-change</strong>:
+          从 1.8 平均下降至 0.4(↓78%)。同期 commit <code style="background:var(--canvas-soft); padding:2px 4px; border-radius:2px;">256f258</code>
+          引入了"反 hedge"约束(Anthropic 模式 #11)。
+        </p>
+        <div class="row mt-4 gap-2">
+          <button class="btn ghost">View v3 → v4 prompt diff →</button>
+          <button class="btn ghost">Open A/B Compare →</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="row">
+          <span class="eyebrow">📍 anomaly · 06/24</span>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="row mb-2">
+          <span class="badge warn">v5 mid-version uptick</span>
+          <span class="text-muted">06/24 同版本内异常</span>
+        </div>
+        <p class="text-soft">
+          v5 在 06/24 当天 hedge 平均跳到 <span class="numeric">0.5</span>(v5 平均 0.3)。
+          没有 prompt 变更,可能是 query 分布异常 / 上游数据源短暂 down /
+          DeepSeek 当天采样温度异常。建议在 <a href="#" class="text-accent">/runs?date=2026-06-24</a> 排查具体 run。
+        </p>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // Mock data: 26 days × 5 versions, with realistic noise
+    const DATA = {
+      hedge: [
+        // v1 06/01-04
+        {day: '06/01', v: 'v1', val: 2.8}, {day: '06/02', v: 'v1', val: 3.1},
+        {day: '06/03', v: 'v1', val: 2.6}, {day: '06/04', v: 'v1', val: 2.9},
+        // v2 06/05-10
+        {day: '06/05', v: 'v2', val: 2.5}, {day: '06/06', v: 'v2', val: 2.3},
+        {day: '06/07', v: 'v2', val: 2.6}, {day: '06/08', v: 'v2', val: 2.4},
+        {day: '06/09', v: 'v2', val: 2.2}, {day: '06/10', v: 'v2', val: 2.4},
+        // v3 06/11-16
+        {day: '06/11', v: 'v3', val: 1.9}, {day: '06/12', v: 'v3', val: 2.0},
+        {day: '06/13', v: 'v3', val: 1.7}, {day: '06/14', v: 'v3', val: 1.8},
+        {day: '06/15', v: 'v3', val: 1.6}, {day: '06/16', v: 'v3', val: 1.8},
+        // v4 06/17-20
+        {day: '06/17', v: 'v4', val: 0.5}, {day: '06/18', v: 'v4', val: 0.3},
+        {day: '06/19', v: 'v4', val: 0.4}, {day: '06/20', v: 'v4', val: 0.4},
+        // v5 06/21-26
+        {day: '06/21', v: 'v5', val: 0.3}, {day: '06/22', v: 'v5', val: 0.2},
+        {day: '06/23', v: 'v5', val: 0.4}, {day: '06/24', v: 'v5', val: 0.5},
+        {day: '06/25', v: 'v5', val: 0.3}, {day: '06/26', v: 'v5', val: 0.2},
+      ]
+    };
+
+    const VERSION_COLORS = {
+      v1: '#a8a59a',
+      v2: '#b4842b',
+      v3: '#4a90c2',
+      v4: '#16a34a',
+      v5: '#6b46c1',
+    };
+
+    const VERSION_TRANSITIONS = ['06/05', '06/11', '06/17', '06/21'];
+
+    function render() {
+      const data = DATA.hedge;
+      const PLOT_X0 = 60, PLOT_X1 = 780;
+      const PLOT_Y0 = 40, PLOT_Y1 = 270;
+      const PLOT_W = PLOT_X1 - PLOT_X0;
+      const PLOT_H = PLOT_Y1 - PLOT_Y0;
+      const Y_MAX = 3.5, Y_MIN = 0;
+
+      const xStep = PLOT_W / (data.length - 1);
+      const yFor = (val) => PLOT_Y1 - ((val - Y_MIN) / (Y_MAX - Y_MIN)) * PLOT_H;
+      const xFor = (i) => PLOT_X0 + i * xStep;
+
+      // grid horizontal
+      const grid = document.getElementById('grid');
+      [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5].forEach(y => {
+        const lineY = yFor(y);
+        grid.innerHTML += `<line class="grid-line" x1="${PLOT_X0}" y1="${lineY}" x2="${PLOT_X1}" y2="${lineY}"/>`;
+      });
+
+      // x labels (every 4 days)
+      const xLabels = document.getElementById('x-labels');
+      data.forEach((d, i) => {
+        if (i === 0 || i % 4 === 3 || i === data.length - 1) {
+          xLabels.innerHTML += `<text class="axis-label" x="${xFor(i)}" y="285" text-anchor="middle">${d.day}</text>`;
+        }
+      });
+
+      // version reference lines + labels
+      const vLines = document.getElementById('version-lines');
+      const vLabels = document.getElementById('version-labels');
+      VERSION_TRANSITIONS.forEach(td => {
+        const idx = data.findIndex(d => d.day === td);
+        if (idx === -1) return;
+        const x = xFor(idx);
+        const nextV = data[idx].v;
+        const color = VERSION_COLORS[nextV];
+        vLines.innerHTML += `<line class="version-line" x1="${x}" y1="${PLOT_Y0}" x2="${x}" y2="${PLOT_Y1}" stroke="${color}"/>`;
+        vLabels.innerHTML += `<text class="version-label" x="${x + 4}" y="${PLOT_Y0 + 12}" fill="${color}">→ ${nextV}</text>`;
+      });
+
+      // data segments — break at version boundaries, color per version
+      const segments = document.getElementById('data-segments');
+      let currentV = data[0].v;
+      let segStart = 0;
+      for (let i = 1; i <= data.length; i++) {
+        if (i === data.length || data[i].v !== currentV) {
+          const slice = data.slice(segStart, i);
+          const points = slice.map((d, j) => `${xFor(segStart + j)},${yFor(d.val)}`).join(' ');
+          const color = VERSION_COLORS[currentV];
+          segments.innerHTML += `<polyline class="data-line" points="${points}" stroke="${color}"/>`;
+          if (i < data.length) {
+            // connector line (dashed,transition arrow effect)
+            const x1 = xFor(i - 1), y1 = yFor(data[i - 1].val);
+            const x2 = xFor(i), y2 = yFor(data[i].val);
+            const oldColor = VERSION_COLORS[currentV];
+            const newColor = VERSION_COLORS[data[i].v];
+            segments.innerHTML += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${oldColor}" stroke-width="2" stroke-dasharray="2,2" opacity="0.4"/>`;
+            currentV = data[i].v;
+            segStart = i;
+          }
+        }
+      }
+
+      // data dots with hover
+      const dots = document.getElementById('data-dots');
+      data.forEach((d, i) => {
+        const color = VERSION_COLORS[d.v];
+        dots.innerHTML += `<circle class="data-dot" cx="${xFor(i)}" cy="${yFor(d.val)}" r="4.5" fill="${color}" data-i="${i}"/>`;
+      });
+
+      // tooltip wiring
+      const tooltip = document.getElementById('tooltip');
+      document.querySelectorAll('.data-dot').forEach(dot => {
+        dot.addEventListener('mouseenter', e => {
+          const i = +e.target.getAttribute('data-i');
+          const d = data[i];
+          const rect = e.target.getBoundingClientRect();
+          tooltip.innerHTML = `<strong>${d.v}</strong> · ${d.day}<br>${(Math.random() * 4 + 5 | 0)} runs · hedge = <strong>${d.val.toFixed(1)}</strong>`;
+          tooltip.style.left = (rect.left + window.scrollX + 8) + 'px';
+          tooltip.style.top = (rect.top + window.scrollY - 36) + 'px';
+          tooltip.style.opacity = '1';
+        });
+        dot.addEventListener('mouseleave', () => { tooltip.style.opacity = '0'; });
+      });
+    }
+
+    render();
+  </script>
+</body>
+</html>

@@ -273,6 +273,56 @@ export async function setRunFeedback(
   return r.json();
 }
 
+// ── 015 PR ε MVP · Backtest widget data ────────────────────────────────
+
+export interface PredictionHorizon {
+  horizon_days: number;
+  due_at: number;
+  days_remaining: number;
+  outcome: {
+    price?: number;
+    spy_price?: number;
+    stock_pct?: number;
+    spy_pct?: number;
+    hit?: boolean;
+    scored_at?: number;
+  } | null;
+}
+
+export interface RunPrediction {
+  run_id: string;
+  ticker: string;
+  action: "BUY" | "WATCH" | "AVOID" | string;
+  conviction: number;
+  quality_verdict: string | null;
+  t0: number;
+  t0_price: number | null;
+  t0_currency: string;
+  now_price: number | null;
+  spy_now_price: number | null;
+  spy_t0_price: number | null;
+  stock_pct: number | null;
+  spy_pct: number | null;
+  relative_pct: number | null;
+  horizons: PredictionHorizon[];
+}
+
+/** GET backtest data for a run. 404 if the run doesn't have a verdict
+ *  (skill not predictive) or if final-verdict.json was missing at finish. */
+export async function getRunPrediction(runId: string): Promise<RunPrediction> {
+  const r = await authedFetch(`${API_BASE}/api/runs/${runId}/prediction`, {
+    cache: "no-store",
+  });
+  if (!r.ok) {
+    if (r.status === 404) {
+      throw new Error("no-prediction");
+    }
+    const detail = await r.text().catch(() => "");
+    throw new Error(detail || `getRunPrediction failed: ${r.status}`);
+  }
+  return r.json();
+}
+
 export interface AgentInfo {
   name: string;
   description: string;

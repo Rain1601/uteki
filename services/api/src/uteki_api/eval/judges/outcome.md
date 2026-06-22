@@ -3,8 +3,8 @@ name: outcome
 applies_to: ["research", "company_research_pipeline"]
 pass_threshold: 7
 judge_model_preference:
-  - aihubmix/claude-opus-4-5-20250929
-  - aihubmix/claude-sonnet-4-5-20250929
+  - aihubmix/claude-opus-4-8
+  - aihubmix/claude-sonnet-4-6
   - openrouter/openai/gpt-5
   - deepseek/deepseek-reasoner
 ---

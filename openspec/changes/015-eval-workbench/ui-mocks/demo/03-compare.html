@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>A/B Compare · Eval Workbench Demo</title>
+  <link rel="stylesheet" href="_styles.css">
+  <style>
+    .matrix-group { padding: 12px 0; border-bottom: 1px solid var(--line-soft); }
+    .matrix-group:last-child { border-bottom: 0; }
+    .matrix-group-title { font-family: "SF Mono", monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-faint); padding: 0 16px 6px; }
+    .matrix-row { display: grid; grid-template-columns: 1.7fr 1fr 1fr 1fr 0.8fr; align-items: center; padding: 6px 16px; gap: 16px; font-size: 12px; }
+    .matrix-row:hover { background: var(--canvas-soft); }
+    .matrix-row .label { color: var(--ink-soft); }
+    .matrix-row .v { font-family: "SF Mono", monospace; font-variant-numeric: tabular-nums; color: var(--ink); }
+    .matrix-row .delta { font-family: "SF Mono", monospace; font-variant-numeric: tabular-nums; font-weight: 600; }
+    .matrix-row .verdict { text-align: right; }
+    .arrow-up::before { content: "⬆ "; }
+    .arrow-down::before { content: "⬇ "; }
+    .arrow-flat::before { content: "─ "; }
+    .query-row { cursor: pointer; }
+    .query-row.expanded { background: var(--accent-soft); }
+    .query-drill { padding: 16px; background: var(--canvas-soft); border-top: 1px solid var(--line); display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .query-drill h4 { font-family: "Times New Roman", Georgia, serif; font-style: italic; font-size: 14px; color: var(--ink); margin-bottom: 6px; }
+    .query-drill .col-card { background: var(--surface-1); border: 1px solid var(--line); border-radius: var(--r); padding: 12px; }
+    .query-drill pre { font-family: "SF Mono", monospace; font-size: 11px; color: var(--ink-soft); white-space: pre-wrap; line-height: 1.5; max-height: 200px; overflow-y: auto; }
+    .hedge-highlight { background: color-mix(in srgb, var(--loss) 25%, transparent); padding: 0 2px; border-radius: 2px; }
+    .decision-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+    .decision-card { border: 1px solid var(--line); border-radius: var(--r-lg); padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+    .decision-card.primary { border-color: var(--accent); background: var(--accent-soft); }
+    .decision-card.danger { border-color: color-mix(in srgb, var(--loss) 40%, transparent); }
+    .decision-card .title { font-weight: 600; font-size: 13px; }
+    .decision-card .note { color: var(--ink-muted); font-size: 11px; line-height: 1.5; }
+    .decision-card .btn { align-self: flex-start; margin-top: auto; }
+    .progress-bar { height: 8px; background: var(--canvas-soft); border-radius: 4px; overflow: hidden; }
+    .progress-bar-fill { height: 100%; background: var(--accent); transition: width 0.3s; }
+  </style>
+</head>
+<body>
+  <div class="container" style="max-width:1400px;">
+
+    <div class="row mb-4" style="justify-content:space-between;">
+      <a href="index.html" class="btn ghost">← back to index</a>
+      <div class="eyebrow">eval-bench · screen 3 · core</div>
+    </div>
+
+    <!-- Header -->
+    <div class="mb-4">
+      <h1>A/B Compare · mega-cap baseline</h1>
+      <div class="row mt-2" style="gap:24px;">
+        <div class="col" style="gap:2px;">
+          <span class="eyebrow">skill</span>
+          <span class="font-mono">company_research_pipeline</span>
+        </div>
+        <div class="col" style="gap:2px;">
+          <span class="eyebrow">baseline</span>
+          <span class="font-mono">v3 <span class="text-faint">(signed 06/15)</span></span>
+        </div>
+        <div class="col" style="gap:2px;">
+          <span class="eyebrow">candidate</span>
+          <span class="font-mono">v4 <span class="text-faint">(hash a3c7…)</span></span>
+        </div>
+        <div class="col" style="gap:2px;">
+          <span class="eyebrow">mode</span>
+          <span class="font-mono">A · quality · N=3</span>
+        </div>
+        <div class="col ml-auto" style="gap:2px; align-items:flex-end;">
+          <div class="row gap-2">
+            <span class="badge gain">done</span>
+            <span class="text-muted" style="font-size:11px;">52min · $14.85 · 60 child runs</span>
+          </div>
+          <div class="row gap-2 mt-2">
+            <button class="btn">View raw runs</button>
+            <button class="btn">Re-run</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main matrix card -->
+    <div class="card mb-4">
+      <div class="card-header">
+        <div class="row">
+          <span class="eyebrow">5-dimension matrix · 13 metrics</span>
+          <span class="ml-auto text-faint" style="font-size:11px;">n=30 per side · median aggregation</span>
+        </div>
+      </div>
+
+      <div>
+        <!-- Column headers -->
+        <div class="matrix-row" style="border-bottom:1px solid var(--line); padding:8px 16px;">
+          <span class="eyebrow">dimension</span>
+          <span class="eyebrow">v3 (old)</span>
+          <span class="eyebrow">v4 (new)</span>
+          <span class="eyebrow">Δ</span>
+          <span class="eyebrow verdict">verdict</span>
+        </div>
+
+        <!-- STRUCTURAL -->
+        <div class="matrix-group">
+          <div class="matrix-group-title">structural</div>
+          <div class="matrix-row"><span class="label">gate completeness</span><span class="v">8.7 / 10</span><span class="v">9.8 / 10</span><span class="delta text-gain arrow-up">+12.6%</span><span class="verdict"><span class="badge gain">pass</span></span></div>
+          <div class="matrix-row"><span class="label">word floor adherence</span><span class="v">62%</span><span class="v">95%</span><span class="delta text-gain arrow-up">+33pp</span><span class="verdict"><span class="badge gain">pass</span></span></div>
+          <div class="matrix-row"><span class="label">sources policy coverage</span><span class="v">71%</span><span class="v">92%</span><span class="delta text-gain arrow-up">+21pp</span><span class="verdict"><span class="badge gain">pass</span></span></div>
+        </div>
+
+        <!-- BEHAVIORAL -->
+        <div class="matrix-group">
+          <div class="matrix-group-title">behavioral</div>
+          <div class="matrix-row"><span class="label">hedge phrases / run</span><span class="v">2.4</span><span class="v">0.3</span><span class="delta text-gain arrow-up">-88%</span><span class="verdict"><span class="badge gain">pass</span></span></div>
+          <div class="matrix-row"><span class="label">banned addons / run</span><span class="v">1.1</span><span class="v">0.0</span><span class="delta text-gain arrow-up">-100%</span><span class="verdict"><span class="badge gain">pass</span></span></div>
+          <div class="matrix-row"><span class="label">WATCH default rate</span><span class="v">60%</span><span class="v">35%</span><span class="delta text-gain arrow-up">-25pp</span><span class="verdict"><span class="badge gain">pass</span></span></div>
+          <div class="matrix-row"><span class="label">verdict trigger present</span><span class="v">20%</span><span class="v">70%</span><span class="delta text-gain arrow-up">+50pp</span><span class="verdict"><span class="badge gain">pass</span></span></div>
+        </div>
+
+        <!-- CITATION -->
+        <div class="matrix-group">
+          <div class="matrix-group-title">citation</div>
+          <div class="matrix-row"><span class="label">density per gate</span><span class="v">22.5</span><span class="v">42.3</span><span class="delta text-gain arrow-up">+88%</span><span class="verdict"><span class="badge gain">pass</span></span></div>
+          <div class="matrix-row"><span class="label">tier-1 src share</span><span class="v">54%</span><span class="v">61%</span><span class="delta text-gain arrow-up">+7pp</span><span class="verdict"><span class="badge gain">pass</span></span></div>
+          <div class="matrix-row"><span class="label">[src:none] rate</span><span class="v">18%</span><span class="v">12%</span><span class="delta text-gain arrow-up">-6pp</span><span class="verdict"><span class="badge gain">pass</span></span></div>
+        </div>
+
+        <!-- LLM RUBRIC -->
+        <div class="matrix-group">
+          <div class="matrix-group-title">llm rubric (cross-family judge: anthropic/claude-sonnet)</div>
+          <div class="matrix-row"><span class="label">information density</span><span class="v">3.4 / 5</span><span class="v">4.1 / 5</span><span class="delta text-gain arrow-up">+0.7</span><span class="verdict"><span class="badge gain">pass</span></span></div>
+          <div class="matrix-row"><span class="label">argument strength</span><span class="v">3.1 / 5</span><span class="v">3.9 / 5</span><span class="delta text-gain arrow-up">+0.8</span><span class="verdict"><span class="badge gain">pass</span></span></div>
+          <div class="matrix-row"><span class="label">actionability</span><span class="v">2.9 / 5</span><span class="v">4.0 / 5</span><span class="delta text-gain arrow-up">+1.1</span><span class="verdict"><span class="badge gain">pass</span></span></div>
+          <div class="matrix-row"><span class="label">internal consistency</span><span class="v">3.8 / 5</span><span class="v">4.2 / 5</span><span class="delta text-gain arrow-up">+0.4</span><span class="verdict"><span class="badge gain">pass</span></span></div>
+        </div>
+
+        <!-- COST -->
+        <div class="matrix-group">
+          <div class="matrix-group-title">cost</div>
+          <div class="matrix-row"><span class="label">tokens / run</span><span class="v">18.4K</span><span class="v">23.1K</span><span class="delta text-loss arrow-down">+26%</span><span class="verdict"><span class="badge warn">regr</span></span></div>
+          <div class="matrix-row"><span class="label">$ / run</span><span class="v">$0.18</span><span class="v">$0.23</span><span class="delta text-loss arrow-down">+28%</span><span class="verdict"><span class="badge warn">regr</span></span></div>
+          <div class="matrix-row"><span class="label">wall_time / run</span><span class="v">184s</span><span class="v">236s</span><span class="delta text-loss arrow-down">+28%</span><span class="verdict"><span class="badge warn">regr</span></span></div>
+        </div>
+
+        <!-- BACKTEST -->
+        <div class="matrix-group">
+          <div class="matrix-group-title">backtest (carry-over)</div>
+          <div class="matrix-row"><span class="label">30d hit rate</span><span class="v">55% <span class="text-faint">(n=20)</span></span><span class="v text-muted">[pending]</span><span class="delta text-faint arrow-flat">—</span><span class="verdict"><span class="badge">wait</span></span></div>
+          <div class="matrix-row"><span class="label">180d hit rate</span><span class="v">62% <span class="text-faint">(n=8)</span></span><span class="v text-muted">[pending]</span><span class="delta text-faint arrow-flat">—</span><span class="verdict"><span class="badge">wait</span></span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Per-query table -->
+    <div class="card mb-4">
+      <div class="card-header">
+        <div class="row">
+          <span class="eyebrow">per-query verdicts · click row to drill into v3 vs v4 side-by-side</span>
+          <span class="ml-auto text-faint" style="font-size:11px;">28/30 deterministic · 2 unstable</span>
+        </div>
+      </div>
+      <div>
+        <table>
+          <thead>
+            <tr>
+              <th>ticker</th>
+              <th>question</th>
+              <th>v3 action · conv</th>
+              <th>v4 action · conv</th>
+              <th style="text-align:right;">change</th>
+            </tr>
+          </thead>
+          <tbody id="query-tbody">
+            <tr class="query-row" data-ticker="GOOGL"><td class="font-mono" style="font-weight:600;">GOOGL</td><td class="text-muted">long-term value</td><td class="v">WATCH · 0.45</td><td class="v">WATCH · 0.55</td><td style="text-align:right;" class="text-faint">─</td></tr>
+            <tr class="query-row" data-ticker="NVDA" data-drill="1"><td class="font-mono" style="font-weight:600;">NVDA ▸</td><td class="text-muted">long-term value</td><td class="v">WATCH · 0.40</td><td class="v text-gain"><strong>BUY · 0.80</strong></td><td style="text-align:right;" class="text-gain">⬆⬆</td></tr>
+            <tr class="query-row" data-ticker="TSLA"><td class="font-mono" style="font-weight:600;">TSLA</td><td class="text-muted">long-term value</td><td class="v">WATCH · 0.30</td><td class="v">WATCH · 0.30</td><td style="text-align:right;" class="text-faint">─</td></tr>
+            <tr class="query-row" data-ticker="AAPL"><td class="font-mono" style="font-weight:600;">AAPL</td><td class="text-muted">long-term value</td><td class="v">BUY · 0.65 <span class="badge warn" style="margin-left:4px;">unstable v4</span></td><td class="v">BUY · 0.70</td><td style="text-align:right;" class="text-gain">⬆</td></tr>
+            <tr class="query-row" data-ticker="MSFT"><td class="font-mono" style="font-weight:600;">MSFT</td><td class="text-muted">long-term value</td><td class="v">BUY · 0.60</td><td class="v">BUY · 0.65</td><td style="text-align:right;" class="text-gain">⬆</td></tr>
+            <tr class="query-row" data-ticker="META"><td class="font-mono" style="font-weight:600;">META</td><td class="text-muted">long-term value</td><td class="v">WATCH · 0.50</td><td class="v text-gain"><strong>BUY · 0.65</strong></td><td style="text-align:right;" class="text-gain">⬆⬆</td></tr>
+            <tr class="query-row" data-ticker="AMZN"><td class="font-mono" style="font-weight:600;">AMZN</td><td class="text-muted">long-term value</td><td class="v">WATCH · 0.45</td><td class="v">WATCH · 0.55</td><td style="text-align:right;" class="text-faint">─</td></tr>
+            <tr class="query-row" data-ticker="AMD"><td class="font-mono" style="font-weight:600;">AMD</td><td class="text-muted">long-term value</td><td class="v">WATCH · 0.35 <span class="badge warn" style="margin-left:4px;">unstable v3</span></td><td class="v">WATCH · 0.45</td><td style="text-align:right;" class="text-faint">─</td></tr>
+            <tr class="query-row" data-ticker="AVGO"><td class="font-mono" style="font-weight:600;">AVGO</td><td class="text-muted">long-term value</td><td class="v">BUY · 0.55</td><td class="v">BUY · 0.65</td><td style="text-align:right;" class="text-gain">⬆</td></tr>
+            <tr class="query-row" data-ticker="NFLX"><td class="font-mono" style="font-weight:600;">NFLX</td><td class="text-muted">long-term value</td><td class="v">AVOID · 0.50</td><td class="v">AVOID · 0.65</td><td style="text-align:right;" class="text-gain">⬆</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Summary card -->
+    <div class="card mb-6">
+      <div class="card-body">
+        <h3>summary</h3>
+        <div class="col mt-2 gap-2">
+          <div class="row gap-2"><span class="text-gain">✓</span><span>13 / 13 quality dimensions improved or held</span></div>
+          <div class="row gap-2"><span class="text-gain">✓</span><span>0 hedge regressions</span></div>
+          <div class="row gap-2"><span class="text-warn">⚠</span><span>Cost regression +28% — driven by longer Analysis sections <em class="text-muted">(acceptable: word floors are the cause)</em></span></div>
+          <div class="row gap-2"><span class="text-muted">─</span><span class="text-muted">Backtest data carry-over from v3, v4 not yet matured</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Decision -->
+    <div class="card mb-6">
+      <div class="card-header">
+        <span class="eyebrow">decision · 反模式守则:任何 prompt 改动必须人工确认</span>
+      </div>
+      <div class="card-body">
+        <div class="decision-row">
+          <div class="decision-card primary">
+            <div class="title">✓ Approve v4 → ship to prod</div>
+            <div class="note">写 metrics_summary.approved_by = you · 不自动 deploy(只登记决定),你还需 `git push` 才能上 prod。</div>
+            <button class="btn primary" id="approve-btn">Approve v4</button>
+          </div>
+          <div class="decision-card danger">
+            <div class="title">✗ Reject · keep v3</div>
+            <div class="note">写 metrics_summary.rejected_by + 必填 reason 字段。需自己 git revert 还原 prompt 文件。</div>
+            <button class="btn danger">Reject v4</button>
+          </div>
+          <div class="decision-card">
+            <div class="title">⟳ Hold · re-run with seed 42</div>
+            <div class="note">N=3 跑出不同结果时用 — 加固定 seed 再跑一次,看是否真稳定。新建一个 BenchmarkRun row。</div>
+            <button class="btn">Re-run w/ seed</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Drill-down template -->
+  <template id="drill-template">
+    <tr class="drill-tr"><td colspan="5" style="padding:0;">
+      <div class="query-drill">
+        <div class="col-card">
+          <h4>v3 · WATCH · conv 0.40</h4>
+          <div class="text-muted mb-2" style="font-size:11px;">median run · 16K tokens · 178s</div>
+          <pre>verdict.one_sentence:
+NVDA 业务质量良好但估值偏高,
+<span class="hedge-highlight">综合考虑</span>后暂时观望,
+<span class="hedge-highlight">需进一步关注</span> AI 投资回报。
+[src:none]
+
+gate-02-fisher_qa.total: 72 / 150
+  Q4 销售组织: 0 · "缺乏数据支撑"
+  Q7 劳资:    0 · "缺乏数据支撑"
+  Q14 沟通:   0 · "缺乏数据支撑"
+
+gate-04-management Gate conclusion:
+"<span class="hedge-highlight">综合判断</span>需进一步关注
+管理层信号..."(无触发条件)
+          </pre>
+        </div>
+        <div class="col-card" style="border-color:var(--gain); background:color-mix(in srgb, var(--gain) 4%, transparent);">
+          <h4>v4 · BUY · conv 0.80</h4>
+          <div class="text-muted mb-2" style="font-size:11px;">median run · 20K tokens · 232s</div>
+          <pre>verdict.one_sentence:
+NVDA 在 AI 加速计算赛道拥有
+最宽护城河,当前 32.3 倍 PE 已
+反映乐观预期...通过 4% 初始
+仓位 + 严格风险预算管理。
+[src:21][src:4][src:6]
+
+gate-02-fisher_qa.total: 108 / 150
+  Q4 销售组织: 5 · 174字详细分析
+  Q7 劳资:    6 · 已查 insider_trading
+  Q14 沟通:   5 · 用毛利率轨迹反推
+
+gate-04-management Gate conclusion:
+"管理层综合评分 8.5/10,当 CEO
+黄仁勋在无明确继任者情况下宣布
+退休...应下调至 NEUTRAL。本维度
+评级 PASS"
+          </pre>
+        </div>
+      </div>
+    </td></tr>
+  </template>
+
+  <script>
+    document.querySelectorAll('.query-row').forEach(row => {
+      row.addEventListener('click', () => {
+        const ticker = row.getAttribute('data-ticker');
+        const existingDrill = row.nextElementSibling;
+        if (existingDrill && existingDrill.classList.contains('drill-tr')) {
+          existingDrill.remove();
+          row.classList.remove('expanded');
+          return;
+        }
+        if (row.getAttribute('data-drill') === '1') {
+          const template = document.getElementById('drill-template');
+          const clone = template.content.cloneNode(true);
+          row.parentNode.insertBefore(clone, row.nextSibling);
+          row.classList.add('expanded');
+        } else {
+          alert(`drill-down for ${ticker} would show v3 vs v4 side-by-side here (only NVDA wired in demo).`);
+        }
+      });
+    });
+
+    document.getElementById('approve-btn').addEventListener('click', () => {
+      if (confirm('Approve v4? This writes metrics_summary.approved_by and does NOT auto-deploy.')) {
+        alert('In real impl: PATCH /api/admin/eval/runs/<id>/decision');
+      }
+    });
+  </script>
+</body>
+</html>

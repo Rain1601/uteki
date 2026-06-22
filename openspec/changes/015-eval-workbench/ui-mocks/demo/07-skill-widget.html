@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>Prompt Change Widget · Eval Workbench Demo</title>
+  <link rel="stylesheet" href="_styles.css">
+  <style>
+    .skill-page-wrap { background: var(--canvas); padding: 32px; border: 1px dashed var(--line-strong); border-radius: var(--r-lg); margin-top: 16px; }
+    .skill-page-wrap::before { content: "→ /skills/company_research_pipeline (existing page)"; display: block; font-family: "SF Mono", monospace; font-size: 10px; color: var(--ink-faint); margin-bottom: 16px; letter-spacing: 0.08em; }
+
+    .skill-header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 24px; }
+    .skill-name { font-family: "Times New Roman", Georgia, serif; font-style: italic; font-size: 32px; color: var(--ink); }
+    .version-history-row { display: grid; grid-template-columns: 80px 100px 1fr 100px; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--line-soft); align-items: center; }
+
+    /* THE WIDGET */
+    .prompt-widget {
+      display: flex; align-items: center; gap: 12px;
+      padding: 14px 16px;
+      border: 1px solid var(--warn);
+      background: linear-gradient(to right, color-mix(in srgb, var(--warn) 8%, transparent), color-mix(in srgb, var(--warn) 3%, transparent));
+      border-radius: var(--r-lg);
+      margin-bottom: 24px;
+    }
+    .prompt-widget.verified {
+      border-color: var(--gain);
+      background: linear-gradient(to right, color-mix(in srgb, var(--gain) 8%, transparent), color-mix(in srgb, var(--gain) 2%, transparent));
+    }
+    .prompt-widget .icon { font-size: 18px; }
+    .prompt-widget .content { flex: 1; }
+    .prompt-widget .title { font-weight: 600; font-size: 13px; color: var(--ink); }
+    .prompt-widget .meta { font-size: 11px; color: var(--ink-muted); margin-top: 2px; }
+    .prompt-widget .actions { display: flex; gap: 6px; flex-shrink: 0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <div class="row mb-4" style="justify-content:space-between;">
+      <a href="index.html" class="btn ghost">← back to index</a>
+      <div class="eyebrow">eval-bench · widget · embeds on /skills/[name]</div>
+    </div>
+
+    <div class="mb-6">
+      <h1>Prompt change widget</h1>
+      <p class="text-soft">挂在 <code style="background:var(--canvas-soft); padding:2px 6px; border-radius:2px;">/skills/[name]</code> 主页顶部。
+      EvolutionStore 检测到 prompt hash 变化 → widget 显示 "unverified" 状态 + 一键跑 bench。
+      <strong>不强制</strong>(尊重你的"轻起步"决定 D2),只是提醒和入口。</p>
+    </div>
+
+    <!-- Three widget states -->
+
+    <div class="mb-2">
+      <span class="eyebrow">state 1 · current 默认状态(v4 unverified)</span>
+    </div>
+    <div class="skill-page-wrap">
+      <div class="skill-header">
+        <span class="skill-name">company_research_pipeline</span>
+        <span class="badge accent">v4</span>
+        <span class="text-muted" style="font-size:12px;">7-gate company research pipeline · DeepSeek</span>
+      </div>
+
+      <!-- WIDGET (unverified) -->
+      <div class="prompt-widget">
+        <span class="icon">⚠</span>
+        <div class="content">
+          <div class="title">v3 → v4 unverified</div>
+          <div class="meta">
+            prompt hash changed 6h ago(<code style="background:var(--canvas-soft); padding:1px 4px; font-size:10px;">a3c7…</code>) ·
+            commit <code style="background:var(--canvas-soft); padding:1px 4px; font-size:10px;">256f258</code> +5 后续 ·
+            <span class="text-soft">改完没跑过 eval-bench,效果未知</span>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn" style="font-size:11px;">Run smoke <span class="text-faint" style="margin-left:4px;">~5min · $2.5</span></button>
+          <button class="btn primary" style="font-size:11px;">Run quality bench <span style="margin-left:4px; opacity:0.8;">~50min · $15</span></button>
+          <button class="btn ghost" style="font-size:11px;" title="跳过 — 标记为'已知未验证'">Skip</button>
+        </div>
+      </div>
+      <!-- /WIDGET -->
+
+      <div class="text-faint" style="font-size:11px; padding: 16px; background:var(--canvas-soft); border-radius:var(--r); font-family: monospace;">
+        ↓ 下面是 /skills/[name] 既有内容(VERSION / MODEL / TOOLS cards + recent runs + version history)…
+      </div>
+    </div>
+
+
+    <div class="mb-2 mt-8">
+      <span class="eyebrow">state 2 · 已验证 approved 状态</span>
+    </div>
+    <div class="skill-page-wrap">
+      <div class="skill-header">
+        <span class="skill-name">research</span>
+        <span class="badge accent">v3</span>
+        <span class="text-muted" style="font-size:12px;">industry/theme research pipeline · Claude Sonnet</span>
+      </div>
+
+      <!-- WIDGET (verified) -->
+      <div class="prompt-widget verified">
+        <span class="icon">✓</span>
+        <div class="content">
+          <div class="title">v2 → v3 verified · approved 2d ago</div>
+          <div class="meta">
+            quality bench passed 13/13 metrics · approved by demo@local ·
+            <a href="03-compare.html" class="text-accent">view A/B compare →</a>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn ghost" style="font-size:11px;">Re-run bench</button>
+        </div>
+      </div>
+      <!-- /WIDGET -->
+
+      <div class="text-faint" style="font-size:11px; padding: 16px; background:var(--canvas-soft); border-radius:var(--r); font-family: monospace;">
+        ↓ 既有内容…
+      </div>
+    </div>
+
+
+    <div class="mb-2 mt-8">
+      <span class="eyebrow">state 3 · 跑动中(running)状态</span>
+    </div>
+    <div class="skill-page-wrap">
+      <div class="skill-header">
+        <span class="skill-name">earnings</span>
+        <span class="badge accent">v2</span>
+        <span class="text-muted" style="font-size:12px;">earnings call analysis · DeepSeek</span>
+      </div>
+
+      <!-- WIDGET (running) -->
+      <div class="prompt-widget" style="border-color:var(--accent-line); background:linear-gradient(to right, var(--accent-soft), color-mix(in srgb, var(--accent-soft) 30%, transparent));">
+        <span class="icon" style="color:var(--accent);">⏳</span>
+        <div class="content">
+          <div class="title" style="color:var(--accent);">quality bench running · v1 → v2</div>
+          <div class="meta">
+            18m 24s elapsed · 37/60 child runs · ETA 30m · spent $9.25 of ~$15 budget
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn" style="font-size:11px;">View progress →</button>
+          <button class="btn danger" style="font-size:11px;">Cancel</button>
+        </div>
+      </div>
+      <!-- /WIDGET -->
+
+      <div class="text-faint" style="font-size:11px; padding: 16px; background:var(--canvas-soft); border-radius:var(--r); font-family: monospace;">
+        ↓ 既有内容…
+      </div>
+    </div>
+
+
+    <div class="card mt-8">
+      <div class="card-header">
+        <span class="eyebrow">how the widget detects unverified state</span>
+      </div>
+      <div class="card-body">
+        <div class="col gap-2 text-soft">
+          <div class="row gap-2"><span class="text-accent font-mono">1.</span><span><strong>EvolutionStore</strong> 已经在 hash prompt 文件(guardrails.md + SKILL.md + references),版本变化时 auto-bump。这是 015 之前就有的能力。</span></div>
+          <div class="row gap-2"><span class="text-accent font-mono">2.</span><span>015 在 <code style="background:var(--canvas-soft); padding:1px 4px;">BenchmarkRun.metrics_summary</code> 加 <code style="background:var(--canvas-soft); padding:1px 4px;">approved_by</code> / <code style="background:var(--canvas-soft); padding:1px 4px;">rejected_by</code> 字段。</span></div>
+          <div class="row gap-2"><span class="text-accent font-mono">3.</span><span>Widget 逻辑:当前 prod skill version 是否有 BenchmarkRun 标 <code style="background:var(--canvas-soft); padding:1px 4px;">approved_by != null</code>?<br>→ 有 → 显示 verified state<br>→ 没有 → 显示 unverified state(+ 显示跑 bench 按钮)<br>→ 当前在跑 → 显示 running state</span></div>
+          <div class="row gap-2"><span class="text-accent font-mono">4.</span><span><strong>"Skip" 按钮</strong>:写一个特殊的 BenchmarkRun row(mode=skip),记录"用户明确表示不验证"。Widget 不再提醒。可后续撤销。</span></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

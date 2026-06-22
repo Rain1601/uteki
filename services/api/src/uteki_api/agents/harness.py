@@ -418,6 +418,20 @@ class AgentHarness:
                 "judge dispatch failed for run_id=%s", run_id
             )
 
+        # 015 PR ε — fire-and-forget post-run prediction recorder.
+        # Reads final-verdict.json + snapshots market price, writes a
+        # Prediction row for ground-truth backtest later. Same defense
+        # contract as the judge dispatcher: never raise into harness.
+        try:
+            from uteki_api.eval.prediction_dispatcher import default_prediction_dispatcher
+
+            asyncio.create_task(default_prediction_dispatcher.record(run_id))
+        except Exception:  # noqa: BLE001
+            import logging
+            logging.getLogger(__name__).exception(
+                "prediction dispatch failed for run_id=%s", run_id
+            )
+
     def _check_budget(
         self,
         usage_totals: dict[str, int],

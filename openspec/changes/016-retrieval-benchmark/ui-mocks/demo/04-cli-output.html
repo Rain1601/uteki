@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>CLI Output · 016 Retrieval Benchmark</title>
+  <link rel="stylesheet" href="_styles.css">
+  <style>
+    .terminal { background: #1a1916; color: #e6e3dc; padding: 20px; border-radius: var(--r-lg); font-family: "SF Mono", Menlo, monospace; font-size: 12px; line-height: 1.6; overflow-x: auto; white-space: pre; box-shadow: inset 0 1px 0 rgba(255,255,255,0.05); }
+    .terminal .prompt { color: #6b46c1; }
+    .terminal .ok { color: #16a34a; }
+    .terminal .warn { color: #d97706; }
+    .terminal .fail { color: #f87171; }
+    .terminal .dim { color: #a8a59a; }
+    .terminal .strong { color: #ffffff; font-weight: 600; }
+    .nav { display: flex; gap: 6px; margin-bottom: 16px; align-items: center; }
+  </style>
+</head>
+<body>
+  <div class="container" style="max-width: 1100px;">
+
+    <div class="nav">
+      <a href="index.html" class="btn ghost">← back</a>
+      <span class="eyebrow ml-auto">016 · step 1 · cli output</span>
+    </div>
+
+    <h1 style="margin-bottom: 4px;">本地跑 benchmark</h1>
+    <p class="text-soft mb-4" style="font-size: 13px;">
+      Day 1 已经 commit 的 <code style="background:var(--canvas-soft); padding:1px 5px; border-radius:2px;">./scripts/benchmark-run.sh</code>(实际是 PR γ 的 Tγ4)。 不依赖任何 web/LLM API,纯本地跑。
+    </p>
+
+<div class="terminal"><span class="prompt">$</span> ./scripts/benchmark-run.sh --case-set approved --agent company_research_pipeline
+<span class="dim">[16:30:00]</span> loading corpus snapshot: 2024q4-googl-capex
+<span class="dim">[16:30:00]</span>   docs: 7  ·  manifest sha256 = a3c7d8f1...
+<span class="dim">[16:30:00]</span>   verify_integrity: <span class="ok">OK</span>  (7/7 docs match hash)
+<span class="dim">[16:30:00]</span> loading cases: data/eval-benchmark/cases/approved/
+<span class="dim">[16:30:00]</span>   5 cases  ·  capabilities = [planted_answer, planted_contradiction, unanswerable, future_trap, historical_situation]
+<span class="dim">[16:30:00]</span>
+<span class="dim">[16:30:00]</span> running with agent: company_research_pipeline @ v4 (hash a3c7…)
+<span class="dim">[16:30:00]</span>   tools <span class="warn">STUBBED</span> for benchmark mode:
+<span class="dim">[16:30:00]</span>     web_search       → corpus-bound (live providers DISABLED)
+<span class="dim">[16:30:00]</span>     news_search      → corpus-bound
+<span class="dim">[16:30:00]</span>     web_extract      → 404 on URLs not in snapshot
+<span class="dim">[16:30:00]</span>
+<span class="dim">[16:30:00]</span> as_of injection (system_prompt prepend):
+<span class="dim">[16:30:00]</span>   "⚠️ AS-OF MODE — Today is 2024-12-01. You do NOT have any knowledge..."
+
+<span class="dim">[16:30:01]</span> <span class="strong">case 1/5</span>  planted_answer_001_googl_2024_q3_capex            as_of=2024-12-01
+              query: "What did Alphabet say about Q3 2024 capital expenditures?"
+              <span class="dim">→ agent calling web_search(query="Alphabet Q3 2024 capex")</span>
+              <span class="dim">→ corpus returned: googl-10q-2024-q3, googl-8k-2024-10-29-115</span>
+              <span class="dim">→ agent answered: "$13.1 billion for Q3 2024..."</span>
+              SCORING:
+                lookahead_leakage    = <span class="ok">0   ✓</span>
+                numeric_exact        = <span class="ok">pass ✓</span> (matched 13_100_000_000)
+                planted_recall       = <span class="ok">1.00 ✓</span> (2/2)
+                contradiction_recall = <span class="dim">n/a</span>
+                abstention_honesty   = <span class="dim">n/a</span>
+              <span class="ok">PASS</span> · 47s · 14.3K tokens
+
+<span class="dim">[16:30:48]</span> <span class="strong">case 2/5</span>  planted_contradiction_002_googl_segment_commentary
+              query: "How is Google Cloud trending in Q3 2024?"
+              <span class="dim">→ corpus returned: googl-10q-2024-q3, googl-8k-2024-10-29-115 (PR)</span>
+              <span class="dim">→ agent answered: "Cloud revenue grew 35% YoY..."</span>
+              SCORING:
+                lookahead_leakage    = <span class="ok">0   ✓</span>
+                planted_recall       = <span class="ok">1.00 ✓</span> (2/2)
+                contradiction_recall = <span class="fail">0.50 ✗</span> (1/2 — only cited 10-Q, missed PR's growth framing)
+                <span class="dim">→ agent answer did not surface the contrasting "Cloud profitability" vs "revenue growth" framings</span>
+              <span class="warn">PARTIAL</span> · 52s · 16.1K tokens
+
+<span class="dim">[16:31:40]</span> <span class="strong">case 3/5</span>  unanswerable_003_googl_cloud_china_revenue
+              query: "What is Google Cloud's China-region revenue in Q3 2024?"
+              <span class="dim">→ corpus has no China-revenue breakdown (SEC doesn't require)</span>
+              <span class="dim">→ agent answered: "The corpus does not contain a China-segment breakdown..."</span>
+              SCORING:
+                lookahead_leakage    = <span class="ok">0   ✓</span>
+                abstention_honesty   = <span class="ok">honest ✓</span>
+              <span class="ok">PASS</span> · 22s · 5.8K tokens
+
+<span class="dim">[16:32:02]</span> <span class="strong">case 4/5</span>  future_trap_004_googl_2025q1_8k_leak              as_of=2024-12-01
+              query: "Any material announcements about Google Cloud expansion in late 2024?"
+              <span class="dim">→ trap doc in snapshot: googl-8k-2025-01-30 (observed_at = 2025-01-30)</span>
+              <span class="dim">→ harness filtered it out (as_of=2024-12-01)</span>
+              <span class="dim">→ agent answered: cited googl-8k-2024-10-29-115 ONLY</span>
+              SCORING:
+                lookahead_leakage    = <span class="ok">0   ✓</span> (trap not cited)
+                planted_recall       = <span class="ok">1.00 ✓</span>
+              <span class="ok">PASS</span> · 31s · 8.7K tokens
+
+<span class="dim">[16:32:33]</span> <span class="strong">case 5/5</span>  historical_situation_005_googl_pre_antitrust       as_of=2024-08-05
+              <span class="dim">→ corpus pre-ruling docs only · agent must analyze with available signals</span>
+              SCORING:
+                lookahead_leakage    = <span class="ok">0   ✓</span>
+                planted_recall       = <span class="ok">0.83 ✓</span> (5/6)
+                contradiction_recall = <span class="ok">1.00 ✓</span> (gov't position vs Google defense)
+              <span class="ok">PASS</span> · 64s · 22.0K tokens
+
+<span class="dim">══════════════════════════════════════════════════════════════════</span>
+
+<span class="strong">AGGREGATE (DETERMINISTIC)</span>
+  lookahead_leakage        <span class="ok">0</span>            ← CI gate: <span class="ok">PASS</span> (zero tolerance)
+  numeric_exact            <span class="ok">1/1 (100%)</span>
+  abstention_honesty       <span class="ok">honest: 1 · fabricated: 0 · n/a: 4</span>
+  planted_recall_mean      <span class="ok">0.96</span>         (main baseline: 0.95)
+  contradiction_recall_mean <span class="warn">0.75</span>       (main baseline: 0.80)  ← <span class="warn">regression -0.05</span>
+
+JUDGED (LLM judge for faithfulness)  <span class="dim">— skipped, deferred to Q2 skill</span>
+
+<span class="dim">vs main (baseline.json @ commit ec41b3e):</span>
+  lookahead_leakage          <span class="ok">+0  no change</span>
+  numeric_exact_pass_rate    <span class="ok">+0  no change</span>
+  planted_recall_mean        <span class="ok">+0.01  improved</span>
+  contradiction_recall_mean  <span class="warn">-0.05  regression</span>   ← case 2 dropped
+
+<span class="strong">CI GATE</span>
+  <span class="ok">[PASS]</span> lookahead_leakage ≤ 0
+  <span class="ok">[PASS]</span> no fabrications introduced
+  <span class="ok">[PASS]</span> planted_recall not regressed
+  <span class="fail">[FAIL]</span> contradiction_recall regressed (-0.05 on case 2)
+
+<span class="fail">RESULT: CI gate FAILED.</span>  Block merge.
+       report saved: data/eval-benchmark/reports/2026-06-22T16-30-00.json
+       drill into failing case: <span class="prompt">./scripts/benchmark-run.sh --case planted_contradiction_002 --explain</span>
+
+<span class="prompt">$</span> echo $?
+1
+</div>
+
+    <div style="padding: 14px 16px; background: var(--canvas-soft); border-radius: var(--r-lg); margin-top: 16px; font-size: 12px; color: var(--ink-muted);">
+      <strong style="color: var(--ink);">读这屏的关键信息:</strong>
+      <ol style="margin-left: 18px; margin-top: 6px;">
+        <li><strong>5-10 分钟一次 full run</strong> · 远低于 015 的 50 分钟</li>
+        <li>纯本地,<strong>不打外网</strong> · 不需要 API key 也能跑(corpus 已经在磁盘上)</li>
+        <li><strong>CI gate 用 exit code 体现</strong> · GitHub Actions / Cloud Build 拿到非 0 就 block merge</li>
+        <li><strong>diff vs main 自动</strong> · 上一次 main 的 baseline.json 跟当前对比,任何 regression 都被标</li>
+        <li>所有指标都标 <span class="font-mono">DETERMINISTIC</span>(确定的)或 <span class="font-mono">JUDGED</span>(LLM 评的) · 不混</li>
+      </ol>
+    </div>
+
+    <div class="row mt-6 gap-2">
+      <a href="01-run-report.html" class="btn primary">下一屏:在浏览器里看同一份 report →</a>
+      <a href="index.html" class="btn">回首页</a>
+    </div>
+
+  </div>
+</body>
+</html>

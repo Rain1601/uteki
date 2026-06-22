@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>Backtest · Eval Workbench Demo</title>
+  <link rel="stylesheet" href="_styles.css">
+  <style>
+    .hit-cell { display: inline-flex; align-items: center; gap: 4px; font-family: "SF Mono", monospace; font-variant-numeric: tabular-nums; font-weight: 600; }
+    .insight-card { padding: 16px; border: 1px solid var(--warn); background: color-mix(in srgb, var(--warn) 5%, transparent); border-radius: var(--r-lg); }
+    .bar-track { height: 8px; background: var(--canvas-soft); border-radius: 4px; overflow: hidden; position: relative; flex: 1; }
+    .bar-fill { height: 100%; }
+    .bar-fill.green { background: var(--gain); }
+    .bar-fill.red { background: var(--loss); }
+    .pred-row { display: grid; grid-template-columns: 80px 60px 110px 90px 90px 90px 100px; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line-soft); align-items: center; font-size: 12px; }
+    .pred-row:hover { background: var(--canvas-soft); cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div class="container" style="max-width:1300px;">
+
+    <div class="row mb-4" style="justify-content:space-between;">
+      <a href="index.html" class="btn ghost">← back to index</a>
+      <div class="eyebrow">eval-bench · screen 6 · backtest aggregate</div>
+    </div>
+
+    <div class="mb-6">
+      <h1>Backtest</h1>
+      <p class="text-soft">所有 prod run 的 BUY/AVOID 信号在市场上的真实命中率。hit 定义 = vs SPY 相对收益(决策 D1)。<strong>WATCH 不计入分母也不计入分子</strong>。</p>
+    </div>
+
+    <!-- Hit rate by version -->
+    <div class="card mb-4">
+      <div class="card-header">
+        <span class="eyebrow">hit rate by skill version · company_research_pipeline</span>
+      </div>
+      <div class="card-body">
+        <div class="col gap-4">
+
+          <div class="col gap-2">
+            <div class="row" style="font-size:12px;">
+              <span class="font-mono" style="width:60px; font-weight:600;">v1</span>
+              <span class="bar-track"><span class="bar-fill green" style="width:53%;"></span></span>
+              <span class="hit-cell text-muted" style="width:120px; text-align:right;">53% · 32/60 hit</span>
+            </div>
+            <div class="row" style="font-size:12px;">
+              <span class="font-mono" style="width:60px; font-weight:600;">v2</span>
+              <span class="bar-track"><span class="bar-fill green" style="width:58%;"></span></span>
+              <span class="hit-cell text-muted" style="width:120px; text-align:right;">58% · 21/36 hit</span>
+            </div>
+            <div class="row" style="font-size:12px;">
+              <span class="font-mono" style="width:60px; font-weight:600;">v3</span>
+              <span class="bar-track"><span class="bar-fill green" style="width:61%;"></span></span>
+              <span class="hit-cell text-gain" style="width:120px; text-align:right;">61% · 14/23 hit</span>
+            </div>
+            <div class="row" style="font-size:12px;">
+              <span class="font-mono" style="width:60px; font-weight:600;">v4</span>
+              <span class="bar-track" style="opacity:0.3;"></span>
+              <span class="hit-cell text-faint" style="width:120px; text-align:right;">pending · 8 predictions</span>
+            </div>
+          </div>
+
+          <div class="row gap-4 mt-4 text-muted" style="padding-top:16px; border-top:1px solid var(--line-soft); font-size:11px;">
+            <span>📈 trend: +8pp from v1 → v3 (n=119 total)</span>
+            <span class="ml-auto">v4 first scoring: 2026-07-21 (30d horizon)</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Hit rate by action -->
+    <div class="card mb-4">
+      <div class="card-header">
+        <span class="eyebrow">hit rate by action × horizon</span>
+      </div>
+      <div class="card-body">
+        <table>
+          <thead>
+            <tr>
+              <th>action</th>
+              <th style="text-align:right;">n</th>
+              <th style="text-align:right;">30d hit</th>
+              <th style="text-align:right;">90d hit</th>
+              <th style="text-align:right;">180d hit</th>
+              <th style="text-align:right;">avg vs SPY</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="badge gain">BUY</span></td>
+              <td style="text-align:right;" class="font-mono">42</td>
+              <td style="text-align:right;" class="font-mono">59%</td>
+              <td style="text-align:right;" class="font-mono text-gain">62%</td>
+              <td style="text-align:right;" class="font-mono text-gain">67%</td>
+              <td style="text-align:right;" class="font-mono text-gain">+12% ⬆</td>
+            </tr>
+            <tr>
+              <td><span class="badge loss">AVOID</span></td>
+              <td style="text-align:right;" class="font-mono">28</td>
+              <td style="text-align:right;" class="font-mono">64%</td>
+              <td style="text-align:right;" class="font-mono text-gain">71%</td>
+              <td style="text-align:right;" class="font-mono text-gain">75%</td>
+              <td style="text-align:right;" class="font-mono text-gain">-8% ⬆<span class="text-faint" style="margin-left:6px; font-weight:400;">(stock 跑输 SPY)</span></td>
+            </tr>
+            <tr style="opacity:0.6;">
+              <td><span class="badge">WATCH</span></td>
+              <td style="text-align:right;" class="font-mono">49</td>
+              <td style="text-align:right;" class="text-faint">n/a</td>
+              <td style="text-align:right;" class="text-faint">n/a</td>
+              <td style="text-align:right;" class="text-faint">n/a</td>
+              <td style="text-align:right;" class="font-mono text-muted">+3% <span class="text-faint" style="margin-left:6px;">(仅记账)</span></td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="row mt-4 text-muted" style="font-size:11px; padding-top:12px; border-top:1px solid var(--line-soft);">
+          <span class="text-accent">⭐ AVOID 是最强信号</span><span style="margin-left:8px;">75% 命中率(180d 维度),股价跑输 SPY 平均 8 个百分点</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Auto-detected failure pattern (反模式守则:只提醒,不自动改 prompt) -->
+    <div class="insight-card mb-4">
+      <div class="row mb-2">
+        <span class="badge warn">📍 auto-detected pattern</span>
+        <span class="ml-auto text-faint" style="font-size:11px;">5 failed BUYs share common features</span>
+      </div>
+      <p class="text-soft mb-4">
+        v3 的 5 个 BUY 命中失败(30d hit=miss)共同特征:全部是 <strong>NEUTRAL → BUY 临界点</strong>(verdict.conviction
+        ∈ [0.55, 0.65]),且 valuation gate 给的都是 <strong>PE > 30x</strong>。可能 prompt 改进方向:
+        gate-06 valuation 的 BUY 临界点上调 PE 阈值。
+      </p>
+      <div class="row gap-2">
+        <button class="btn">Open as draft prompt-tuning task</button>
+        <button class="btn ghost">View 5 failed runs →</button>
+      </div>
+      <p class="text-faint mt-4" style="font-size:10px;">
+        ⓘ 反模式守则:此模式只是<strong>线索</strong>,任何 prompt 改动必须人工 review 后开始。系统不会自动修。
+      </p>
+    </div>
+
+    <!-- Per-prediction table -->
+    <div class="card">
+      <div class="card-header">
+        <div class="row">
+          <span class="eyebrow">predictions · 119 total · click row to open original run</span>
+          <div class="row gap-2 ml-auto">
+            <select style="padding:4px 10px; font-size:11px; border:1px solid var(--line); border-radius:var(--r); background:var(--surface-1);">
+              <option>all actions</option>
+              <option>BUY only</option>
+              <option>AVOID only</option>
+              <option>WATCH only</option>
+            </select>
+            <select style="padding:4px 10px; font-size:11px; border:1px solid var(--line); border-radius:var(--r); background:var(--surface-1);">
+              <option>all versions</option>
+              <option>v3 only</option>
+              <option>v4 only</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="pred-row" style="background:var(--canvas-soft); border-bottom:1px solid var(--line);">
+          <span class="eyebrow">ticker</span>
+          <span class="eyebrow">action</span>
+          <span class="eyebrow">t0</span>
+          <span class="eyebrow" style="text-align:right;">30d</span>
+          <span class="eyebrow" style="text-align:right;">90d</span>
+          <span class="eyebrow" style="text-align:right;">180d</span>
+          <span class="eyebrow">version</span>
+        </div>
+
+        <div class="pred-row"><span class="font-mono" style="font-weight:600;">NVDA</span><span><span class="badge gain">BUY</span></span><span class="text-muted">3/22 ago</span><span class="hit-cell text-gain" style="text-align:right;">+8.2% ✓</span><span class="hit-cell text-gain" style="text-align:right;">+14.1% ✓</span><span class="text-faint" style="text-align:right;">85d</span><span class="badge">v3</span></div>
+        <div class="pred-row"><span class="font-mono" style="font-weight:600;">TSLA</span><span><span class="badge loss">AVOID</span></span><span class="text-muted">3/22 ago</span><span class="hit-cell text-gain" style="text-align:right;">-12% ✓</span><span class="hit-cell text-gain" style="text-align:right;">-18% ✓</span><span class="text-faint" style="text-align:right;">85d</span><span class="badge">v3</span></div>
+        <div class="pred-row"><span class="font-mono" style="font-weight:600;">GOOGL</span><span><span class="badge">WATCH</span></span><span class="text-muted">4/03 ago</span><span class="hit-cell text-muted" style="text-align:right;">-3%</span><span class="hit-cell text-muted" style="text-align:right;">+1%</span><span class="text-faint" style="text-align:right;">73d</span><span class="badge">v3</span></div>
+        <div class="pred-row"><span class="font-mono" style="font-weight:600;">AAPL</span><span><span class="badge gain">BUY</span></span><span class="text-muted">4/15 ago</span><span class="hit-cell text-gain" style="text-align:right;">+2% ✓</span><span class="text-faint" style="text-align:right;">61d</span><span class="text-faint" style="text-align:right;">151d</span><span class="badge">v3</span></div>
+        <div class="pred-row"><span class="font-mono" style="font-weight:600;">META</span><span><span class="badge gain">BUY</span></span><span class="text-muted">4/22 ago</span><span class="hit-cell text-loss" style="text-align:right;">-3% ✗</span><span class="text-faint" style="text-align:right;">54d</span><span class="text-faint" style="text-align:right;">144d</span><span class="badge warn">v3 fail</span></div>
+        <div class="pred-row"><span class="font-mono" style="font-weight:600;">AMD</span><span><span class="badge gain">BUY</span></span><span class="text-muted">5/01 ago</span><span class="text-faint" style="text-align:right;">17d</span><span class="text-faint" style="text-align:right;">77d</span><span class="text-faint" style="text-align:right;">167d</span><span class="badge">v3</span></div>
+        <div class="pred-row"><span class="font-mono" style="font-weight:600;">MSFT</span><span><span class="badge gain">BUY</span></span><span class="text-muted">6/15 ago</span><span class="text-faint" style="text-align:right;">23d</span><span class="text-faint" style="text-align:right;">83d</span><span class="text-faint" style="text-align:right;">173d</span><span class="badge">v3</span></div>
+        <div class="pred-row"><span class="font-mono" style="font-weight:600;">NVDA</span><span><span class="badge gain">BUY</span></span><span class="text-muted">6/21 ago</span><span class="text-faint" style="text-align:right;">29d</span><span class="text-faint" style="text-align:right;">89d</span><span class="text-faint" style="text-align:right;">179d</span><span class="badge accent">v4</span></div>
+        <div class="pred-row"><span class="font-mono" style="font-weight:600;">GOOGL</span><span><span class="badge">WATCH</span></span><span class="text-muted">6/21 ago</span><span class="text-faint" style="text-align:right;">29d</span><span class="text-faint" style="text-align:right;">89d</span><span class="text-faint" style="text-align:right;">179d</span><span class="badge accent">v4</span></div>
+      </div>
+
+      <div class="card-body" style="background:var(--canvas-soft); border-top:1px solid var(--line);">
+        <span class="text-faint" style="font-size:11px;">… 110 more predictions · scoring cron next 06:30 UTC</span>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

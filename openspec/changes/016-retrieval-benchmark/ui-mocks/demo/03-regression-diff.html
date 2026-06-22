@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>Regression Diff · 016 Retrieval Benchmark</title>
+  <link rel="stylesheet" href="_styles.css">
+  <style>
+    .diff-header { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 16px; background: var(--surface-1); border: 1px solid var(--line); border-radius: var(--r-lg); margin-bottom: 24px; }
+    .branch-card { padding: 14px; border-radius: var(--r); }
+    .branch-card.main { background: var(--canvas-soft); border: 1px solid var(--line-strong); }
+    .branch-card.branch { background: color-mix(in srgb, var(--accent) 6%, transparent); border: 1px solid var(--accent-line); }
+    .branch-card .ref { font-family: "SF Mono", monospace; font-size: 11px; color: var(--ink-muted); }
+    .branch-card .label { font-family: "Times New Roman", Georgia, serif; font-style: italic; font-size: 18px; color: var(--ink); margin-bottom: 6px; }
+    .branch-card .ts { font-family: "SF Mono", monospace; font-size: 10px; color: var(--ink-faint); margin-top: 4px; }
+
+    .diff-row { display: grid; grid-template-columns: 1.4fr 1fr 1fr 0.6fr; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line-soft); align-items: center; font-size: 12px; }
+    .diff-row:last-child { border-bottom: 0; }
+    .diff-row .metric { font-family: "SF Mono", monospace; color: var(--ink-soft); }
+    .diff-row .main-val { font-family: "SF Mono", monospace; color: var(--ink-muted); }
+    .diff-row .branch-val { font-family: "SF Mono", monospace; font-weight: 600; color: var(--ink); }
+    .diff-row .delta { text-align: right; font-family: "SF Mono", monospace; font-size: 11px; font-weight: 600; }
+    .delta.up { color: var(--gain); }
+    .delta.down { color: var(--loss); }
+    .delta.flat { color: var(--ink-faint); }
+
+    .case-diff-row { display: grid; grid-template-columns: 1.5fr 1fr 1fr auto; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line-soft); align-items: center; font-size: 12px; }
+    .case-diff-row:last-child { border-bottom: 0; }
+    .case-diff-row.regressed { background: color-mix(in srgb, var(--loss) 4%, transparent); }
+    .case-diff-row .case-id { font-family: "SF Mono", monospace; font-size: 11px; color: var(--ink); font-weight: 500; }
+    .case-diff-row .case-cap { font-size: 10px; color: var(--ink-muted); margin-top: 2px; }
+
+    .insight { padding: 16px; border-radius: var(--r-lg); margin-top: 24px; }
+    .insight.fail { background: color-mix(in srgb, var(--loss) 6%, transparent); border: 1px solid color-mix(in srgb, var(--loss) 30%, transparent); }
+    .insight h3 { margin: 0 0 8px; color: var(--loss); font-size: 13px; }
+    .insight p { font-size: 12px; color: var(--ink-soft); line-height: 1.6; }
+    .insight ul { margin-top: 8px; padding-left: 18px; font-size: 12px; color: var(--ink-soft); }
+    .insight code { background: rgba(0,0,0,0.05); padding: 1px 5px; border-radius: 2px; }
+
+    .nav { display: flex; gap: 6px; margin-bottom: 16px; align-items: center; }
+  </style>
+</head>
+<body>
+  <div class="container" style="max-width: 1300px;">
+
+    <div class="nav">
+      <a href="02-case-detail.html" class="btn ghost">← case detail</a>
+      <a href="index.html" class="btn ghost">回首页</a>
+      <span class="eyebrow ml-auto">016 · step 4 · regression diff</span>
+    </div>
+
+    <h1 style="margin-bottom: 4px;">Regression diff · main vs branch</h1>
+    <p class="text-soft mb-4" style="font-size: 13px;">
+      自动对比 main 的 baseline 报告与这次 branch 的报告。 任何 CI 门禁触发都会列在底部。
+    </p>
+
+    <!-- Branch comparison -->
+    <div class="diff-header">
+      <div class="branch-card main">
+        <div class="ref">baseline</div>
+        <div class="label">main</div>
+        <div class="row gap-2 mt-2">
+          <span class="badge">commit ec41b3e</span>
+          <span class="text-muted" style="font-size: 11px;">2026-06-21 22:30 UTC</span>
+        </div>
+        <div class="ts">"design(015): eval workbench — proposal + design + tasks + 7 interactive demos"</div>
+      </div>
+      <div class="branch-card branch">
+        <div class="ref">candidate</div>
+        <div class="label">retrieval-fix-attempt</div>
+        <div class="row gap-2 mt-2">
+          <span class="badge accent">commit f8a3c712</span>
+          <span class="text-muted" style="font-size: 11px;">just now</span>
+        </div>
+        <div class="ts">"refactor(web_search): try new chunking strategy for news_search"</div>
+      </div>
+    </div>
+
+    <!-- Aggregate scorer-level diff -->
+    <div>
+      <div class="row mb-2">
+        <span class="eyebrow">aggregate scorers · main vs branch</span>
+      </div>
+      <div class="card">
+        <div class="diff-row" style="background: var(--canvas-soft); font-weight: 600;">
+          <span style="font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-faint); font-family: 'SF Mono', monospace;">scorer</span>
+          <span style="font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-faint); font-family: 'SF Mono', monospace;">main</span>
+          <span style="font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-faint); font-family: 'SF Mono', monospace;">branch</span>
+          <span style="font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-faint); font-family: 'SF Mono', monospace; text-align: right;">delta</span>
+        </div>
+        <div class="diff-row">
+          <span class="metric">lookahead_leakage</span>
+          <span class="main-val">0</span>
+          <span class="branch-val">0</span>
+          <span class="delta flat">─ no change</span>
+        </div>
+        <div class="diff-row">
+          <span class="metric">numeric_exact pass rate</span>
+          <span class="main-val">100%</span>
+          <span class="branch-val">100%</span>
+          <span class="delta flat">─ no change</span>
+        </div>
+        <div class="diff-row">
+          <span class="metric">abstention_honesty</span>
+          <span class="main-val">1 honest · 0 fab</span>
+          <span class="branch-val">1 honest · 0 fab</span>
+          <span class="delta flat">─ no change</span>
+        </div>
+        <div class="diff-row">
+          <span class="metric">planted_recall (mean)</span>
+          <span class="main-val">0.95</span>
+          <span class="branch-val">0.96</span>
+          <span class="delta up">⬆ +0.01 (improved)</span>
+        </div>
+        <div class="diff-row" style="background: color-mix(in srgb, var(--loss) 5%, transparent);">
+          <span class="metric" style="color: var(--loss); font-weight: 600;">contradiction_recall (mean)</span>
+          <span class="main-val">0.80</span>
+          <span class="branch-val" style="color: var(--loss);">0.75</span>
+          <span class="delta down">⬇ -0.05 REGRESSION</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Per-case diff -->
+    <div class="mt-6">
+      <div class="row mb-2">
+        <span class="eyebrow">per-case verdicts · main vs branch</span>
+      </div>
+      <div class="card">
+        <div class="case-diff-row" style="background: var(--canvas-soft);">
+          <span style="font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-faint); font-family: 'SF Mono', monospace;">case</span>
+          <span style="font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-faint); font-family: 'SF Mono', monospace;">main</span>
+          <span style="font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-faint); font-family: 'SF Mono', monospace;">branch</span>
+          <span></span>
+        </div>
+        <div class="case-diff-row">
+          <div>
+            <div class="case-id">planted_answer_001</div>
+            <div class="case-cap">GOOGL · Q3 2024 capex</div>
+          </div>
+          <span><span class="badge gain">PASS</span></span>
+          <span><span class="badge gain">PASS</span></span>
+          <span class="delta flat">unchanged</span>
+        </div>
+        <div class="case-diff-row regressed">
+          <div>
+            <div class="case-id" style="color: var(--loss);">planted_contradiction_002 ▸</div>
+            <div class="case-cap">GOOGL · Cloud segment framing</div>
+          </div>
+          <span><span class="badge gain">PASS</span></span>
+          <span><span class="badge loss">FAIL</span></span>
+          <span class="delta down">⬇ regressed</span>
+        </div>
+        <div class="case-diff-row">
+          <div>
+            <div class="case-id">unanswerable_003</div>
+            <div class="case-cap">GOOGL · Cloud China revenue</div>
+          </div>
+          <span><span class="badge gain">PASS</span></span>
+          <span><span class="badge gain">PASS</span></span>
+          <span class="delta flat">unchanged</span>
+        </div>
+        <div class="case-diff-row">
+          <div>
+            <div class="case-id">future_trap_004</div>
+            <div class="case-cap">GOOGL · 2025-Q1 8-K leak</div>
+          </div>
+          <span><span class="badge gain">PASS</span></span>
+          <span><span class="badge gain">PASS</span></span>
+          <span class="delta flat">unchanged</span>
+        </div>
+        <div class="case-diff-row">
+          <div>
+            <div class="case-id">historical_situation_005</div>
+            <div class="case-cap">GOOGL · pre-antitrust 2024-Aug</div>
+          </div>
+          <span><span class="badge gain">PASS</span></span>
+          <span><span class="badge gain">PASS</span></span>
+          <span class="delta flat">unchanged</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- CI verdict -->
+    <div class="insight fail">
+      <h3>🚫 CI gate: BLOCK MERGE</h3>
+      <p>
+        <strong>One CI rule violated:</strong> contradiction_recall regressed
+        from main's 0.80 to this branch's 0.75 (-0.05). Per <code>README-scope.md</code>,
+        contradiction_recall is a deterministic gate; any regression vs main blocks merge.
+      </p>
+      <ul>
+        <li>Failing case: <a href="02-case-detail.html" class="text-accent">planted_contradiction_002</a></li>
+        <li>Likely cause: the new chunking strategy in <code>web_search</code> may be merging the 10-Q's "still emerging" framing into a larger chunk where the press release's bullish framing dominates, so the agent only sees the bullish side</li>
+        <li>To unblock: either revert this change, OR amend the agent prompt to explicitly request contrast-aware synthesis (then re-run benchmark; expect contradiction_recall to climb back to 0.80+ on this case)</li>
+      </ul>
+    </div>
+
+    <!-- What this catches that LLM judge wouldn't -->
+    <div style="padding: 14px 16px; background: var(--canvas-soft); border-radius: var(--r-lg); margin-top: 24px; font-size: 12px; color: var(--ink-muted);">
+      <strong style="color: var(--ink);">为什么这个 catch 比 LLM judge 强:</strong>
+      An LLM judge reading this answer would likely say "well-written, clear, confident" — and give v4 a higher score than main. But the answer **silently dropped one side of a known contradiction**. Without the deterministic contradiction_recall scorer, this regression ships and nobody notices until a customer asks "why does your agent always agree with the press release?".
+    </div>
+
+    <div class="row mt-6 gap-2">
+      <a href="index.html" class="btn">回首页</a>
+      <a href="04-cli-output.html" class="btn ghost">看 CLI 输出</a>
+    </div>
+
+  </div>
+</body>
+</html>

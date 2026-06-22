@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>Run Report · 016 Retrieval Benchmark</title>
+  <link rel="stylesheet" href="_styles.css">
+  <style>
+    .meta-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; padding: 14px 16px; border: 1px solid var(--line); background: var(--surface-1); border-radius: var(--r-lg); margin-bottom: 16px; }
+    .meta-item { display: flex; flex-direction: column; gap: 3px; }
+    .meta-item .label { font-size: 9px; font-family: "SF Mono", monospace; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-faint); }
+    .meta-item .value { font-family: "SF Mono", monospace; font-variant-numeric: tabular-nums; font-size: 13px; color: var(--ink); }
+
+    .scope-mini { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: color-mix(in srgb, var(--warn) 8%, transparent); border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent); border-radius: var(--r); font-size: 10px; color: var(--warn); margin-bottom: 16px; }
+
+    .matrix { display: grid; grid-template-columns: 1.8fr repeat(5, 1fr) 0.8fr; gap: 0; background: var(--surface-1); border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; }
+    .matrix-cell { padding: 10px 12px; border-bottom: 1px solid var(--line-soft); border-right: 1px solid var(--line-soft); font-size: 12px; }
+    .matrix-cell:nth-last-child(-n+7) { border-bottom: 0; }
+    .matrix-cell.header { font-family: "SF Mono", monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-faint); background: var(--canvas-soft); padding: 12px; border-bottom: 1px solid var(--line); font-weight: 500; }
+    .matrix-cell.case-label { cursor: pointer; padding: 12px; }
+    .matrix-cell.case-label:hover { background: var(--canvas-soft); }
+    .matrix-cell.case-label .id { font-family: "SF Mono", monospace; font-size: 11px; color: var(--ink); font-weight: 600; }
+    .matrix-cell.case-label .cap { font-size: 10px; color: var(--ink-muted); margin-top: 2px; }
+    .matrix-cell.score-cell { text-align: center; font-family: "SF Mono", monospace; font-variant-numeric: tabular-nums; font-size: 11px; }
+    .matrix-cell .pass { color: var(--gain); }
+    .matrix-cell .fail { color: var(--loss); font-weight: 600; }
+    .matrix-cell .partial { color: var(--warn); }
+    .matrix-cell .na { color: var(--ink-faint); }
+    .matrix-cell.verdict-cell { text-align: right; padding-right: 14px; }
+
+    .aggregate-row { display: grid; grid-template-columns: 1.8fr repeat(5, 1fr) 0.8fr; background: var(--canvas-soft); }
+    .aggregate-row .matrix-cell { font-weight: 600; }
+    .matrix-cell.aggregate-label { padding: 14px 12px; font-family: "SF Mono", monospace; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink); }
+
+    .ci-status { padding: 16px 18px; border-radius: var(--r-lg); margin-top: 16px; display: flex; align-items: center; gap: 16px; }
+    .ci-status.fail { background: color-mix(in srgb, var(--loss) 8%, transparent); border: 1px solid color-mix(in srgb, var(--loss) 40%, transparent); }
+    .ci-status.fail .icon { font-size: 28px; }
+    .ci-status .text strong { color: var(--loss); font-size: 14px; }
+    .ci-status .text .reason { font-size: 12px; color: var(--ink-soft); margin-top: 4px; }
+    .ci-status .actions { margin-left: auto; display: flex; gap: 8px; }
+
+    .gate-row { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; padding: 8px 14px; border-bottom: 1px solid var(--line-soft); font-size: 12px; }
+    .gate-row:last-child { border-bottom: 0; }
+    .gate-row .gate-name { font-family: "SF Mono", monospace; color: var(--ink-soft); }
+    .gate-row .gate-rule { color: var(--ink-muted); font-size: 11px; }
+
+    .nav { display: flex; gap: 6px; margin-bottom: 16px; align-items: center; }
+  </style>
+</head>
+<body>
+  <div class="container" style="max-width: 1300px;">
+
+    <div class="nav">
+      <a href="index.html" class="btn ghost">← back</a>
+      <a href="04-cli-output.html" class="btn ghost">← cli output</a>
+      <span class="eyebrow ml-auto">016 · step 2 · run report</span>
+    </div>
+
+    <h1 style="margin-bottom: 4px;">Run report · 2026-06-22 16:30</h1>
+    <div class="scope-mini">
+      ⓘ this report only measures pipeline fidelity · <strong style="margin-left: 4px;">no PnL / hit rate / outcome signal is scored here</strong>
+    </div>
+
+    <!-- Run metadata -->
+    <div class="meta-row">
+      <div class="meta-item">
+        <span class="label">agent</span>
+        <span class="value">company_research_pipeline @ v4</span>
+      </div>
+      <div class="meta-item">
+        <span class="label">case set</span>
+        <span class="value">approved · 5 cases</span>
+      </div>
+      <div class="meta-item">
+        <span class="label">snapshot</span>
+        <span class="value">2024q4-googl-capex</span>
+      </div>
+      <div class="meta-item">
+        <span class="label">duration</span>
+        <span class="value">3min 38s</span>
+      </div>
+      <div class="meta-item">
+        <span class="label">cost</span>
+        <span class="value text-gain">$0.00 <span class="text-faint" style="font-weight: 400;">deterministic only</span></span>
+      </div>
+    </div>
+
+    <!-- Matrix -->
+    <div class="matrix">
+      <div class="matrix-cell header">CASE</div>
+      <div class="matrix-cell header" style="text-align: center;">lookahead_leakage</div>
+      <div class="matrix-cell header" style="text-align: center;">numeric_exact</div>
+      <div class="matrix-cell header" style="text-align: center;">planted_recall</div>
+      <div class="matrix-cell header" style="text-align: center;">contradiction_recall</div>
+      <div class="matrix-cell header" style="text-align: center;">abstention_honesty</div>
+      <div class="matrix-cell header" style="text-align: right;">verdict</div>
+
+      <!-- case 1 -->
+      <a href="02-case-detail.html" style="display: contents; text-decoration: none;">
+      <div class="matrix-cell case-label">
+        <div class="id">planted_answer_001</div>
+        <div class="cap">GOOGL · Q3 2024 capex</div>
+      </div>
+      <div class="matrix-cell score-cell"><span class="pass">0 ✓</span></div>
+      <div class="matrix-cell score-cell"><span class="pass">pass ✓</span></div>
+      <div class="matrix-cell score-cell"><span class="pass">2/2 ✓</span></div>
+      <div class="matrix-cell score-cell"><span class="na">n/a</span></div>
+      <div class="matrix-cell score-cell"><span class="na">n/a</span></div>
+      <div class="matrix-cell verdict-cell"><span class="badge gain">PASS</span></div>
+      </a>
+
+      <!-- case 2 — the one that broke -->
+      <a href="02-case-detail.html" style="display: contents; text-decoration: none;">
+      <div class="matrix-cell case-label" style="background: color-mix(in srgb, var(--loss) 4%, transparent);">
+        <div class="id">planted_contradiction_002 ▸</div>
+        <div class="cap">GOOGL · Cloud segment framing</div>
+      </div>
+      <div class="matrix-cell score-cell" style="background: color-mix(in srgb, var(--loss) 4%, transparent);"><span class="pass">0 ✓</span></div>
+      <div class="matrix-cell score-cell" style="background: color-mix(in srgb, var(--loss) 4%, transparent);"><span class="na">n/a</span></div>
+      <div class="matrix-cell score-cell" style="background: color-mix(in srgb, var(--loss) 4%, transparent);"><span class="pass">2/2 ✓</span></div>
+      <div class="matrix-cell score-cell" style="background: color-mix(in srgb, var(--loss) 4%, transparent);"><span class="fail">0.50 ✗</span></div>
+      <div class="matrix-cell score-cell" style="background: color-mix(in srgb, var(--loss) 4%, transparent);"><span class="na">n/a</span></div>
+      <div class="matrix-cell verdict-cell" style="background: color-mix(in srgb, var(--loss) 4%, transparent);"><span class="badge loss">FAIL</span></div>
+      </a>
+
+      <!-- case 3 -->
+      <a href="02-case-detail.html" style="display: contents; text-decoration: none;">
+      <div class="matrix-cell case-label">
+        <div class="id">unanswerable_003</div>
+        <div class="cap">GOOGL · Cloud China revenue</div>
+      </div>
+      <div class="matrix-cell score-cell"><span class="pass">0 ✓</span></div>
+      <div class="matrix-cell score-cell"><span class="na">n/a</span></div>
+      <div class="matrix-cell score-cell"><span class="na">n/a</span></div>
+      <div class="matrix-cell score-cell"><span class="na">n/a</span></div>
+      <div class="matrix-cell score-cell"><span class="pass">honest ✓</span></div>
+      <div class="matrix-cell verdict-cell"><span class="badge gain">PASS</span></div>
+      </a>
+
+      <!-- case 4 -->
+      <a href="02-case-detail.html" style="display: contents; text-decoration: none;">
+      <div class="matrix-cell case-label">
+        <div class="id">future_trap_004</div>
+        <div class="cap">GOOGL · 2025-Q1 8-K leak</div>
+      </div>
+      <div class="matrix-cell score-cell"><span class="pass">0 ✓</span></div>
+      <div class="matrix-cell score-cell"><span class="na">n/a</span></div>
+      <div class="matrix-cell score-cell"><span class="pass">1/1 ✓</span></div>
+      <div class="matrix-cell score-cell"><span class="na">n/a</span></div>
+      <div class="matrix-cell score-cell"><span class="na">n/a</span></div>
+      <div class="matrix-cell verdict-cell"><span class="badge gain">PASS</span></div>
+      </a>
+
+      <!-- case 5 -->
+      <a href="02-case-detail.html" style="display: contents; text-decoration: none;">
+      <div class="matrix-cell case-label">
+        <div class="id">historical_situation_005</div>
+        <div class="cap">GOOGL · pre-antitrust 2024-Aug</div>
+      </div>
+      <div class="matrix-cell score-cell"><span class="pass">0 ✓</span></div>
+      <div class="matrix-cell score-cell"><span class="na">n/a</span></div>
+      <div class="matrix-cell score-cell"><span class="pass">5/6 ✓</span></div>
+      <div class="matrix-cell score-cell"><span class="pass">2/2 ✓</span></div>
+      <div class="matrix-cell score-cell"><span class="na">n/a</span></div>
+      <div class="matrix-cell verdict-cell"><span class="badge gain">PASS</span></div>
+      </a>
+
+      <!-- Aggregate row -->
+      <div class="aggregate-row" style="display: contents;">
+        <div class="matrix-cell aggregate-label">aggregate</div>
+        <div class="matrix-cell score-cell" style="background: var(--canvas-soft); font-weight: 600;"><span class="pass">0</span></div>
+        <div class="matrix-cell score-cell" style="background: var(--canvas-soft); font-weight: 600;"><span class="pass">1/1 (100%)</span></div>
+        <div class="matrix-cell score-cell" style="background: var(--canvas-soft); font-weight: 600;"><span class="pass">0.96</span></div>
+        <div class="matrix-cell score-cell" style="background: var(--canvas-soft); font-weight: 600;"><span class="partial">0.75</span></div>
+        <div class="matrix-cell score-cell" style="background: var(--canvas-soft); font-weight: 600;"><span class="pass">1 honest · 0 fab</span></div>
+        <div class="matrix-cell verdict-cell" style="background: var(--canvas-soft);"></div>
+      </div>
+    </div>
+
+    <!-- vs main diff (compact) -->
+    <div class="mt-4">
+      <span class="eyebrow">vs main (baseline @ commit ec41b3e)</span>
+      <div class="card mt-2">
+        <div class="card-body" style="font-size: 12px;">
+          <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 8px; align-items: center;">
+            <div class="text-muted">lookahead_leakage</div>
+            <div class="font-mono">main: 0</div>
+            <div class="font-mono">branch: 0</div>
+            <div><span class="badge gain">unchanged</span></div>
+
+            <div class="text-muted">numeric_exact pass rate</div>
+            <div class="font-mono">main: 100%</div>
+            <div class="font-mono">branch: 100%</div>
+            <div><span class="badge gain">unchanged</span></div>
+
+            <div class="text-muted">planted_recall mean</div>
+            <div class="font-mono">main: 0.95</div>
+            <div class="font-mono">branch: 0.96</div>
+            <div><span class="badge gain">+0.01 ⬆</span></div>
+
+            <div class="text-muted" style="font-weight: 600; color: var(--ink);">contradiction_recall mean</div>
+            <div class="font-mono">main: 0.80</div>
+            <div class="font-mono">branch: <strong style="color: var(--loss);">0.75</strong></div>
+            <div><span class="badge loss">-0.05 ⬇ REGRESSION</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CI gate evaluation -->
+    <div class="mt-6">
+      <span class="eyebrow">CI gates · all must pass to merge</span>
+      <div class="card mt-2">
+        <div class="gate-row"><span class="gate-name pass">✓</span><div><strong>lookahead_leakage</strong> <span class="gate-rule">— must be 0 (zero tolerance)</span></div><span class="badge gain">PASS</span></div>
+        <div class="gate-row"><span class="gate-name pass">✓</span><div><strong>fabrications</strong> <span class="gate-rule">— must not increase vs main</span></div><span class="badge gain">PASS</span></div>
+        <div class="gate-row"><span class="gate-name pass">✓</span><div><strong>numeric_exact</strong> <span class="gate-rule">— previously-passing cases must keep passing</span></div><span class="badge gain">PASS</span></div>
+        <div class="gate-row"><span class="gate-name pass">✓</span><div><strong>planted_recall</strong> <span class="gate-rule">— must not regress vs main</span></div><span class="badge gain">PASS</span></div>
+        <div class="gate-row"><span class="gate-name fail">✗</span><div><strong>contradiction_recall</strong> <span class="gate-rule">— must not regress vs main · this branch dropped 0.80 → 0.75</span></div><span class="badge loss">FAIL</span></div>
+      </div>
+    </div>
+
+    <!-- Final CI status -->
+    <div class="ci-status fail">
+      <div class="icon">🚫</div>
+      <div class="text">
+        <strong>CI gate FAILED — merge blocked</strong>
+        <div class="reason">contradiction_recall regression introduced by this branch. Drill into <a href="02-case-detail.html" class="text-accent">planted_contradiction_002</a> to see what changed.</div>
+      </div>
+      <div class="actions">
+        <a href="02-case-detail.html" class="btn primary">drill into failure →</a>
+        <a href="03-regression-diff.html" class="btn">side-by-side diff →</a>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>
